@@ -1,4 +1,4 @@
-/* Сутки·Pro — общее демо-состояние в localStorage (заявки с сайта, отчёты уборщиков,
+/* Сутки·Pro — общее демо-состояние в localStorage (заявки с сайта, отчёты клининга,
    проблемы, журнал действий, сотрудники) и демо-авторизация. Никакого сервера нет. */
 'use strict';
 const STORE_KEY = 'sutkipro.demo.v1';
@@ -13,9 +13,9 @@ const STAFF_BASE = [
   {id:'dinara',   name:'Динара Омарова',    short:'Динара',   role:'cleaner', login:'dinara',   pass:'demo', phone:'+7 708 634 77 25', g:'f', online:true,  lastLogin:'Сегодня, 10:05', rating:4.7, monthDone:33},
   {id:'svetlana', name:'Светлана Ким',      short:'Светлана', role:'cleaner', login:'svetlana', pass:'demo', phone:'+7 747 745 83 36', g:'f', online:false, lastLogin:'Сегодня, 10:20', rating:4.6, monthDone:26}
 ];
-const ROLE_NAME = {owner:'Владелец', admin:'Администратор', cleaner:'Уборщик'};
+const ROLE_NAME = {owner:'Владелец', admin:'Администратор', cleaner:'Специалист по клинингу'};
 
-const defaultState = () => ({v:1, seq:1000, requests:[], cleanings:{}, problems:[], activity:[], staffAdded:[], access:{}, presence:{}, repairStatus:{}});
+const defaultState = () => ({v:1, seq:1000, requests:[], cleanings:{}, problems:[], activity:[], staffAdded:[], access:{}, presence:{}, repairStatus:{}, transferStatus:{}});
 
 const Store = {
   load(){
@@ -96,3 +96,56 @@ function saveCleaning(c, extra){
 function siteRequestsBlocking(st, aptId, ci, co){
   return (st.requests||[]).some(r=>r.aptId===aptId && r.status!=='cancelled' && r.ci<co && ci<r.co);
 }
+
+/* ---------- трансфер: общие правила для сайта гостей и панели владельца ---------- */
+const TR_PLACES = {
+  airport: {name:'Аэропорт Астаны (NQZ)', short:'Аэропорт NQZ', meet:'в зоне прилёта у выхода из таможни', wait:60, code:'Номер рейса', codePh:'например, KC 852', lead:180,
+            dirs:{from:'Из аэропорта', to:'В аэропорт', round:'Туда и обратно'}},
+  station: {name:'Ж/д вокзал «Нурлы Жол»', short:'Вокзал Нурлы Жол', meet:'у выхода с платформы в главном зале', wait:20, code:'Номер поезда и вагон', codePh:'например, 002Ц, вагон 7', lead:60,
+            dirs:{from:'С вокзала', to:'На вокзал', round:'Туда и обратно'}}
+};
+const TR_CLASSES = {
+  standard: {name:'Стандарт', car:'Toyota Camry или аналог', pax:4, bags:3},
+  minivan:  {name:'Минивэн',  car:'Hyundai Staria или аналог', pax:7, bags:7}
+};
+/* цены за машину (не за человека); «туда и обратно» — со скидкой */
+const TR_PRICES = {
+  airport: {standard:{one:8000, round:14000}, minivan:{one:12000, round:21000}},
+  station: {standard:{one:6000, round:10000}, minivan:{one:9000,  round:16000}}
+};
+const TR_SEAT = 2000;   // детское кресло / бустер, за поездку в одну сторону
+const TR_NIGHT = 1500;  // ночная надбавка 23:00–06:00, за поездку
+const trIsNight = hm => { if(!hm) return false; const h=+String(hm).slice(0,2); return h>=23 || h<6; };
+const hmAdd = (hm, min) => { const p=String(hm).split(':').map(Number); let t=((p[0]*60+p[1]+min)%1440+1440)%1440; return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0'); };
+/* ноги поездки: {dir:'in'|'out', date, time (подача/встреча), code} */
+function trLegs(t){
+  const L=[]; const P=TR_PLACES[t.place]||TR_PLACES.airport;
+  if(t.dir==='from'||t.dir==='round') L.push({dir:'in', date:t.arrDate, time:t.arrTime, code:t.arrCode||''});
+  if(t.dir==='to'||t.dir==='round'){ const pick=hmAdd(t.depTime||'12:00', -P.lead); const shift = t.depTime && pick>t.depTime ? -1 : 0;
+    L.push({dir:'out', date:t.depDate!=null?t.depDate+shift:null, time:pick, depTime:t.depTime, code:t.depCode||''}); }
+  return L;
+}
+function trPrice(t){
+  const P=TR_PRICES[t.place]||TR_PRICES.airport; const pc=P[t.cls]||P.standard; const legs=trLegs(t); const n=legs.length;
+  const base = t.dir==='round' ? pc.round : pc.one;
+  const seats = (t.seats||0)*TR_SEAT*n;
+  const nights = legs.filter(l=>trIsNight(l.time)).length;
+  const night = nights*TR_NIGHT;
+  const cn = TR_CLASSES[t.cls]?TR_CLASSES[t.cls].name:'Стандарт';
+  const lines = t.dir==='round' ? [[`${cn} · 2 поездки`, pc.one*2], ['Скидка «туда и обратно»', base-pc.one*2]] : [[`${cn} · в одну сторону`, base]];
+  if(seats) lines.push([`Детское кресло × ${t.seats}${n>1?' × 2 поездки':''}`, seats]);
+  if(night) lines.push([`Ночная подача (23:00–06:00)${nights>1?' × 2':''}`, night]);
+  const total = base+seats+night;
+  /* стоимость каждой ноги — для раздела «Трансферы» у владельца */
+  const legPrices = legs.map(l=> Math.round(base/n) + (t.seats||0)*TR_SEAT + (trIsNight(l.time)?TR_NIGHT:0));
+  return {base, seats, night, total, lines, legs, legPrices, full: pc.one*n};
+}
+/* кратко одной строкой: «Из аэропорта · Стандарт · 2 пасс., 2 багажа, 1 кресло» */
+function trSummary(t){
+  const P=TR_PLACES[t.place]||TR_PLACES.airport; const C=TR_CLASSES[t.cls]||TR_CLASSES.standard;
+  return `${P.dirs[t.dir]}${t.place==='station'&&t.dir==='round'?' (вокзал)':''} · ${C.name} · ${t.pax} пасс., ${t.bags} ${plural(t.bags,'место','места','мест')} багажа${t.seats?`, ${t.seats} ${plural(t.seats,'кресло','кресла','кресел')}`:''}`;
+}
+const TR_PAY = {
+  driver: {label:'Водителю при встрече', sub:'Наличными или Kaspi', short:'водителю при встрече', color:'amber'},
+  card:   {label:'Картой онлайн',        sub:'Демо-оплата, без списания', short:'картой онлайн — оплачено (демо)', color:'green'}
+};

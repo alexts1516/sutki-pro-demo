@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234f46e5'/%3E%3Ctext x='16' y='22.5' font-size='18' text-anchor='middle' fill='white' font-family='Arial,sans-serif' font-weight='700'%3E%D0%A1%3C/text%3E%3C/svg%3E">
+<title>Вход для команды — Сутки·Pro (демо)</title>
+<link rel="stylesheet" href="assets/ui.css">
+<style>
+body{background:radial-gradient(1200px 500px at 85% -10%,#e0e7ff 0,transparent 60%),radial-gradient(900px 400px at -10% 10%,#fae8ff 0,transparent 55%),var(--bg)}
+.wrap{max-width:1140px;margin:0 auto;padding:0 24px}
+.top{display:flex;align-items:center;gap:14px;height:68px}
+.top .right{margin-left:auto;display:flex;align-items:center;gap:10px}
+.hero{display:grid;grid-template-columns:minmax(0,1.05fr) minmax(0,1fr);gap:40px;align-items:center;padding:36px 0 30px}
+.eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:#4338ca;background:#eef2ff;border:1px solid #e0e7ff;padding:5px 12px;border-radius:999px}
+.hero h1{font-size:44px;line-height:1.08;letter-spacing:-.03em;margin:16px 0 14px}
+.hero h1 span{background:linear-gradient(90deg,#4f46e5,#a855f7);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero p.lead{font-size:16.5px;color:var(--text2);margin:0 0 18px;max-width:540px}
+.chans{display:flex;flex-wrap:wrap;gap:8px}
+.chan{display:inline-flex;align-items:center;gap:7px;background:#fff;border:1px solid var(--border);border-radius:999px;padding:5px 12px 5px 5px;font-weight:600;font-size:13px}
+.chan b{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;color:#fff;font-size:11px}
+.mock{border-radius:18px;background:#fff;border:1px solid var(--border);box-shadow:0 30px 80px rgba(15,23,42,.14);overflow:hidden}
+.mock svg{display:block;width:100%;height:auto}
+.entries{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px;margin:10px 0 36px}
+.entry{position:relative;display:flex;flex-direction:column;padding:22px;text-decoration:none;transition:transform .15s,box-shadow .15s,border-color .15s;min-height:250px}
+.entry:hover{transform:translateY(-3px);box-shadow:0 16px 40px rgba(15,23,42,.12);border-color:#c7d2fe}
+.entry .e-ic{width:48px;height:48px;border-radius:14px;display:grid;place-items:center;color:#fff;margin-bottom:16px}
+.entry h3{font-size:19px;margin-bottom:6px}
+.entry p{color:var(--muted);margin:0 0 14px;font-size:14px}
+.entry ul{list-style:none;padding:0;margin:0 0 18px;display:flex;flex-direction:column;gap:6px;font-size:13px;color:var(--text2)}
+.entry li{display:flex;gap:8px;align-items:center}
+.entry li .ic{color:var(--green)}
+.entry .go{margin-top:auto;display:inline-flex;align-items:center;gap:6px;font-weight:700;color:var(--primary)}
+.entry .tag{position:absolute;top:18px;right:18px}
+.flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;margin-bottom:26px}
+.step{padding:16px}
+.step .n{width:26px;height:26px;border-radius:8px;background:var(--primary-50);color:var(--primary);font-weight:800;display:grid;place-items:center;font-size:13px;margin-bottom:10px}
+.step b{display:block;margin-bottom:3px}
+.step span{color:var(--muted);font-size:13px}
+h2.sec{font-size:22px;margin:6px 0 14px}
+.demo-strip{display:flex;gap:14px;align-items:center;background:#fffbeb;border:1px solid #fde68a;border-radius:14px;padding:14px 16px;color:#78350f;margin-bottom:10px;flex-wrap:wrap}
+@media (max-width:980px){.hero{grid-template-columns:minmax(0,1fr)}.entries{grid-template-columns:minmax(0,1fr)}.flow{grid-template-columns:repeat(2,minmax(0,1fr))}.entry{min-height:0}}
+@media (max-width:560px){.wrap{padding:0 16px}.hero h1{font-size:32px}.top .hide-sm{display:none}.flow{grid-template-columns:minmax(0,1fr)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="team.html"><div class="logo">С</div><div><b>Сутки·Pro</b><small>вход для команды</small></div></a>
+    <div class="right"><span class="demo-badge" title="Все данные вымышленные"><i></i>Демо-данные</span><a class="btn sm hide-sm" href="./">Сайт для гостей</a></div>
+  </header>
+
+  <section class="hero">
+    <div>
+      <span class="eyebrow" id="ey"></span>
+      <h1>Все квартиры, брони и&nbsp;уборки — <span>в&nbsp;одном окне</span></h1>
+      <p class="lead">Прототип системы для владельца 20–40 квартир в Астане: единый календарь и заявки со всех каналов, собственный сайт с онлайн-бронью, приложение для клининга с фотоотчётами, ремонты, трансферы и финансы.</p>
+      <div class="chans" id="chans"></div>
+    </div>
+    <div class="mock" aria-hidden="true">
+      <svg viewBox="0 0 520 340" xmlns="http://www.w3.org/2000/svg">
+        <rect width="520" height="340" fill="#f4f6fb"/>
+        <rect width="104" height="340" fill="#0f172a"/>
+        <rect x="14" y="16" width="22" height="22" rx="7" fill="#7c3aed"/><rect x="42" y="21" width="48" height="6" rx="3" fill="#fff" opacity=".9"/><rect x="42" y="31" width="34" height="4" rx="2" fill="#64748b"/>
+        <g fill="#334155"><rect x="14" y="58" width="76" height="16" rx="5" fill="#312e81"/><rect x="14" y="82" width="70" height="8" rx="4"/><rect x="14" y="100" width="60" height="8" rx="4"/><rect x="14" y="118" width="72" height="8" rx="4"/><rect x="14" y="136" width="56" height="8" rx="4"/><rect x="14" y="154" width="66" height="8" rx="4"/></g>
+        <rect x="104" y="0" width="416" height="36" fill="#fff"/><rect x="118" y="12" width="110" height="12" rx="6" fill="#f1f5f9"/><rect x="420" y="11" width="70" height="14" rx="7" fill="#fef3c7"/>
+        <g><rect x="118" y="50" width="88" height="46" rx="9" fill="#fff" stroke="#e6e9f0"/><rect x="128" y="60" width="40" height="5" rx="2.5" fill="#94a3b8"/><rect x="128" y="72" width="28" height="12" rx="3" fill="#0f172a"/>
+        <rect x="214" y="50" width="88" height="46" rx="9" fill="#fff" stroke="#e6e9f0"/><rect x="224" y="60" width="44" height="5" rx="2.5" fill="#94a3b8"/><rect x="224" y="72" width="34" height="12" rx="3" fill="#0f172a"/>
+        <rect x="310" y="50" width="88" height="46" rx="9" fill="#fff" stroke="#e6e9f0"/><rect x="320" y="60" width="36" height="5" rx="2.5" fill="#94a3b8"/><rect x="320" y="72" width="24" height="12" rx="3" fill="#0f172a"/>
+        <rect x="406" y="50" width="100" height="46" rx="9" fill="#fff" stroke="#e6e9f0"/><rect x="416" y="60" width="44" height="5" rx="2.5" fill="#94a3b8"/><rect x="416" y="72" width="54" height="12" rx="3" fill="#16a34a"/></g>
+        <rect x="118" y="108" width="388" height="218" rx="10" fill="#fff" stroke="#e6e9f0"/>
+        <g stroke="#eef1f6"><path d="M118 136h388M118 162h388M118 188h388M118 214h388M118 240h388M118 266h388M118 292h388"/><path d="M190 108v218"/></g>
+        <g fill="#e2e8f0"><rect x="128" y="145" width="50" height="7" rx="3"/><rect x="128" y="171" width="44" height="7" rx="3"/><rect x="128" y="197" width="52" height="7" rx="3"/><rect x="128" y="223" width="40" height="7" rx="3"/><rect x="128" y="249" width="48" height="7" rx="3"/><rect x="128" y="275" width="46" height="7" rx="3"/><rect x="128" y="301" width="42" height="7" rx="3"/></g>
+        <rect x="200" y="141" width="92" height="16" rx="5" fill="#FF5A5F"/><rect x="298" y="141" width="120" height="16" rx="5" fill="#1E5BD8"/>
+        <rect x="236" y="167" width="150" height="16" rx="5" fill="#22B35E"/><rect x="392" y="167" width="104" height="16" rx="5" fill="#8B5CF6"/>
+        <rect x="196" y="193" width="70" height="16" rx="5" fill="#229ED9"/><rect x="272" y="193" width="84" height="16" rx="5" fill="#1E5BD8"/><rect x="362" y="193" width="60" height="16" rx="5" fill="#FF5A5F"/>
+        <rect x="220" y="219" width="120" height="16" rx="5" fill="#cbd5e1"/><rect x="346" y="219" width="150" height="16" rx="5" fill="#22B35E"/>
+        <rect x="200" y="245" width="170" height="16" rx="5" fill="#8B5CF6"/><rect x="376" y="245" width="70" height="16" rx="5" fill="#229ED9"/>
+        <rect x="250" y="271" width="96" height="16" rx="5" fill="#1E5BD8"/><rect x="352" y="271" width="130" height="16" rx="5" fill="#FF5A5F"/>
+        <rect x="200" y="297" width="110" height="16" rx="5" fill="#22B35E"/><rect x="316" y="297" width="90" height="16" rx="5" fill="#1E5BD8"/>
+        <rect x="300" y="108" width="20" height="218" fill="#4f46e5" opacity=".07"/>
+      </svg>
+    </div>
+  </section>
+
+  <h2 class="sec">Вход для команды</h2>
+  <section class="entries">
+    <a class="card entry" href="./" id="e-guest">
+      <span class="tag chip violet">главная страница</span>
+      <div class="e-ic" style="background:linear-gradient(135deg,#0ea5e9,#6366f1)" data-ic="globe"></div>
+      <h3>Сайт для гостей</h3>
+      <p>Собственный сайт «Astana Stay» — бронь без комиссии Airbnb и Booking. Открывается по основной ссылке.</p>
+      <ul><li data-ok>Каталог, карта, фильтр «можно с животными»</li><li data-ok>Большой календарь с занятыми датами</li><li data-ok>Заказ трансфера из NQZ, оплата картой или наличными</li></ul>
+      <span class="go">Открыть сайт <span data-ic="arrowR"></span></span>
+    </a>
+    <a class="card entry" href="login.html?role=owner" id="e-owner">
+      <span class="tag chip blue">владелец и админ</span>
+      <div class="e-ic" style="background:linear-gradient(135deg,#6366f1,#a855f7)" data-ic="chart"></div>
+      <h3>Вход для владельца</h3>
+      <p>Панель управления: всё о квартирах, гостях, деньгах и команде.</p>
+      <ul><li data-ok>Календарь-шахматка и заявки</li><li data-ok>Уборки, ремонты, трансферы</li><li data-ok>Финансы и сотрудники</li></ul>
+      <span class="go">Войти <span data-ic="arrowR"></span></span>
+    </a>
+    <a class="card entry" href="login.html?role=cleaning" id="e-cleaner">
+      <span class="tag chip green">с телефона</span>
+      <div class="e-ic" style="background:linear-gradient(135deg,#34d399,#059669)" data-ic="sparkle"></div>
+      <h3>Вход для клининга</h3>
+      <p>Приложение «Сутки·Pro Клининг»: только свои задачи на сегодня и завтра.</p>
+      <ul><li data-ok>Адрес, код двери, срочность</li><li data-ok>Чек-лист и фото с камеры</li><li data-ok>Сообщить о поломке</li></ul>
+      <span class="go">Войти <span data-ic="arrowR"></span></span>
+    </a>
+  </section>
+
+  <h2 class="sec">Как это связано</h2>
+  <section class="flow">
+    <div class="card step"><div class="n">1</div><b>Гость бронирует</b><span>на сайте, в Airbnb, Booking, Telegram или WhatsApp</span></div>
+    <div class="card step"><div class="n">2</div><b>Заявка у владельца</b><span>все каналы в одном списке, бронь — в календаре</span></div>
+    <div class="card step"><div class="n">3</div><b>Уборка назначается</b><span>специалист по клинингу видит задачу, код двери и время заезда</span></div>
+    <div class="card step"><div class="n">4</div><b>Фотоотчёт</b><span>владелец видит результат и журнал действий команды</span></div>
+  </section>
+
+  <div class="demo-strip">
+    <span data-ic="alert"></span>
+    <div class="grow"><b>Демо-данные.</b> Все квартиры, гости, сотрудники и суммы вымышленные. Изменения (заявки, отчёты, сотрудники) хранятся только в этом браузере.</div>
+    <button class="btn sm" id="resetBtn"></button>
+  </div>
+  <div class="demo-foot">Сутки·Pro · кликабельный прототип · сегодня в демо — 30 сентября 2026</div>
+</div>
+<div class="toasts" id="toasts"></div>
+<script src="assets/data.js"></script>
+<script src="assets/store.js"></script>
+<script>
+(function(){
+  document.querySelectorAll('[data-ic]').forEach(el=>{ const n=el.dataset.ic; el.innerHTML = ic(n, el.classList.contains('e-ic')?24:16); });
+  document.querySelectorAll('[data-ok]').forEach(el=>el.insertAdjacentHTML('afterbegin', ic('check',15,2.6)));
+  document.getElementById('ey').innerHTML = ic('building',14)+' '+apartments.length+' квартир в Астане · демо';
+  document.getElementById('chans').innerHTML = CH_KEYS.map(k=>`<span class="chan">${chb(k,22)}${CH[k].name}</span>`).join('');
+  const rb = document.getElementById('resetBtn'); rb.innerHTML = ic('refresh',14)+' Сбросить демо';
+  rb.onclick = ()=>{ Store.reset(); const t=document.createElement('div'); t.className='toast'; t.innerHTML='<span class="t-ic">'+ic('check',13,3)+'</span>Демо-данные сброшены к исходным'; document.getElementById('toasts').appendChild(t); setTimeout(()=>t.remove(),2500); };
+  const u = Auth.check();
+  if(u){ const link = u.role==='cleaner' ? 'cleaning.html' : 'app.html';
+    const el = document.getElementById(u.role==='cleaner'?'e-cleaner':'e-owner'); el.href = link;
+    el.querySelector('.go').innerHTML = 'Продолжить как '+esc(u.short)+' '+ic('arrowR',16); }
+})();
+</script>
+</body>
+</html>

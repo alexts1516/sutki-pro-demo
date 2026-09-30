@@ -35,15 +35,15 @@ body{background:radial-gradient(900px 420px at 90% -10%,#e0e7ff 0,transparent 60
 </head>
 <body>
 <header class="top">
-  <a class="brand" href="index.html"><div class="logo">С</div><div><b>Сутки·Pro</b><small>демо-вход</small></div></a>
-  <div class="right"><span class="demo-badge"><i></i>Демо-данные</span><a class="btn sm back" href="index.html" id="backBtn"></a></div>
+  <a class="brand" href="team.html"><div class="logo">С</div><div><b>Сутки·Pro</b><small>демо-вход</small></div></a>
+  <div class="right"><span class="demo-badge"><i></i>Демо-данные</span><a class="btn sm back" href="team.html" id="backBtn"></a></div>
 </header>
 <main class="layout">
   <section class="card box">
     <div class="cur" id="cur"></div>
     <h1>Вход в систему</h1>
     <p class="muted" style="margin:0">Демо без настоящей авторизации — пароль у всех аккаунтов <b>demo</b>.</p>
-    <div class="seg" role="tablist"><button data-tab="staff" id="tabStaff">Владелец / админ</button><button data-tab="cleaner" id="tabCleaner">Уборщик</button></div>
+    <div class="seg" role="tablist"><button data-tab="staff" id="tabStaff">Владелец / админ</button><button data-tab="cleaner" id="tabCleaner">Клининг</button></div>
     <form id="loginForm" autocomplete="off">
       <div class="err" id="err"></div>
       <div class="field"><label for="login">Логин</label><input class="input" id="login" placeholder="например, azamat"></div>
@@ -61,9 +61,9 @@ body{background:radial-gradient(900px 420px at 90% -10%,#e0e7ff 0,transparent 60
 <script>
 (function(){
   const qs = new URLSearchParams(location.search);
-  let tab = qs.get('role')==='cleaner' ? 'cleaner' : 'staff';
-  document.getElementById('backBtn').innerHTML = ic('chevL',15)+'<span>На главную</span>';
-  const dest = s => s.role==='cleaner' ? 'cleaner.html' : 'app.html';
+  let tab = (qs.get('role')==='cleaner'||qs.get('role')==='cleaning') ? 'cleaner' : 'staff';
+  document.getElementById('backBtn').innerHTML = ic('chevL',15)+'<span>Вход для команды</span>';
+  const dest = s => s.role==='cleaner' ? 'cleaning.html' : 'app.html';
   function doLogin(id){
     const r = Auth.login(id);
     if(!r.ok){ showErr(r.msg); return; }
@@ -79,7 +79,7 @@ body{background:radial-gradient(900px 420px at 90% -10%,#e0e7ff 0,transparent 60
       <button class="btn sm ${s.role===(tab==='cleaner'?'cleaner':'owner')?'primary':''}" data-login="${s.id}" ${s.access?'':'disabled'}>Войти как ${esc(s.short)}</button></div>`).join('');
     const own = staff.filter(s=>s.role!=='cleaner'), cl = staff.filter(s=>s.role==='cleaner');
     document.getElementById('accounts').innerHTML = `<div class="acc-h"><h2>Демо-аккаунты</h2><span class="muted" style="font-size:12.5px">${staff.length} сотрудников</span></div>`
-      + (tab==='cleaner' ? group('Уборщики', cl) + group('Владелец и администратор', own) : group('Владелец и администратор', own) + group('Уборщики', cl));
+      + (tab==='cleaner' ? group('Клининг', cl) + group('Владелец и администратор', own) : group('Владелец и администратор', own) + group('Клининг', cl));
   }
   function setTab(t){ tab=t; document.getElementById('tabStaff').classList.toggle('active', t==='staff'); document.getElementById('tabCleaner').classList.toggle('active', t==='cleaner');
     document.getElementById('login').placeholder = t==='cleaner' ? 'например, gulnara' : 'например, azamat'; document.getElementById('err').classList.remove('show'); renderAccounts(); }

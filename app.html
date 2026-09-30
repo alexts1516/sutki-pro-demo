@@ -178,6 +178,9 @@ table.t .num{text-align:right;font-variant-numeric:tabular-nums}
 .req-time{margin-left:auto;color:var(--muted2);font-size:12px;white-space:nowrap}
 .req-msg{color:var(--text2);margin:5px 0 8px;font-size:13.5px}
 .req-meta{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:12.5px}
+.tr-badge{width:40px;height:40px;border-radius:12px;background:#e0f2fe;color:#0284c7;display:grid;place-items:center;flex:none}
+table.t td.wrap-td{white-space:normal;min-width:250px}
+.clickable-t{cursor:pointer;text-decoration:underline dotted;text-underline-offset:3px}
 .req-meta span{display:inline-flex;align-items:center;gap:5px}
 .req-actions{display:flex;flex-direction:column;gap:6px;align-items:flex-end;justify-content:center;flex:none}
 .kanban{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}
@@ -344,8 +347,8 @@ if(USER.role==='cleaner'){
   document.title = 'Нет доступа — Сутки·Pro (демо)';
   document.body.innerHTML = `<div class="deny"><div class="deny-card"><div class="deny-ic">${ic('lock',30)}</div>
     <h1 style="font-size:21px">Нет доступа к панели владельца</h1>
-    <p class="sub" style="margin:10px 0 18px;font-size:14px">Вы вошли как <b>${esc(USER.short)}</b> (уборщик). Уборщикам доступен только раздел «Мои задачи» — без финансов, контактов гостей и задач других сотрудников.</p>
-    <div class="row" style="justify-content:center;flex-wrap:wrap"><a class="btn primary" href="cleaner.html" style="text-decoration:none">${ic('sparkle',16)} Мои задачи</a><button class="btn" id="denyLogout">${ic('logout',16)} Войти другим пользователем</button></div>
+    <p class="sub" style="margin:10px 0 18px;font-size:14px">Вы вошли как <b>${esc(USER.short)}</b> (специалист по клинингу). Для клининга доступно только приложение «Сутки·Pro Клининг» — без финансов, контактов гостей и задач других сотрудников.</p>
+    <div class="row" style="justify-content:center;flex-wrap:wrap"><a class="btn primary" href="cleaning.html" style="text-decoration:none">${ic('sparkle',16)} Мои задачи</a><button class="btn" id="denyLogout">${ic('logout',16)} Войти другим пользователем</button></div>
     <div style="margin-top:20px"><span class="demo-badge"><i></i>Демо-данные · пример</span></div></div></div>`;
   document.getElementById('denyLogout').onclick = ()=>{ Auth.logout(); location.href='login.html'; };
   return;
@@ -515,8 +518,9 @@ function openBooking(id){
         <dt>Источник</dt><dd>${chChip(b.source)}</dd>
         <dt>Сумма</dt><dd><b style="font-size:16px">${money(b.total)}</b> <span class="muted">(${money(b.nightly)} × ${n})</span>${CH[b.source].comm?`<div class="muted" style="font-size:12px">Комиссия канала ${CH[b.source].comm*100}%: ${money(b.total*CH[b.source].comm)}</div>`:''}</dd>
         <dt>Оплата</dt><dd>${payChip(b.payment)}</dd>
-        <dt>Трансфер</dt><dd>${b.transfer? `<span class="chip blue">${ic('car',13)} Заказан</span>${tr.map(t=>`<div class="muted" style="font-size:12px;margin-top:4px">${t.dir==='in'?'Аэропорт → квартира':'Квартира → аэропорт'} · ${fD(t.date)}, ${t.time} · рейс ${t.flight}</div>`).join('')}` : '<span class="chip grey">Нет</span>'}</dd>
-        <dt>Уборщица</dt><dd class="row"><span class="avatar" style="width:24px;height:24px;font-size:10px;background:linear-gradient(135deg,#34d399,#059669)">${b.cleaner[0]}</span>${b.cleaner}${cl?` <span class="muted" style="font-size:12px">· ${CL_ST[cl.status][1].toLowerCase()}</span>`:''}</dd>
+        <dt>Трансфер</dt><dd>${b.transfer||tr.length? `<span class="chip blue">${ic('car',13)} Заказан</span>${tr.map(t=>{ const P=TR_PLACES[t.place||'airport']; return `<div class="muted ${t.ext?'clickable-t':''}" style="font-size:12px;margin-top:4px" ${t.ext?`data-action="open-transfer" data-id="${t.id}"`:''}>${t.dir==='in'?P.short+' → квартира':'Квартира → '+P.short} · ${fD(t.date)}, ${t.time} · ${t.place==='station'?'поезд':'рейс'} ${esc(t.flight)}${t.ext?` · ${TR_CLASSES[t.cls].name}, ${t.pax} пасс., ${t.bags} чем.${t.seats?`, ${t.seats} дет. кресл.`:''} · ${money(t.price)}`:''}</div>`; }).join('')}` : '<span class="chip grey">Нет</span>'}</dd>
+        <dt>Животные</dt><dd>${b.pet?`<span class="chip amber">${ic('paw',13)} С животным</span> <span class="muted" style="font-size:12px">${b.petFee?'доплата '+money(b.petFee):'без доплаты'}</span>`:'<span class="muted">нет</span>'}</dd>
+        <dt>Клининг</dt><dd class="row"><span class="avatar" style="width:24px;height:24px;font-size:10px;background:linear-gradient(135deg,#34d399,#059669)">${b.cleaner[0]}</span>${b.cleaner}${cl?` <span class="muted" style="font-size:12px">· ${CL_ST[cl.status][1].toLowerCase()}</span>`:''}</dd>
       </dl>
       ${b.note?`<div class="note"><b>Заметка:</b> ${esc(b.note)}</div>`:'<div class="note" style="background:#f8fafc;border-color:var(--border);color:var(--muted)">Заметок нет</div>'}
     </div>
@@ -524,6 +528,33 @@ function openBooking(id){
       ${b.payment!=='paid'?`<button class="btn success" data-action="mark-paid" data-id="${b.id}">${ic('check',16)} Отметить оплату</button>`:''}
       <button class="btn" data-action="toggle-transfer" data-id="${b.id}">${ic('car',16)} ${b.transfer?'Отменить трансфер':'Заказать трансфер'}</button>
       <button class="btn" data-action="msg-guest" data-id="${b.id}">${ic('msg',16)} Написать гостю</button>
+    </div>`);
+}
+function openTransfer(id){
+  const t=transfers.find(x=>x.id===id); if(!t) return; const P=TR_PLACES[t.place||'airport']; const C=TR_CLASSES[t.cls||'standard']; const s=TR_S[t.status];
+  const b=t.bookingId?bById(t.bookingId):null; const a=b?aptById(b.aptId):(t.aptId?aptById(t.aptId):null);
+  const addr = a ? `${esc(a.name)}<div class="muted" style="font-size:12px">${esc(a.address)}</div>` : esc(t.address||'уточнить у гостя');
+  openDrawer(`<div class="dr-head"><div style="width:32px;height:32px;border-radius:9px;background:#e0f2fe;color:#0284c7;display:grid;place-items:center">${ic(t.place==='station'?'train':'plane',16)}</div><div class="grow"><div style="font-weight:700">${t.dir==='in'?'Встреча':'Проводы'} · ${P.short}</div><div class="muted" style="font-size:12.5px">${t.standalone?'Отдельный заказ':'К брони'} с сайта · заявка S-${t.reqId}</div></div>
+      <span class="chip ${s[0]}"><i></i>${s[1]}</span><button class="icon-btn" data-action="close-drawer" aria-label="Закрыть">${ic('x',16)}</button></div>
+    <div class="dr-body">
+      <div class="guest-big">${esc(t.guest)}</div>
+      <div class="muted row" style="margin-top:4px;font-size:13px;flex-wrap:wrap">${ic('phone',14)} ${esc(t.phone||'—')}</div>
+      <div class="stay-box"><div><small>${t.dir==='in'?'Встреча':'Подача'}</small><b>${fD(t.date)}</b><div class="muted" style="font-size:12px">${WD[wd(t.date)].toLowerCase()}, ${t.time}</div></div><div><small>${t.dir==='in'?(t.place==='station'?'Поезд':'Рейс'):(t.place==='station'?'Поезд в':'Вылет')}</small><b>${t.dir==='in'?esc(t.flight):(t.depTime||'—')}</b><div class="muted" style="font-size:12px">${t.dir==='out'?esc(t.flight):'ожидание '+P.wait+' мин'}</div></div><div><small>Цена</small><b>${money(t.price)}</b><div class="muted" style="font-size:12px">${t.paid?'оплачено картой':'водителю'}</div></div></div>
+      <dl class="kv">
+        <dt>Маршрут</dt><dd>${t.dir==='in'?`${P.name} → квартира`:`Квартира → ${P.name}`}<div class="muted" style="font-size:12px">${t.dir==='in'?'встреча '+P.meet:'подача за '+(P.lead/60)+' '+plural(P.lead/60,'час','часа','часов')+' до отправления'}</div></dd>
+        <dt>Адрес</dt><dd>${addr}</dd>
+        <dt>Табличка</dt><dd><span class="chip grey" style="font-weight:700;letter-spacing:.03em">${esc(t.sign||t.guest)}</span></dd>
+        <dt>Автомобиль</dt><dd>${C.name} · ${C.car}</dd>
+        <dt>Пассажиры</dt><dd>${t.pax} пасс. · ${t.bags} ${plural(t.bags,'чемодан','чемодана','чемоданов')}${t.seats?` · ${t.seats} дет. ${plural(t.seats,'кресло','кресла','кресел')}`:' · без детского кресла'}</dd>
+        <dt>Бронь жилья</dt><dd>${b?`<button class="btn sm" data-action="open-booking" data-id="${b.id}">Бронь №${b.id}</button>`:t.standalone?`${esc(REF_NAME[t.refSource]||'—')} · ${esc(t.ref||'—')}`:`заявка S-${t.reqId} ещё не подтверждена`}</dd>
+        <dt>Водитель</dt><dd>${t.driver?esc(t.driver):'<span class="muted">не назначен</span>'}</dd>
+        ${t.round?'<dt>Тариф</dt><dd>Туда и обратно (со скидкой)</dd>':''}
+      </dl>
+    </div>
+    <div class="dr-foot">
+      ${t.status==='planned'?`<button class="btn primary" data-action="tr-driver" data-id="${t.id}">${ic('user',16)} Назначить водителя</button>`:t.status==='driver'?`<button class="btn success" data-action="tr-done" data-id="${t.id}">${ic('check',16)} Выполнен</button>`:''}
+      <button class="btn" data-action="msg-guest">${ic('msg',16)} Написать гостю</button>
+      ${t.status!=='done'?`<button class="btn" data-action="tr-cancel" data-id="${t.id}">${ic('x',16)} Отменить</button>`:''}
     </div>`);
 }
 function openBlock(id){
@@ -548,13 +579,29 @@ function renderRequests(m){
     <div class="req-list">${list.length? list.map(reqRow).join('') : '<div class="empty">Здесь пока пусто</div>'}</div>
   </div>`;
 }
+const REF_NAME = {site:'Astana Stay', airbnb:'Airbnb', booking:'Booking.com', other:'другое'};
+function trLegsText(tr){ const P=TR_PLACES[tr.place]||TR_PLACES.airport; return trLegs(tr).map(l=>`${l.dir==='in'?'встреча '+P.short+' → кв.':'подача кв. → '+P.short} ${fD(l.date)}, ${l.time}${l.code?' · '+l.code:''}`).join('; '); }
+function reqTrRow(r){
+  const s=REQ_S[r.status]; const tr=r.tr; const a=r.aptId?aptById(r.aptId):null; const pm=TR_PAY[r.payment]||TR_PAY.driver;
+  return `<div class="req ${r.status==='new'?'new':''}" id="req-${r.id}"><span class="tr-badge">${ic('car',20)}</span>
+    <div class="grow"><div class="req-top"><b>${esc(r.name)}</b><span class="chip ${s[0]}"><i></i>${s[1]}</span><span class="chip blue">${ic('car',12)} Заказ трансфера</span><span class="muted" style="font-size:12px">с сайта Astana Stay</span><span class="req-time">${r.time}</span></div>
+      <div class="req-msg">${esc(trSummary(tr))}</div>
+      <div class="req-meta"><span>${ic('plane',14)} ${esc(trLegsText(tr))}</span><span>${ic('wallet',14)} ${money(r.sum)}</span></div>
+      <div class="req-meta" style="margin-top:8px"><span class="chip grey">${ic('home',12)} Жильё: ${esc(REF_NAME[r.refSource]||'—')} · ${esc(r.ref||'—')}</span>${a?`<span>${ic('home',14)} ${esc(a.name)}</span>`:r.address?`<span>${ic('pin',14)} ${esc(r.address)}</span>`:''}<span class="chip ${pm.color}">${ic(r.payment==='card'?'card':'cash',12)} Оплата: ${esc(pm.short)}</span><span>${ic('phone',14)} ${esc(r.phone||'')}</span>${r.text&&r.custom?`<span>«${esc(r.text)}»</span>`:''}</div></div>
+    <div class="req-actions">
+      ${r.status==='new'?`<button class="btn sm" data-action="req-take" data-id="${r.id}">Взять в работу</button>`:''}
+      ${r.status!=='confirmed'?`<button class="btn sm success" data-action="req-confirm" data-id="${r.id}">${ic('check',14)} Подтвердить</button>`:`<button class="btn sm" data-action="nav" data-view="transfers">${ic('car',14)} В трансферы</button>`}
+      <button class="btn sm ghost" data-action="req-reply" data-id="${r.id}">${ic('msg',14)} Ответить</button>
+    </div></div>`;
+}
 function reqRow(r){
+  if(r.kind==='transfer') return reqTrRow(r);
   const a=aptById(r.aptId); const s=REQ_S[r.status]; const n=r.co-r.ci;
   return `<div class="req ${r.status==='new'?'new':''}" id="req-${r.id}">${chb(r.channel,40)}
     <div class="grow"><div class="req-top"><b>${esc(r.name)}</b><span class="chip ${s[0]}"><i></i>${s[1]}</span><span class="muted" style="font-size:12px">через ${CH[r.channel].name}</span><span class="req-time">${r.time}</span></div>
       <div class="req-msg">«${esc(r.text)}»</div>
       <div class="req-meta"><span>${ic('home',14)} ${esc(a.name)}</span><span>${ic('calendar',14)} ${fD(r.ci)} – ${fD(r.co)} · ${n} ${plural(n,'ночь','ночи','ночей')}</span><span>${ic('users',14)} ${r.guests}</span><span>${ic('wallet',14)} ${money(r.sum)}</span></div>
-      ${r.site?`<div class="req-meta" style="margin-top:8px"><span class="chip ${(PAY_METHODS[r.payment]||{}).color||'grey'}">${ic(r.payment==='card'?'card':r.payment==='cash'?'cash':r.payment==='telegram'?'send':'msg',12)} Оплата: ${esc((PAY_METHODS[r.payment]||{}).short||'—')}</span><span>${ic('phone',14)} ${esc(r.phone||'')}</span>${r.transfer?`<span class="chip blue">${ic('car',12)} Нужен трансфер</span>`:''}<span class="chip violet">${ic('globe',12)} Сайт Astana Stay</span></div>`:''}</div>
+      ${r.site?`<div class="req-meta" style="margin-top:8px"><span class="chip ${(PAY_METHODS[r.payment]||{}).color||'grey'}">${ic(r.payment==='card'?'card':r.payment==='cash'?'cash':r.payment==='telegram'?'send':'msg',12)} Оплата: ${esc((PAY_METHODS[r.payment]||{}).short||'—')}</span><span>${ic('phone',14)} ${esc(r.phone||'')}</span>${r.tr?`<span class="chip blue" title="${esc(trLegsText(r.tr))}">${ic('car',12)} Трансфер: ${esc(trSummary(r.tr))} · ${money(r.tr.price)}</span>`:r.transfer?`<span class="chip blue">${ic('car',12)} Нужен трансфер</span>`:''}${r.pet?`<span class="chip amber">${ic('paw',12)} С животным${r.petFee?' +'+money(r.petFee):''}</span>`:''}<span class="chip violet">${ic('globe',12)} Сайт Astana Stay</span></div>`:''}</div>
     <div class="req-actions">
       ${r.status==='new'?`<button class="btn sm" data-action="req-take" data-id="${r.id}">Взять в работу</button>`:''}
       ${r.status!=='confirmed'?`<button class="btn sm success" data-action="req-confirm" data-id="${r.id}">${ic('check',14)} Подтвердить</button>`:(r.bookingId?`<button class="btn sm" data-action="open-booking" data-id="${r.bookingId}">Открыть бронь</button>`:`<span class="muted" style="font-size:12px">${ic('check',13)} Бронь оформлена</span>`)}
@@ -566,9 +613,9 @@ function photoTile(label,h){ return `<div class="photo" title="Фото: ${label
 function renderCleaning(m){
   const list = cleanings.filter(c=> S.cleanTab==='all' ? true : S.cleanTab==='today' ? c.date===TODAY : S.cleanTab==='tomorrow' ? c.date===TODAY+1 : c.date===TODAY-1);
   const byCleaner = {}; list.forEach(c=>byCleaner[c.cleaner]=(byCleaner[c.cleaner]||0)+1);
-  m.innerHTML = `<div class="page-head"><div><h1>Уборки</h1><p class="sub">Задачи для клинеров создаются автоматически из выездов гостей</p></div>
+  m.innerHTML = `<div class="page-head"><div><h1>Уборки</h1><p class="sub">Задачи для специалистов по клинингу создаются автоматически из выездов гостей</p></div>
     <div class="tabs">${[['yesterday','Вчера'],['today','Сегодня'],['tomorrow','Завтра'],['all','Все']].map(([k,l])=>`<button class="${S.cleanTab===k?'active':''}" data-action="clean-tab" data-tab="${k}">${l}</button>`).join('')}</div></div>
-  <div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:16px"><span class="muted" style="font-size:12.5px">Клинеры:</span>${Object.entries(byCleaner).map(([n,c])=>`<span class="chip grey" style="padding:3px 10px 3px 3px"><span class="avatar" style="width:20px;height:20px;font-size:10px;background:linear-gradient(135deg,#34d399,#059669)">${n[0]}</span>${n} · ${c}</span>`).join('')}</div>
+  <div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:16px"><span class="muted" style="font-size:12.5px">Клининг:</span>${Object.entries(byCleaner).map(([n,c])=>`<span class="chip grey" style="padding:3px 10px 3px 3px"><span class="avatar" style="width:20px;height:20px;font-size:10px;background:linear-gradient(135deg,#34d399,#059669)">${n[0]}</span>${n} · ${c}</span>`).join('')}</div>
   <div class="kanban">${['assigned','progress','done'].map(st=>{ const items=list.filter(c=>c.status===st || (st==='assigned' && c.status==='enroute'));
     return `<div class="col"><div class="col-h"><span class="cdot" style="background:${CL_ST[st][0]}"></span>${CL_ST[st][1]}<span class="cnt">${items.length}</span></div>${items.length?items.map(cleanCard).join(''):'<div class="empty" style="padding:24px;font-size:13px">Нет задач</div>'}</div>`; }).join('')}</div>`;
 }
@@ -580,19 +627,19 @@ function cleanCard(c){
     body = `<div class="row" style="margin-top:10px;font-size:12px;justify-content:space-between"><span class="muted">Чек-лист</span><b>${done}/${CHECKLIST.length}</b></div><div class="prog" style="margin-top:5px"><i style="width:${pct}%"></i></div><ul class="checklist">${CHECKLIST.map((t,k)=>`<li class="${c.checked[k]?'on':''}" data-action="clean-check" data-id="${c.id}" data-k="${k}"><span class="cb">${ic('check',11,3)}</span>${t}</li>`).join('')}</ul>`;
   } else if(c.status==='done'){
     const ph = c.photos && c.photos.length ? c.photos : ROOMS_PH.map(([l,h])=>({demo:true,label:l,hue:h}));
-    body = `<div class="row" style="margin-top:10px;font-size:12.5px;font-weight:600;color:var(--text2)">${ic('camera',14)} Фотоотчёт · ${ph.length} фото${c.by?` <span class="muted" style="font-weight:500">· из приложения уборщика</span>`:''}</div><div class="photos">${ph.map(p=>p.src?`<div class="photo" title="${esc(p.label||'Фото')}"><img src="${p.src}" alt="${esc(p.label||'Фото')}"><span>${esc(p.label||'Фото')}</span></div>`:photoTile(esc(p.label||'Фото'),p.hue||200)).join('')}</div>
-      ${c.comment?`<div class="note" style="margin-top:10px;font-size:12.5px"><b>Комментарий уборщика:</b> ${esc(c.comment)}</div>`:''}
+    body = `<div class="row" style="margin-top:10px;font-size:12.5px;font-weight:600;color:var(--text2)">${ic('camera',14)} Фотоотчёт · ${ph.length} фото${c.by?` <span class="muted" style="font-weight:500">· из приложения клининга</span>`:''}</div><div class="photos">${ph.map(p=>p.src?`<div class="photo" title="${esc(p.label||'Фото')}"><img src="${p.src}" alt="${esc(p.label||'Фото')}"><span>${esc(p.label||'Фото')}</span></div>`:photoTile(esc(p.label||'Фото'),p.hue||200)).join('')}</div>
+      ${c.comment?`<div class="note" style="margin-top:10px;font-size:12.5px"><b>Комментарий специалиста:</b> ${esc(c.comment)}</div>`:''}
       <details class="cl"><summary><span style="color:var(--green)">${ic('check',14,2.5)}</span> Чек-лист: ${done}/${CHECKLIST.length} <span class="muted" style="font-weight:500">— показать</span></summary><ul class="checklist ro">${CHECKLIST.map((t,k)=>`<li class="${c.checked[k]?'on':''}"><span class="cb">${ic('check',11,3)}</span>${t}</li>`).join('')}</ul></details>`;
   } else {
     body = `<div class="muted" style="font-size:12px;margin-top:10px">Чек-лист из ${CHECKLIST.length} пунктов · фотоотчёт после завершения</div>`;
   }
-  if(c.status==='enroute') body = `<div class="row" style="margin-top:10px;font-size:12.5px;color:#0369a1;font-weight:600">${ic('nav',14)} Уборщик в пути${c.enrouteAt?' · с '+c.enrouteAt:''}</div>` + body;
+  if(c.status==='enroute') body = `<div class="row" style="margin-top:10px;font-size:12.5px;color:#0369a1;font-weight:600">${ic('nav',14)} Специалист в пути${c.enrouteAt?' · с '+c.enrouteAt:''}</div>` + body;
   const btn = (c.status==='assigned'||c.status==='enroute') ? `<button class="btn sm primary" data-action="clean-next" data-id="${c.id}">Начать ${ic('arrowR',14)}</button>`
     : c.status==='progress' ? `<button class="btn sm success" data-action="clean-next" data-id="${c.id}">${ic('check',14)} Завершить</button>`
     : `<span class="chip green">${ic('check',12,3)} Готово в ${c.doneAt}</span>`;
   return `<div class="task"><div class="row" style="align-items:flex-start"><div class="grow"><h4 class="ellipsis" title="${esc(a.name)}">${esc(a.name)}</h4><div class="addr ellipsis">${esc(a.address)}</div></div>${urgent?`<span class="urgent">Заезд в ${c.nextCheckin}</span>`:''}</div>
     <div class="task-meta"><span>${ic('calendar',13)} ${relDay(c.date)}</span><span>${ic('clock',13)} ${c.from}–${c.to}</span><span>${ic('home',13)} ${a.rooms}</span></div>
-    <div class="cleaner"><span class="avatar" style="background:linear-gradient(135deg,#34d399,#059669)">${c.cleaner[0]}</span><span><b>${c.cleaner}</b><span class="muted"> · клинер</span></span></div>
+    <div class="cleaner"><span class="avatar" style="background:linear-gradient(135deg,#34d399,#059669)">${c.cleaner[0]}</span><span><b>${c.cleaner}</b><span class="muted"> · клининг</span></span></div>
     ${body}
     <div class="task-foot"><span class="muted" style="font-size:12px">${c.nextGuest?`Далее: ${esc(c.nextGuest.split(' ')[0])}`:'Новых заездов нет'}</span>${btn}</div></div>`;
 }
@@ -628,7 +675,7 @@ function repRow(r){
   const next = r.status==='open'?`<button class="btn sm" data-action="rep-next" data-id="${r.id}">В работу ${ic('arrowR',14)}</button>`:r.status==='progress'?`<button class="btn sm success" data-action="rep-next" data-id="${r.id}">${ic('check',14)} Выполнено</button>`:'';
   return `<div class="rep ${r.fresh?'fresh':''}" id="rep-${r.id}"><span class="prio" style="background:${p[0]}"></span>
     <div class="grow" style="min-width:220px"><div class="rep-title ${r.status==='done'?'done':''}">${esc(r.title)}</div>
-    <div class="rep-meta"><span>${ic('home',13)} ${esc(a.name)}</span><span>${ic('user',13)} ${esc(r.assignee)}</span><span>${ic('calendar',13)} ${relDay(r.date)}</span>${r.cost?`<span>${ic('wallet',13)} ${money(r.cost)}</span>`:''}${r.blockDays?`<span>${ic('alert',13)} Блокировка ${r.blockDays} ${plural(r.blockDays,'день','дня','дней')}</span>`:''}${r.source==='Голос'?`<span style="color:var(--primary)">${ic('mic',13)} Добавлено голосом</span>`:''}${r.source==='Уборщик'?`<span style="color:#b91c1c;font-weight:600">${ic('flag',13)} От уборщика: ${esc(r.reporter||'')}${r.photos?` · ${r.photos} фото`:''}</span>`:''}</div></div>
+    <div class="rep-meta"><span>${ic('home',13)} ${esc(a.name)}</span><span>${ic('user',13)} ${esc(r.assignee)}</span><span>${ic('calendar',13)} ${relDay(r.date)}</span>${r.cost?`<span>${ic('wallet',13)} ${money(r.cost)}</span>`:''}${r.blockDays?`<span>${ic('alert',13)} Блокировка ${r.blockDays} ${plural(r.blockDays,'день','дня','дней')}</span>`:''}${r.source==='Голос'?`<span style="color:var(--primary)">${ic('mic',13)} Добавлено голосом</span>`:''}${r.source==='Клининг'?`<span style="color:#b91c1c;font-weight:600">${ic('flag',13)} От клининга: ${esc(r.reporter||'')}${r.photos?` · ${r.photos} фото`:''}</span>`:''}</div></div>
     <span class="chip ${p[2]}">${p[1]}</span>${repStatusChip(r.status)}${next}</div>`;
 }
 function voiceStart(){
@@ -710,7 +757,7 @@ function renderTransfers(m){
   const today = list.filter(t=>t.date===TODAY), week=list.filter(t=>t.date>=TODAY&&t.date<TODAY+7);
   const noDriver = list.filter(t=>t.status==='planned' && t.date>=TODAY).length;
   const monthRev = list.filter(t=>mm(t.date)===9).reduce((s,t)=>s+t.price,0);
-  m.innerHTML = `<div class="page-head"><div><h1>Трансферы</h1><p class="sub">Встречи и проводы в аэропорт Астаны (NQZ), привязанные к броням · нажмите на строку, чтобы открыть бронь</p></div></div>
+  m.innerHTML = `<div class="page-head"><div><h1>Трансферы</h1><p class="sub">Встречи и проводы: аэропорт NQZ и вокзал «Нурлы Жол» — к броням и отдельные заказы с сайта · нажмите на строку, чтобы открыть детали</p></div></div>
   <div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr))">
     ${kpiCard('plane','#e0e7ff','#4f46e5','Сегодня',today.length, today.length?`ближайший в ${today[0].time}`:'поездок нет')}
     ${kpiCard('calendar','#e0f2fe','#0284c7','На 7 дней',week.length,'встречи и проводы')}
@@ -718,9 +765,11 @@ function renderTransfers(m){
     ${kpiCard('wallet','#dcfce7','#16a34a','Доход · окт',money(monthRev),'оплачивают гости')}
   </div>
   <div class="card"><div class="table-wrap"><table class="t"><thead><tr><th>Когда · рейс</th><th>Гость и квартира</th><th>Водитель</th><th class="num">Цена</th><th>Статус</th><th></th></tr></thead><tbody>
-  ${list.length?list.map(t=>{ const b=bById(t.bookingId); const a=aptById(b.aptId); const s=TR_S[t.status]; const dr=t.driver?t.driver.split(' · '):null;
-    return `<tr class="clickable" data-action="open-booking" data-id="${b.id}"><td><b style="font-weight:600">${relDay(t.date)}</b>, ${t.time}<div class="muted row" style="font-size:12px;gap:5px">${t.dir==='in'?ic('plane',13)+' Встреча · NQZ → кв.':ic('home',13)+' Проводы · кв. → NQZ'} · ${t.flight}</div></td>
-    <td><span class="row" style="gap:6px">${chb(b.source,16)} <b style="font-weight:600">${esc(b.guest)}</b></span><div class="muted" style="font-size:12px">${esc(a.name)} · ${t.pax} ${plural(t.pax,'пассажир','пассажира','пассажиров')}</div></td>
+  ${list.length?list.map(t=>{ const b=t.bookingId?bById(t.bookingId):null; const a=b?aptById(b.aptId):(t.aptId?aptById(t.aptId):null); const s=TR_S[t.status]; const dr=t.driver?t.driver.split(' · '):null;
+    const P=TR_PLACES[t.place||'airport']; const where = a ? esc(a.name) : t.standalone ? `Жильё: ${esc(REF_NAME[t.refSource]||'—')} · ${esc(t.ref||'—')}` : `Заявка S-${t.reqId} · ждёт подтверждения`;
+    const extra = t.ext ? ` · ${TR_CLASSES[t.cls].name}, ${t.bags} чем.${t.seats?`, ${t.seats} дет. кресл.`:''}` : '';
+    return `<tr class="clickable" data-action="${t.ext?'open-transfer':'open-booking'}" data-id="${t.ext?t.id:b.id}"><td><b style="font-weight:600">${relDay(t.date)}</b>, ${t.time}<div class="muted row" style="font-size:12px;gap:5px">${t.dir==='in'?ic(t.place==='station'?'train':'plane',13)+` Встреча · ${t.place==='station'?'вокзал':'NQZ'} → кв.`:ic('home',13)+` Проводы · кв. → ${t.place==='station'?'вокзал':'NQZ'}`} · ${esc(t.flight)}</div></td>
+    <td class="wrap-td"><span class="row" style="gap:6px;flex-wrap:wrap">${b?chb(b.source,16):chb('site',16)} <b style="font-weight:600">${esc(b?b.guest:t.guest)}</b>${t.standalone?' <span class="chip blue" style="padding:1px 7px;font-size:11px">отдельный заказ</span>':''}${t.round?' <span class="chip violet" style="padding:1px 7px;font-size:11px">туда-обратно</span>':''}</span><div class="muted" style="font-size:12px">${where} · ${t.pax} ${plural(t.pax,'пассажир','пассажира','пассажиров')}${extra}</div></td>
     <td>${dr?`${esc(dr[0])}<div class="muted" style="font-size:12px">${esc(dr[1])}</div>`:'<span class="muted">не назначен</span>'}</td><td class="num">${money(t.price)}</td><td><span class="chip ${s[0]}"><i></i>${s[1]}</span></td>
     <td>${t.status==='planned'?`<button class="btn sm" data-action="tr-driver" data-id="${t.id}">Назначить</button>`:t.status==='driver'?`<button class="btn sm success" data-action="tr-done" data-id="${t.id}">${ic('check',14)} Готово</button>`:''}</td></tr>`; }).join(''):'<tr><td colspan="8" class="empty">Трансферов нет</td></tr>'}
   </tbody></table></div></div>`;
@@ -755,14 +804,15 @@ document.addEventListener('click', e=>{
     case 'mark-paid': { const b=bById(+id); b.payment='paid'; openBooking(b.id); refreshAfterBookingChange(); toast(`Оплата по брони №${b.id} отмечена: ${money(b.total)}`); break; }
     case 'toggle-transfer': { const b=bById(+id); b.transfer=!b.transfer;
       if(b.transfer){ const tr=makeTransfer(b,'in'); tr.status=b.ci<TODAY?'done':'planned'; if(tr.status==='planned') tr.driver=null; transfers.push(tr); toast(`Трансфер заказан: ${b.guest}, ${fD(b.ci)} в ${tr.time}`); }
-      else { for(let i=transfers.length-1;i>=0;i--) if(transfers[i].bookingId===b.id) transfers.splice(i,1); toast(`Трансфер отменён: ${b.guest}`); }
+      else { for(let i=transfers.length-1;i>=0;i--) if(transfers[i].bookingId===b.id){ const x=transfers[i]; if(x.ext){ x.status='cancelled'; persistTr(x); } transfers.splice(i,1); } toast(`Трансфер отменён: ${b.guest}`); }
       openBooking(b.id); refreshAfterBookingChange(); break; }
     case 'msg-guest': toast('Демо: сообщение гостю не отправляется'); break;
     case 'req-tab': S.reqTab=t.dataset.tab; render(); break;
     case 'req-take': { const r=requests.find(x=>x.id===+id); r.status='progress'; persistReq(r); renderNav(); render(); toast(`Взято в работу: ${r.name}`); break; }
     case 'req-confirm': { const r=requests.find(x=>x.id===+id); r.status='confirmed';
       let msg = `Подтверждено: ${r.name}`;
-      if(r.site){ persistReq(r); if(bookingFromSiteReq(r)) msg+=' — бронь добавлена в календарь'; }
+      if(r.kind==='transfer'){ persistReq(r); msg=`Трансфер подтверждён: ${r.name} — назначьте водителя в «Трансферах»`; }
+      else if(r.site){ persistReq(r); if(bookingFromSiteReq(r)) msg+=' — бронь добавлена в календарь'; }
       else if(isFree(r.aptId,r.ci,r.co)){ const ap=aptById(r.aptId); const n=r.co-r.ci;
         const b={id:bookingSeq++,aptId:r.aptId,guest:r.name,phone:'+7 701 555 '+ri(10,99)+' '+ri(10,99),source:r.channel,ci:r.ci,co:r.co,guests:r.guests,nightly:ap.price,total:ap.price*n,payment:'unpaid',transfer:false,cleaner:pick(CLEANERS),note:'Из заявки: «'+r.text+'»',checkinTime:'14:00',checkoutTime:'12:00'};
         bookings.push(b); r.bookingId=b.id; msg+=' — бронь добавлена в календарь'; }
@@ -782,14 +832,16 @@ document.addEventListener('click', e=>{
     case 'voice-cancel': clearTimeout(S.vt1); clearInterval(S.vt2); clearTimeout(S.vt3); document.getElementById('voice').className='voice'; break;
     case 'fin-month': S.finMonth=+t.dataset.m; render(); break;
     case 'fin-sort': { const k=t.dataset.key; if(S.finSort.key===k) S.finSort.dir*=-1; else S.finSort={key:k,dir:k==='name'?1:-1}; render(); break; }
-    case 'tr-driver': { e.stopPropagation(); const tr=transfers.find(x=>x.id===+id); tr.status='driver'; tr.driver=DRIVERS[tr.id%DRIVERS.length]; render(); toast(`Водитель назначен: ${tr.driver}`); break; }
+    case 'tr-driver': { e.stopPropagation(); const tr=transfers.find(x=>x.id===+id); tr.status='driver'; tr.driver=tr.cls==='minivan'?'Ерболат · Hyundai Staria':DRIVERS[tr.id%DRIVERS.length]; persistTr(tr); if(document.getElementById('drawer').classList.contains('open') && tr.ext) openTransfer(tr.id); render(); toast(`Водитель назначен: ${tr.driver}`); break; }
+    case 'open-transfer': openTransfer(+id); break;
+    case 'tr-cancel': { const tr=transfers.find(x=>x.id===+id); tr.status='cancelled'; persistTr(tr); transfers.splice(transfers.indexOf(tr),1); closeDrawer(); render(); toast('Поездка отменена'); break; }
     case 'logout': Auth.logout(); location.href='login.html'; break;
     case 'staff-form': { const f=document.getElementById('staffForm'); f.classList.toggle('open'); if(f.classList.contains('open')) document.getElementById('stName').focus(); break; }
     case 'staff-access': { const sid=t.dataset.sid; const s=staffById(sid); if(!s || s.role==='owner' || sid===USER.id) break;
       if(!IS_OWNER && s.role==='admin') { toast('Изменять доступ администратора может только владелец'); break; }
       Store.update(st=>{ st.access[sid] = !s.access; if(s.access) st.presence[sid]=Object.assign({}, st.presence[sid]||{lastLogin:s.lastLogin}, {online:false}); logActivity(st, ME.short, `${ME.short} ${s.access?verb(ME,'отключил','отключила'):verb(ME,'включил','включила')} доступ: ${s.short}`, 'access'); });
       render(); toast(s.access?`Доступ отключён: ${s.short} больше не сможет войти`:`Доступ включён: ${s.short}`); break; }
-    case 'tr-done': { e.stopPropagation(); const tr=transfers.find(x=>x.id===+id); tr.status='done'; render(); toast('Трансфер отмечен как выполненный'); break; }
+    case 'tr-done': { e.stopPropagation(); const tr=transfers.find(x=>x.id===+id); tr.status='done'; persistTr(tr); if(document.getElementById('drawer').classList.contains('open') && tr.ext) openTransfer(tr.id); render(); toast('Трансфер отмечен как выполненный'); break; }
   }
 });
 document.addEventListener('submit', e=>{
@@ -810,20 +862,39 @@ const SEED_CLEAN = {}; cleanings.forEach(c=>SEED_CLEAN[c.id]={status:c.status, d
 function persistReq(r){ if(!r.site) return; Store.update(st=>{ const x=st.requests.find(q=>q.id===r.id); if(x){ x.status=r.status; } }); }
 function bookingFromSiteReq(r){
   if(r.bookingId || !isFree(r.aptId,r.ci,r.co)) return null; const ap=aptById(r.aptId); const n=r.co-r.ci;
-  const b={id:bookingSeq++,aptId:r.aptId,guest:r.name,phone:r.phone||'—',source:'site',ci:r.ci,co:r.co,guests:r.guests,nightly:ap.price,total:ap.price*n,payment:r.paid?'paid':'unpaid',transfer:!!r.transfer,cleaner:CLEANERS[r.aptId%CLEANERS.length],note:'С сайта Astana Stay · оплата: '+((PAY_METHODS[r.payment]||{}).label||'—')+(r.text&&r.custom?' · «'+r.text+'»':''),checkinTime:'14:00',checkoutTime:'12:00'};
-  bookings.push(b); r.bookingId=b.id; if(b.transfer){ const tr=makeTransfer(b,'in'); tr.status='planned'; tr.driver=null; transfers.push(tr); } return b;
+  const b={id:bookingSeq++,aptId:r.aptId,guest:r.name,phone:r.phone||'—',source:'site',ci:r.ci,co:r.co,guests:r.guests,nightly:ap.price,total:ap.price*n,payment:r.paid?'paid':'unpaid',transfer:!!r.transfer,pet:!!r.pet,petFee:r.petFee||0,cleaner:CLEANERS[r.aptId%CLEANERS.length],note:'С сайта Astana Stay · оплата: '+((PAY_METHODS[r.payment]||{}).label||'—')+(r.text&&r.custom?' · «'+r.text+'»':''),checkinTime:'14:00',checkoutTime:'12:00'};
+  if(r.pet) b.total += r.petFee||0;
+  bookings.push(b); r.bookingId=b.id;
+  if(r.tr) transfers.forEach(t=>{ if(t.reqId===r.id) t.bookingId=b.id; });
+  else if(b.transfer){ const tr=makeTransfer(b,'in'); tr.status='planned'; tr.driver=null; transfers.push(tr); }
+  return b;
 }
+/* трансферы, заказанные на сайте (с бронью или отдельно): по одной строке на каждую поездку */
+function syncExtTransfers(r, st){
+  const tr=r.tr; const legs=trLegs(tr); const pr=trPrice(tr).legPrices; const ts=st.transferStatus||{};
+  legs.forEach((l,k)=>{ const id=100000+r.id*2+k; const o=ts[id]||{};
+    let t=transfers.find(x=>x.id===id);
+    if(o.status==='cancelled'){ if(t) transfers.splice(transfers.indexOf(t),1); return; }
+    if(!t){ t={id, ext:true, reqId:r.id, bookingId:r.bookingId||null, dir:l.dir, date:l.date, time:l.time, depTime:l.depTime||'', flight:l.code||'—', pax:tr.pax, bags:tr.bags, seats:tr.seats, cls:tr.cls, place:tr.place, sign:tr.sign||r.name, guest:r.name, phone:r.phone, aptId:r.aptId||null, ref:r.ref, refSource:r.refSource, address:r.address, standalone:r.kind==='transfer', round:tr.dir==='round', price:pr[k], paid:!!r.paid&&r.kind==='transfer', driver:null, status:'planned'}; transfers.push(t); }
+    if(o.status) t.status=o.status; if(o.driver!==undefined) t.driver=o.driver;
+    if(r.bookingId) t.bookingId=r.bookingId;
+  });
+}
+function persistTr(t){ if(!t.ext) return; Store.update(st=>{ st.transferStatus=st.transferStatus||{}; st.transferStatus[t.id]={status:t.status, driver:t.driver}; }); }
 function syncFromStore(){
   const st = Store.load(); let added=0;
   st.requests.slice().sort((a,b)=>a.id-b.id).forEach(q=>{
     let r = requests.find(x=>x.id===q.id);
-    if(!r){ r={id:q.id, channel:'site', site:true, name:q.name, phone:q.phone, text:q.comment||('Бронь с сайта Astana Stay'+(q.transfer?' + трансфер из аэропорта':'')), custom:!!q.comment, aptId:q.aptId, ci:q.ci, co:q.co, guests:q.guests, sum:q.total, time:(q.day||'Сегодня')+', '+q.time, status:q.status||'new', bookingId:null, payment:q.payment, paid:!!q.paid, transfer:!!q.transfer};
+    if(!r){ r = q.type==='transfer'
+        ? {id:q.id, kind:'transfer', channel:'site', site:true, name:q.name, phone:q.phone, text:q.comment||'', custom:!!q.comment, aptId:q.aptId||null, ref:q.ref, refSource:q.refSource, address:q.address, tr:q.tr, sum:q.total, time:(q.day||'Сегодня')+', '+q.time, status:q.status||'new', payment:q.payment, paid:!!q.paid}
+        : {id:q.id, channel:'site', site:true, name:q.name, phone:q.phone, text:q.comment||('Бронь с сайта Astana Stay'+(q.tr?' + трансфер':q.transfer?' + трансфер из аэропорта':'')+(q.pet?' · с животным':'')), custom:!!q.comment, aptId:q.aptId, ci:q.ci, co:q.co, guests:q.guests, sum:q.total, time:(q.day||'Сегодня')+', '+q.time, status:q.status||'new', bookingId:null, payment:q.payment, paid:!!q.paid, transfer:!!q.transfer, tr:q.tr||null, pet:!!q.pet, petFee:q.petFee||0};
       requests.unshift(r); added++; }
     else r.status = q.status||r.status;
-    if(r.status==='confirmed') bookingFromSiteReq(r);
+    if(r.tr) syncExtTransfers(r, st);
+    if(r.status==='confirmed' && r.kind!=='transfer') bookingFromSiteReq(r);
   });
   st.problems.forEach(p=>{ if(repairs.some(r=>r.id===p.id)) return;
-    repairs.push({id:p.id, aptId:p.aptId, title:p.title, assignee:'Не назначен', priority:p.priority||'high', status:'open', date:TODAY, cost:0, source:'Уборщик', reporter:p.by, persist:true, photos:p.photos||0}); });
+    repairs.push({id:p.id, aptId:p.aptId, title:p.title, assignee:'Не назначен', priority:p.priority||'high', status:'open', date:TODAY, cost:0, source:'Клининг', reporter:p.by, persist:true, photos:p.photos||0}); });
   repairs.forEach(r=>{ if(r.id<12) r.persist=true; const s2=st.repairStatus[r.id]; if(s2 && r.persist) r.status=s2; });
   applyCleaningOverrides(st);
   return added;
@@ -842,18 +913,18 @@ function renderStaff(m){
   const st = Store.load(); const staff = allStaff(st);
   const acts = seededActivity().concat(st.activity).reverse();
   const todayCl = cleanings.filter(c=>c.date===TODAY);
-  const probs = repairs.filter(r=>r.source==='Уборщик' && r.status!=='done').length;
+  const probs = repairs.filter(r=>r.source==='Клининг' && r.status!=='done').length;
   const monthDone = s => (s.monthDone||0) + cleanings.filter(c=>c.status==='done' && SEED_CLEAN[c.id] && SEED_CLEAN[c.id].status!=='done' && c.cleaner===s.short).length;
   m.innerHTML = `<div class="page-head"><div><h1>Сотрудники</h1><p class="sub">Роли, доступы, смены и журнал действий команды · демо-аккаунты, пароль у всех <b>demo</b></p></div>
     <button class="btn primary" data-action="staff-form">${ic('plus',16)} Добавить сотрудника</button></div>
   <div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr))">
-    ${kpiCard('users','#e0e7ff','#4f46e5','Сотрудников',staff.length, `${staff.filter(s=>s.role==='cleaner').length} уборщ. · ${staff.filter(s=>s.role==='admin').length} админ.`)}
+    ${kpiCard('users','#e0e7ff','#4f46e5','Сотрудников',staff.length, `${staff.filter(s=>s.role==='cleaner').length} в клининге · ${staff.filter(s=>s.role==='admin').length} админ.`)}
     ${kpiCard('in','#dcfce7','#16a34a','Сейчас на смене',staff.filter(s=>s.online&&s.access).length, 'онлайн в приложении')}
     ${kpiCard('sparkle','#fef3c7','#d97706','Уборки сегодня',`${todayCl.filter(c=>c.status==='done').length} / ${todayCl.length}`, `${todayCl.filter(c=>c.status==='progress'||c.status==='enroute').length} в работе сейчас`)}
-    ${kpiCard('alert','#fee2e2','#dc2626','Проблемы от уборщиков',probs, 'открыты в «Ремонтах»')}
+    ${kpiCard('alert','#fee2e2','#dc2626','Проблемы от клининга',probs, 'открыты в «Ремонтах»')}
   </div>
   <div class="card">
-    <form class="add-form" id="staffForm" style="border-radius:var(--radius) var(--radius) 0 0"><input id="stName" placeholder="Имя и фамилия" style="min-width:200px" class="grow"><input id="stPhone" placeholder="+7 7__ ___ __ __" style="width:170px"><select id="stRole"><option value="cleaner">Уборщик</option>${IS_OWNER?'<option value="admin">Администратор</option>':''}</select><button class="btn primary" type="submit">Добавить</button><span class="muted" style="font-size:12px;align-self:center">Логин выдаётся автоматически, пароль — demo</span></form>
+    <form class="add-form" id="staffForm" style="border-radius:var(--radius) var(--radius) 0 0"><input id="stName" placeholder="Имя и фамилия" style="min-width:200px" class="grow"><input id="stPhone" placeholder="+7 7__ ___ __ __" style="width:170px"><select id="stRole"><option value="cleaner">Специалист по клинингу</option>${IS_OWNER?'<option value="admin">Администратор</option>':''}</select><button class="btn primary" type="submit">Добавить</button><span class="muted" style="font-size:12px;align-self:center">Логин выдаётся автоматически, пароль — demo</span></form>
     <div class="table-wrap"><table class="t staff-t"><thead><tr><th>Сотрудник</th><th>Роль</th><th>Статус</th><th>Последний вход</th><th class="num" title="Выполнено из назначенных на сегодня">Сегодня</th><th class="num" title="Завершённых уборок за сентябрь">За месяц</th><th>Рейтинг</th><th>Доступ</th></tr></thead><tbody>
     ${staff.map(s=>{ const my=todayCl.filter(c=>c.cleaner===s.short); const isMe=s.id===USER.id; const lock = s.role==='owner'||isMe||(!IS_OWNER&&s.role==='admin');
       return `<tr style="${s.access?'':'opacity:.55'}"><td><div class="row"><span class="avatar" style="width:32px;height:32px;font-size:12px;background:${s.role==='cleaner'?'linear-gradient(135deg,#34d399,#059669)':s.role==='admin'?'linear-gradient(135deg,#60a5fa,#2563eb)':'linear-gradient(135deg,#a78bfa,#6d28d9)'}">${initials(s.name)}</span><div><b style="font-weight:600">${esc(s.name)}${isMe?' <span class="muted" style="font-weight:500">(вы)</span>':''}</b><div class="muted" style="font-size:12px">${esc(s.phone)} · логин: ${esc(s.login)}</div></div></div></td>
@@ -872,7 +943,7 @@ function renderStaff(m){
     <div class="card"><div class="card-h"><h3>Права ролей</h3></div><div class="card-b" style="font-size:13px;line-height:1.6">
       <div style="margin-bottom:10px"><span class="role-chip role-owner">Владелец</span> — все разделы, включая «Финансы» и управление доступами.</div>
       <div style="margin-bottom:10px"><span class="role-chip role-admin">Администратор</span> — всё, кроме «Финансов»; не может менять доступ других администраторов.</div>
-      <div style="margin-bottom:10px"><span class="role-chip role-cleaner">Уборщик</span> — только свои уборки на сегодня и завтра: адрес, код двери, чек-лист, фотоотчёт, сообщение о проблеме. Без цен, финансов и контактов гостей.</div>
+      <div style="margin-bottom:10px"><span class="role-chip role-cleaner">Специалист по клинингу</span> — только свои уборки на сегодня и завтра: адрес, код двери, чек-лист, фотоотчёт, сообщение о проблеме. Без цен, финансов и контактов гостей.</div>
       <div class="note" style="margin-top:14px">Отключённый сотрудник не сможет войти. Всё хранится в localStorage этого браузера (демо, без сервера).</div></div></div>
   </div>`;
 }
@@ -890,7 +961,7 @@ if(ALL_VIEWS.includes(hash)) S.view=hash;
 renderNav(); render();
 (()=>{ const seen=+(sessionStorage.getItem('sutkipro.seenReq')||0); const fresh=requests.filter(r=>r.site && r.status==='new' && r.id>seen); if(fresh.length){ setTimeout(()=>toast(`Новых заявок с сайта: ${fresh.length} — раздел «Заявки»`),400); sessionStorage.setItem('sutkipro.seenReq', String(Math.max(...fresh.map(r=>r.id)))); } })();
 window.addEventListener('hashchange', ()=>{ const h=location.hash.replace('#',''); if(ALL_VIEWS.includes(h) && h!==S.view) go(h); });
-/* изменения из другой вкладки (гость/уборщик) подтягиваются без перезагрузки */
+/* изменения из другой вкладки (гость/клининг) подтягиваются без перезагрузки */
 window.addEventListener('storage', e=>{ if(e.key===USER_KEY){ const u=Auth.current(); if(!u||u.id!==USER.id) location.reload(); return; } if(e.key!==STORE_KEY) return; const n=syncFromStore(); renderNav(); if(S.view!=='calendar') render(); else renderGrid(); if(n) toast(`Новая заявка с сайта (${n})`); });
 window.__demo = {S, bookings, requests, cleanings, repairs, transfers, go, USER};
 })();

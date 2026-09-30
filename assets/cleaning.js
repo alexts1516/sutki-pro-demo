@@ -1,5 +1,5 @@
-/* Сутки·Pro — мобильное приложение уборщика (демо).
-   Показывает ТОЛЬКО задачи вошедшего уборщика; без цен, финансов и контактов гостей. */
+/* Сутки·Pro Клининг — мобильное приложение специалиста по клинингу (демо).
+   Показывает ТОЛЬКО задачи вошедшего специалиста; без цен, финансов и контактов гостей. */
 (function(){
 'use strict';
 const app = document.getElementById('app');
@@ -11,10 +11,10 @@ function deny(title, text, buttons){
   document.body.innerHTML = `<div class="deny"><div class="deny-card"><div class="deny-ic">${ic('lock',30)}</div><h1 style="font-size:20px">${title}</h1>
     <p class="muted" style="margin:10px 0 18px;font-size:14px">${text}</p><div class="row" style="justify-content:center;flex-wrap:wrap">${buttons}</div>
     <div style="margin-top:18px"><span class="demo-badge"><i></i>Демо-данные</span></div></div></div>`;
-  const lo = document.getElementById('denyLogout'); if(lo) lo.onclick = ()=>{ Auth.logout(); location.href='login.html?role=cleaner'; };
+  const lo = document.getElementById('denyLogout'); if(lo) lo.onclick = ()=>{ Auth.logout(); location.href='login.html?role=cleaning'; };
 }
-if(!USER){ deny('Войдите как уборщик','Это приложение показывает задачи конкретного уборщика. Войдите под своим демо-аккаунтом.', `<a class="btn primary" href="login.html?role=cleaner">${ic('in',16)} Войти</a><a class="btn" href="index.html">На главную</a>`); return; }
-if(USER.role!=='cleaner'){ deny('Раздел для уборщиков', `Вы вошли как <b>${esc(USER.short)}</b> (${ROLE_NAME[USER.role].toLowerCase()}). Приложение уборщика открывается только под аккаунтом уборщика.`, `<a class="btn primary" href="app.html">В панель управления</a><button class="btn" id="denyLogout">${ic('logout',16)} Войти как уборщик</button>`); return; }
+if(!USER){ deny('Сутки·Pro Клининг','Приложение показывает задачи конкретного специалиста по клинингу. Войдите под своим демо-аккаунтом.', `<a class="btn primary" href="login.html?role=cleaning">${ic('in',16)} Войти</a><a class="btn" href="team.html">Вход для команды</a>`); return; }
+if(USER.role!=='cleaner'){ deny('Раздел для клининга', `Вы вошли как <b>${esc(USER.short)}</b> (${ROLE_NAME[USER.role].toLowerCase()}). «Сутки·Pro Клининг» открывается только под аккаунтом специалиста по клинингу.`, `<a class="btn primary" href="app.html">В панель управления</a><button class="btn" id="denyLogout">${ic('logout',16)} Войти в клининг</button>`); return; }
 
 const ME = staffById(USER.id);
 applyCleaningOverrides(Store.load());
@@ -58,7 +58,7 @@ function renderList(){
   </div>`;
 }
 function topbar(){
-  return `<header class="top"><span class="avatar">${initials(ME.name)}</span><div class="who"><b>${esc(ME.short)}</b><small><i></i>Уборщик · на смене</small></div>
+  return `<header class="top"><span class="avatar">${initials(ME.name)}</span><div class="who"><b>${esc(ME.short)}</b><small><i></i>Сутки·Pro Клининг</small></div>
     <div class="right"><span class="demo-badge sm"><i></i>Демо-данные</span><button class="icon-btn" data-logout title="Выйти" aria-label="Выйти">${ic('logout',18)}</button></div></header>`;
 }
 
@@ -172,7 +172,7 @@ function sendReport(){
 /* ---------- события ---------- */
 document.addEventListener('click', e=>{
   const t=e.target;
-  if(t.closest('[data-logout]')){ Auth.logout(); location.href='login.html?role=cleaner'; return; }
+  if(t.closest('[data-logout]')){ Auth.logout(); location.href='login.html?role=cleaning'; return; }
   const tb=t.closest('[data-tab]'); if(tb){ V.tab=tb.dataset.tab; renderList(); return; }
   const op=t.closest('[data-open]'); if(op){ V.open=+op.dataset.open; renderTask(); window.scrollTo(0,0); return; }
   if(t.closest('[data-back]')){ const c=curTask(); if(c && c.status!=='done'){ saveComment(c); saveCleaning(c); } V.open=null; renderList(); window.scrollTo(0,0); return; }
