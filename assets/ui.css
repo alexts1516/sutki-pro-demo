@@ -18,6 +18,13 @@ h1,h2,h3,h4{margin:0;letter-spacing:-.01em}
 .brand{display:flex;align-items:center;gap:10px;text-decoration:none}
 .brand b{font-size:16px;letter-spacing:-.01em}
 .brand small{display:block;color:var(--muted);font-size:11px;margin-top:1px}
+.client-chip{display:inline-flex;align-items:center;gap:8px;padding:4px 12px 4px 6px;border:1px solid var(--border,#e2e8f0);border-radius:999px;background:#fff;margin-right:auto;margin-left:14px;line-height:1.1}
+.client-chip img{width:22px;height:26px;object-fit:contain;flex:none}
+.client-chip b{display:block;font-family:"Cormorant Garamond","Playfair Display",Didot,"Bodoni 72",Georgia,"Times New Roman",serif;font-size:15px;font-weight:600;color:#17191d;letter-spacing:.01em}
+.client-chip small{display:block;font-size:8.5px;letter-spacing:.2em;text-transform:uppercase;color:#6b7280;font-weight:600}
+@media (max-width:560px){.client-chip{margin-left:8px;padding:3px 8px 3px 4px}.client-chip small{display:none}}
+.client-chip b{white-space:nowrap}
+@media (max-width:430px){.client-chip>span{display:none}.client-chip{padding:3px 5px}}
 .demo-badge{display:inline-flex;align-items:center;gap:6px;background:var(--amber-50);color:#92400e;border:1px solid #fde68a;font-weight:600;font-size:12px;padding:5px 10px;border-radius:999px;white-space:nowrap}
 .demo-badge i{width:7px;height:7px;border-radius:50%;background:#f59e0b;display:inline-block}
 .card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}

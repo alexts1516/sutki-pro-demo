@@ -30,12 +30,14 @@ body{background:radial-gradient(900px 420px at 90% -10%,#e0e7ff 0,transparent 60
 .cur{display:none;background:#eef2ff;border:1px solid #c7d2fe;border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:13.5px}
 .cur.show{display:block}
 @media (max-width:820px){.layout{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:380px){.top .demo-badge{display:none}}
 @media (max-width:480px){.box{padding:20px}.acc{padding:12px 14px;flex-wrap:wrap}.acc .btn{margin-left:48px}.top .back span{display:none}}
 </style>
 </head>
 <body>
 <header class="top">
   <a class="brand" href="team.html"><div class="logo">С</div><div><b>Сутки·Pro</b><small>демо-вход</small></div></a>
+  <span class="client-chip" title="Клиент: The Address · Apart Hotel"><img src="assets/brand/pin-dark-128.png" alt="" width="22" height="26"><span><b>The Address</b><small>Apart Hotel</small></span></span>
   <div class="right"><span class="demo-badge"><i></i>Демо-данные</span><a class="btn sm back" href="team.html" id="backBtn"></a></div>
 </header>
 <main class="layout">

@@ -7,7 +7,7 @@
 <meta name="theme-color" content="#ffffff">
 <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<meta property="og:title" content="Задача от Astana Stay (демо)">
+<meta property="og:title" content="Задача от The Address (демо)">
 <meta property="og:description" content="Одна задача по ссылке: адрес, код двери, фото и отчёт — без регистрации. Демо-данные.">
 <title>Задача по ссылке — Сутки·Pro (демо)</title>
 <link rel="stylesheet" href="assets/ui.css">
@@ -140,13 +140,13 @@ function head(){
     <div style="font-weight:600">${esc(T.a.ad)}</div><div class="muted" style="font-size:13px;margin-bottom:10px">${esc(T.a.c)} · ${esc(T.a.di)} р-н · ${esc(T.a.r)}</div>
     ${accessHTML()}
     <button class="btn sm" style="margin-top:10px" data-maps>${ic('nav',14)} Маршрут (демо)</button></div>
-  <div class="sec"><div class="from"><span class="avatar" style="background:linear-gradient(135deg,#a78bfa,#6d28d9)">${esc((T.o&&T.o.n||'А')[0])}</span><div class="grow"><b>${esc(T.o&&T.o.n||'Владелец')}</b> <span class="muted" style="font-size:13px">· владелец, Astana Stay</span><div class="muted" style="font-size:12.5px">Вопросы по задаче — позвоните или напишите</div></div><button class="btn sm" data-call>${ic('phone',14)} Позвонить</button></div></div>`;
+  <div class="sec"><div class="from"><span class="avatar" style="background:linear-gradient(135deg,#a78bfa,#6d28d9)">${esc((T.o&&T.o.n||'А')[0])}</span><div class="grow"><b>${esc(T.o&&T.o.n||'Владелец')}</b> <span class="muted" style="font-size:13px">· владелец, The Address</span><div class="muted" style="font-size:12.5px">Вопросы по задаче — позвоните или напишите</div></div><button class="btn sm" data-call>${ic('phone',14)} Позвонить</button></div></div>`;
 }
 function renderForm(){
   const pc = D.partsCost!=null?D.partsCost:'', wc = D.workCost!=null?D.workCost:'';
   const cam = (kind, label, cls, hint) => `<div class="cam"><label class="btn ${cls}" for="cam-${kind}">${ic('camera',16)} ${label}<input type="file" id="cam-${kind}" data-cam="${kind}" accept="image/*" capture="environment" multiple></label><button class="btn" data-demo="${kind}">${ic('image',16)} +2 демо-фото</button></div><div class="hint">${hint}</div>`;
   const grid = kind => D[kind].length ? `<div class="ph-grid">${D[kind].map((p,i)=>phHTML(p,kind,i,true)).join('')}</div>` : '';
-  app.innerHTML = top('от Astana Stay · без регистрации') + `<div class="pad">${head()}
+  app.innerHTML = top('от The Address · без регистрации') + `<div class="pad">${head()}
     ${isR ? `
     <div class="sec"><h4>${ic('wallet',16)} Смета</h4>${quoteHTML()}</div>
     <div class="sec"><h4>${ic('camera',16)} Фото до <span class="muted" style="margin-left:auto;font-weight:600">${D.before.length}</span></h4>${cam('before','Сфотографировать','primary','Снимите проблему до начала работы.')}${grid('before')}</div>
@@ -166,7 +166,7 @@ function renderForm(){
 }
 function renderSent(r){
   const ph = kind => (r[kind]||[]).length ? `<div class="ph-grid">${r[kind].map((p,i)=>phHTML(p,kind,i,false)).join('')}</div>` : '<div class="hint">Фото не приложены</div>';
-  app.innerHTML = top('от Astana Stay · без регистрации') + `<div class="pad">${head()}
+  app.innerHTML = top('от The Address · без регистрации') + `<div class="pad">${head()}
     <div class="sent">${ic('check',20,2.6)}<div><b>Отчёт отправлен в ${esc(r.at)}</b><div style="font-size:12.5px">Подписан: ${esc(r.name)}${isR?` · итого ${money(r.cost||0)}`:''}</div></div></div>
     ${isR?`<div class="sec"><h4>${ic('camera',16)} Фото до</h4>${ph('before')}</div><div class="sec"><h4>${ic('camera',16)} Фото после</h4>${ph('after')}</div>
       <div class="sec"><h4>${ic('wallet',16)} Стоимость</h4><div style="font-size:14px">${r.parts?esc(r.parts):'<span class="muted">Без запчастей</span>'}</div><div class="cost-sum"><span>Запчасти</span><b>${money(r.partsCost||0)}</b></div><div class="cost-sum"><span>Работа</span><b>${money(r.workCost||0)}</b></div><div class="cost-sum tot"><span>Итого</span><b>${money(r.cost||0)}</b></div></div>`

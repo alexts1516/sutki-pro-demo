@@ -3,16 +3,22 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b3b4a'/%3E%3Ctext x='16' y='22.5' font-size='18' text-anchor='middle' fill='white' font-family='Arial,sans-serif' font-weight='700'%3EA%3C/text%3E%3C/svg%3E">
-<meta name="theme-color" content="#0b3b4a">
-<title>Astana Stay — квартиры посуточно в Астане (демо)</title>
+<link rel="icon" type="image/png" sizes="32x32" href="assets/brand/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/brand/apple-touch-icon.png">
+<meta name="theme-color" content="#17191d">
+<title>The Address · Apart Hotel — апартаменты посуточно в Астане (демо)</title>
+<meta name="description" content="The Address · Apart Hotel — апартаменты посуточно в самой высокой башне ЖК Highvill (Хайвил), ближайшей к посольству США. Астана, пр. Кошкарбаева, 10/1. Демо-сайт.">
+<meta property="og:title" content="The Address · Apart Hotel — апартаменты в Астане">
+<meta property="og:description" content="Самая высокая башня ЖК Highvill — ближайшая к посольству США. Заселение 24/7, трансфер из аэропорта.">
+<meta property="og:image" content="assets/photos/highvill-g1-800.jpg">
+<link rel="preload" as="image" href="assets/photos/highvill-g1-1200.jpg" media="(min-width: 641px)">
 <link rel="stylesheet" href="assets/guest.css">
 </head>
 <body>
 <div class="demo-ribbon"><b>Демо-данные</b> · сайт-пример для презентации: квартиры, цены и отзывы вымышленные, оплата не проводится</div>
 <header class="site">
   <div class="wrap hdr">
-    <a class="logo" href="./"><span class="logo-mk" id="logoMk" data-brand="logo"></span><span><b data-brand="name">Astana Stay</b><small data-brand="tagline">квартиры посуточно</small></span></a>
+    <a class="logo" href="./"><span class="logo-mk" id="logoMk" data-brand="logo"></span><span><b data-brand="name">The Address</b><small data-brand="tagline">Apart Hotel</small></span></a>
     <nav class="hnav"><a href="#catalog">Квартиры</a><a href="#map">Карта</a><a href="#transfer">Трансфер</a><a href="#how">Как забронировать</a><a href="#contacts">Контакты</a></nav>
     <button type="button" class="sbar" id="sbar" hidden aria-label="Изменить поиск"></button>
     <div class="hright"><div class="lsw" id="lsw"></div><a class="btn brand sm hbook" href="#catalog">Забронировать</a><button type="button" class="burger" id="burger" aria-label="Меню" aria-expanded="false" aria-controls="mnav"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button></div>
@@ -20,12 +26,13 @@
   <nav class="mnav" id="mnav" hidden aria-label="Меню"><div class="wrap"><a href="#catalog">Квартиры</a><a href="#map">Карта</a><a href="#transfer">Трансфер</a><a href="#how">Как забронировать</a><a href="#contacts">Контакты</a><a class="btn brand block" href="#catalog">Забронировать</a></div></nav>
 </header>
 
-<section class="hero">
+<section class="hero photo" role="img" aria-label="Башня ЖК Хайвил, блок G-1 — дом The Address">
   <div class="hero-sky" id="sky"></div>
   <div class="wrap hero-in">
     <span class="kicker" id="kicker"></span>
-    <h1>Квартиры посуточно в&nbsp;Астане — как дома, только лучше</h1>
-    <p>Большинство квартир — в ЖК Хайвил в центре Астаны, рядом с посольством США. Заселение 24/7 через кодовый замок, можно с питомцами, трансфер из аэропорта с табличкой.</p>
+    <h1>Апартаменты в&nbsp;самой высокой башне ЖК&nbsp;Хайвил</h1>
+    <p>Самая высокая башня ЖК Highvill — стоит отдельно и ближе всех к посольству США. Заселение 24/7 через кодовый замок, можно с питомцами, трансфер из аэропорта с табличкой.</p>
+    <div class="hero-loc"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span data-brand="address">пр. Кошкарбаева, 10/1, блок G-1 · Астана, р-н Сарайшык</span></div>
   </div>
 </section>
 
@@ -78,11 +85,11 @@
 <footer class="site" id="contacts">
   <div class="wrap">
     <div class="fgrid">
-      <div><div class="logo" style="margin-bottom:10px"><span class="logo-mk" id="logoMk2" data-brand="logo"></span><span><b data-brand="name">Astana Stay</b></span></div>Квартиры посуточно в Астане. Работаем 24/7.</div>
-      <div><b>Контакты (демо)</b><br><span data-brand="phone">+7 700 000 00 00</span><br>Telegram: <span data-brand="telegram">@astanastay_demo</span><br><span data-brand="email">hello@astanastay.example</span></div>
+      <div><div class="f-lockup" data-brand="lockup"></div><span class="f-about">Апартаменты посуточно в Астане. Работаем 24/7.</span><div class="f-addr"><b>Адрес</b><br><span data-brand="address">пр. Кошкарбаева, 10/1, блок G-1 · Астана, р-н Сарайшык</span><br><span class="f-note">ЖК Хайвил · до посольства США — пешком</span></div></div>
+      <div><b>Контакты (демо)</b><br><span data-brand="phone">+7 700 000 00 00</span><br>Telegram: <span data-brand="telegram">@theaddress_demo</span><br><span data-brand="email">hello@theaddress.example</span></div>
       <div><b>Гостям</b><br><a href="#catalog">Квартиры посуточно</a><br><a href="#transfer">Трансфер из аэропорта</a><br><a href="#how">Как забронировать</a></div>
     </div>
-    <div class="fdemo"><span>Демо-данные: бренд «<span data-brand="name">Astana Stay</span>», квартиры, цены, отзывы и контакты вымышленные.</span><span>Работает на Сутки·Pro (прототип) · <a class="team-link" href="team.html">Вход для команды</a></span></div>
+    <div class="fdemo"><span>Демо-данные: квартиры, цены, отзывы и контакты — примеры для презентации; телефон и мессенджеры — заглушки.</span><span>Работает на Сутки·Pro (прототип) · <a class="team-link" href="team.html">Вход для команды</a></span></div>
   </div>
 </footer>
 

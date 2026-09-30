@@ -27,6 +27,10 @@ h1,h2,h3{margin:0;letter-spacing:-.01em}
 .logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#6366f1,#a855f7);display:grid;place-items:center;color:#fff;font-weight:800;font-size:15px;box-shadow:0 4px 14px rgba(99,102,241,.45)}
 .brand b{color:#fff;font-size:16px;letter-spacing:-.01em}
 .brand small{display:block;color:#64748b;font-size:11px;margin-top:1px}
+.client{display:flex;align-items:center;gap:10px;margin:-6px 14px 14px;padding:9px 12px;border:1px solid rgba(201,204,209,.18);border-radius:12px;background:linear-gradient(150deg,rgba(255,255,255,.06),rgba(255,255,255,.02))}
+.client img{width:26px;height:30px;object-fit:contain;flex:none}
+.client b{display:block;color:#e7e8ea;font-family:"Cormorant Garamond","Playfair Display",Didot,"Bodoni 72",Georgia,"Times New Roman",serif;font-size:17px;font-weight:600;letter-spacing:.01em;line-height:1.1}
+.client small{display:block;color:#8b93a1;font-size:10.5px;margin-top:2px}
 .nav{padding:6px 12px;display:flex;flex-direction:column;gap:2px}
 .nav-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#475569;padding:14px 12px 6px}
 .nav button{white-space:nowrap;display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;color:#cbd5e1;font-weight:500;text-align:left;transition:background .15s,color .15s}
@@ -502,6 +506,7 @@ th.off{opacity:.45}
 <div class="app">
   <aside class="sidebar" id="sidebar">
     <div class="brand"><div class="logo">С</div><div><b>Сутки·Pro</b><small id="brandSub">Панель владельца</small></div></div>
+    <div class="client" title="Бизнес клиента"><img src="assets/brand/pin-silver-128.png" alt="" width="26" height="30"><div><b>The Address</b><small>Apart Hotel · ЖК Хайвил</small></div></div>
     <nav class="nav" id="nav"></nav>
     <div class="side-foot"><div class="demo-card"><b>Демо-данные</b>Все квартиры, гости и суммы — вымышленные, сгенерированы для примера.</div></div>
   </aside>
@@ -864,12 +869,12 @@ function renderRequests(m){
     <div class="req-list">${list.length? list.map(reqRow).join('') : '<div class="empty">Здесь пока пусто</div>'}</div>
   </div>`;
 }
-const REF_NAME = {site:'Astana Stay', airbnb:'Airbnb', booking:'Booking.com', other:'другое'};
+const REF_NAME = {site:'The Address', airbnb:'Airbnb', booking:'Booking.com', other:'другое'};
 function trLegsText(tr){ const P=TR_PLACES[tr.place]||TR_PLACES.airport; return trLegs(tr).map(l=>`${l.dir==='in'?'встреча '+P.short+' → кв.':'подача кв. → '+P.short} ${fD(l.date)}, ${l.time}${l.code?' · '+l.code:''}`).join('; '); }
 function reqTrRow(r){
   const s=REQ_S[r.status]; const tr=r.tr; const a=r.aptId?aptById(r.aptId):null; const pm=TR_PAY[r.payment]||TR_PAY.driver;
   return `<div class="req ${r.status==='new'?'new':''}" id="req-${r.id}"><span class="tr-badge">${ic('car',20)}</span>
-    <div class="grow"><div class="req-top"><b>${esc(r.name)}</b><span class="chip ${s[0]}"><i></i>${s[1]}</span><span class="chip blue">${ic('car',12)} Заказ трансфера</span><span class="muted" style="font-size:12px">с сайта Astana Stay</span><span class="req-time">${r.time}</span></div>
+    <div class="grow"><div class="req-top"><b>${esc(r.name)}</b><span class="chip ${s[0]}"><i></i>${s[1]}</span><span class="chip blue">${ic('car',12)} Заказ трансфера</span><span class="muted" style="font-size:12px">с сайта The Address</span><span class="req-time">${r.time}</span></div>
       <div class="req-msg">${esc(trSummary(tr))}</div>
       <div class="req-meta"><span>${ic('plane',14)} ${esc(trLegsText(tr))}</span>${sumCell(r)}</div>
       <div class="req-meta" style="margin-top:8px"><span class="chip grey">${ic('home',12)} Жильё: ${esc(REF_NAME[r.refSource]||'—')} · ${esc(r.ref||'—')}</span>${a?`<span>${ic('home',14)} ${esc(a.name)}</span>`:r.address?`<span>${ic('pin',14)} ${esc(r.address)}</span>`:''}<span class="chip ${pm.color}">${ic(r.payment==='card'?'card':'cash',12)} Оплата: ${esc(pm.short)}</span><span>${ic('phone',14)} ${esc(r.phone||'')}</span>${r.text&&r.custom?`<span>«${esc(r.text)}»</span>`:''}</div></div>
@@ -892,7 +897,7 @@ function reqRow(r){
     <div class="grow"><div class="req-top"><b>${esc(r.name)}</b><span class="chip ${s[0]}"><i></i>${s[1]}</span><span class="muted" style="font-size:12px">через ${CH[r.channel].name}</span><span class="req-time">${r.time}</span></div>
       <div class="req-msg">«${esc(r.text)}»</div>
       <div class="req-meta"><span>${ic('home',14)} ${esc(a.name)}</span><span>${ic('calendar',14)} ${fD(r.ci)} – ${fD(r.co)} · ${n} ${plural(n,'ночь','ночи','ночей')}</span><span>${ic('users',14)} ${r.guests}</span>${sumCell(r)}</div>
-      ${r.site?`<div class="req-meta" style="margin-top:8px"><span class="chip ${(PAY_METHODS[r.payment]||{}).color||'grey'}">${ic(r.payment==='card'?'card':r.payment==='cash'?'cash':r.payment==='telegram'?'send':'msg',12)} Оплата: ${esc((PAY_METHODS[r.payment]||{}).short||'—')}</span><span>${ic('phone',14)} ${esc(r.phone||'')}</span>${r.tr?`<span class="chip blue" title="${esc(trLegsText(r.tr))}">${ic('car',12)} Трансфер: ${esc(trSummary(r.tr))} · ${money(r.tr.price)}</span>`:r.transfer?`<span class="chip blue">${ic('car',12)} Нужен трансфер</span>`:''}${r.pet?`<span class="chip amber">${ic('paw',12)} С животным${r.petFee?' +'+money(r.petFee):''}</span>`:''}<span class="chip violet">${ic('globe',12)} Сайт Astana Stay</span></div>`:''}</div>
+      ${r.site?`<div class="req-meta" style="margin-top:8px"><span class="chip ${(PAY_METHODS[r.payment]||{}).color||'grey'}">${ic(r.payment==='card'?'card':r.payment==='cash'?'cash':r.payment==='telegram'?'send':'msg',12)} Оплата: ${esc((PAY_METHODS[r.payment]||{}).short||'—')}</span><span>${ic('phone',14)} ${esc(r.phone||'')}</span>${r.tr?`<span class="chip blue" title="${esc(trLegsText(r.tr))}">${ic('car',12)} Трансфер: ${esc(trSummary(r.tr))} · ${money(r.tr.price)}</span>`:r.transfer?`<span class="chip blue">${ic('car',12)} Нужен трансфер</span>`:''}${r.pet?`<span class="chip amber">${ic('paw',12)} С животным${r.petFee?' +'+money(r.petFee):''}</span>`:''}<span class="chip violet">${ic('globe',12)} Сайт The Address</span></div>`:''}</div>
     <div class="req-actions">
       ${r.status==='new'?`<button class="btn sm" data-action="req-take" data-id="${r.id}">Взять в работу</button>`:''}
       ${r.status!=='confirmed'?`<button class="btn sm success" data-action="req-confirm" data-id="${r.id}">${ic('check',14)} Подтвердить</button>`:(r.bookingId?`<button class="btn sm" data-action="open-booking" data-id="${r.bookingId}">Открыть бронь</button>`:`<span class="muted" style="font-size:12px">${ic('check',13)} Бронь оформлена</span>`)}
@@ -1209,10 +1214,10 @@ function renderLinkPreview(){
   if(!S.lk || !document.getElementById('lkUrl')) return; const o = linkPayload(); const url = TaskLink.url(o); S.lk.url = url;
   document.getElementById('lkUrl').value = url; document.getElementById('lkOpen').href = url; document.getElementById('lkLen').textContent = `${url.length} символов · данные задачи внутри ссылки`;
   const tg = S.lkTab!=='wa'; const kind = o.k==='r'?'ремонт':'уборка';
-  const text = `Здравствуйте${o.w?', '+esc(o.w):''}! Задача от Astana Stay — ${kind}, кв. ${o.a.n}: ${esc(o.t)}. ${esc(o.dt)}${o.tm?', '+esc(o.tm):''}. Адрес, код двери и отчёт — по ссылке, без регистрации:`;
+  const text = `Здравствуйте${o.w?', '+esc(o.w):''}! Задача от The Address — ${kind}, кв. ${o.a.n}: ${esc(o.t)}. ${esc(o.dt)}${o.tm?', '+esc(o.tm):''}. Адрес, код двери и отчёт — по ссылке, без регистрации:`;
   document.getElementById('lkPrev').innerHTML = `<div class="chatp ${tg?'tg':'wa'}"><div class="ch-h"><span class="avatar" style="width:30px;height:30px;font-size:12px;background:rgba(255,255,255,.25)">${esc((o.w||'И')[0].toUpperCase())}</span><div><b>${esc(o.w||'Исполнитель')}</b><small>${tg?'был(а) недавно':'в сети'}</small></div><span style="margin-left:auto;font-size:11px;opacity:.85">предпросмотр · демо</span></div>
     <div class="ch-b"><div class="bub">${text} <span class="u">${esc(url.slice(0,58))}…</span>
-      <div class="lp"><span class="s">Сутки·Pro · Astana Stay</span><b>${o.k==='r'?'Ремонт':'Уборка'}: кв. ${o.a.n} — ${esc(o.t)}</b><small>${esc(o.a.ad)} · фото и отчёт без регистрации (демо)</small></div>
+      <div class="lp"><span class="s">Сутки·Pro · The Address</span><b>${o.k==='r'?'Ремонт':'Уборка'}: кв. ${o.a.n} — ${esc(o.t)}</b><small>${esc(o.a.ad)} · фото и отчёт без регистрации (демо)</small></div>
       <span class="tm">${nowHM()} ${tg?'✓✓':'✓✓'}</span></div></div></div>`;
   document.getElementById('lkShare').innerHTML = `${ic('send',16)} Отправить в ${tg?'Telegram':'WhatsApp'} (демо — ничего не отправляется)`;
 }
@@ -1451,7 +1456,7 @@ const SEED_REP = {}; repairs.forEach(r=>SEED_REP[r.id]=r.status);
 function persistReq(r){ if(!r.site) return; Store.update(st=>{ const x=st.requests.find(q=>q.id===r.id); if(x){ x.status=r.status; } }); }
 function bookingFromSiteReq(r){
   if(r.bookingId || !isFree(r.aptId,r.ci,r.co)) return null; const ap=aptById(r.aptId); const n=r.co-r.ci;
-  const b={id:bookingSeq++,aptId:r.aptId,guest:r.name,phone:r.phone||'—',source:'site',ci:r.ci,co:r.co,guests:r.guests,nightly:ap.price,total:ap.price*n,payment:r.paid?'paid':'unpaid',transfer:!!r.transfer,pet:!!r.pet,petFee:r.petFee||0,cleaner:CLEANERS[r.aptId%CLEANERS.length],note:'С сайта Astana Stay · оплата: '+((PAY_METHODS[r.payment]||{}).label||'—')+(r.text&&r.custom?' · «'+r.text+'»':''),checkinTime:'14:00',checkoutTime:'12:00'};
+  const b={id:bookingSeq++,aptId:r.aptId,guest:r.name,phone:r.phone||'—',source:'site',ci:r.ci,co:r.co,guests:r.guests,nightly:ap.price,total:ap.price*n,payment:r.paid?'paid':'unpaid',transfer:!!r.transfer,pet:!!r.pet,petFee:r.petFee||0,cleaner:CLEANERS[r.aptId%CLEANERS.length],note:'С сайта The Address · оплата: '+((PAY_METHODS[r.payment]||{}).label||'—')+(r.text&&r.custom?' · «'+r.text+'»':''),checkinTime:'14:00',checkoutTime:'12:00'};
   if(r.pet) b.total += r.petFee||0;
   bookings.push(b); r.bookingId=b.id;
   if(r.tr) transfers.forEach(t=>{ if(t.reqId===r.id) t.bookingId=b.id; });
@@ -1476,7 +1481,7 @@ function syncFromStore(){
     let r = requests.find(x=>x.id===q.id);
     if(!r){ r = q.type==='transfer'
         ? {id:q.id, kind:'transfer', channel:'site', site:true, name:q.name, phone:q.phone, text:q.comment||'', custom:!!q.comment, aptId:q.aptId||null, ref:q.ref, refSource:q.refSource, address:q.address, tr:q.tr, sum:q.total, cur:q.cur, time:(q.day||'Сегодня')+', '+q.time, status:q.status||'new', payment:q.payment, paid:!!q.paid}
-        : {id:q.id, channel:'site', site:true, name:q.name, phone:q.phone, text:q.comment||('Бронь с сайта Astana Stay'+(q.tr?' + трансфер':q.transfer?' + трансфер из аэропорта':'')+(q.pet?' · с животным':'')), custom:!!q.comment, aptId:q.aptId, ci:q.ci, co:q.co, guests:q.guests, sum:q.total, cur:q.cur, time:(q.day||'Сегодня')+', '+q.time, status:q.status||'new', bookingId:null, payment:q.payment, paid:!!q.paid, transfer:!!q.transfer, tr:q.tr||null, pet:!!q.pet, petFee:q.petFee||0};
+        : {id:q.id, channel:'site', site:true, name:q.name, phone:q.phone, text:q.comment||('Бронь с сайта The Address'+(q.tr?' + трансфер':q.transfer?' + трансфер из аэропорта':'')+(q.pet?' · с животным':'')), custom:!!q.comment, aptId:q.aptId, ci:q.ci, co:q.co, guests:q.guests, sum:q.total, cur:q.cur, time:(q.day||'Сегодня')+', '+q.time, status:q.status||'new', bookingId:null, payment:q.payment, paid:!!q.paid, transfer:!!q.transfer, tr:q.tr||null, pet:!!q.pet, petFee:q.petFee||0};
       requests.unshift(r); added++; }
     else r.status = q.status||r.status;
     if(r.tr) syncExtTransfers(r, st);

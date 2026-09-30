@@ -1,4 +1,4 @@
-/* Astana Stay — логика демо-сайта для гостей (главная страница прототипа).
+/* The Address — логика демо-сайта для гостей (главная страница прототипа).
    Данные квартир и занятости — из assets/data.js, заявки на бронь и трансфер сохраняются
    в localStorage (assets/store.js) и появляются у владельца в «Заявках» и «Трансферах». */
 (function(){
@@ -35,8 +35,8 @@ const grt = r => r.cur ? fxFmt(r.cur.total, r.cur.code) : grt(r);
 const PALETTE = [[32,60],[200,45],[160,35],[345,45],[45,55],[255,35],[15,50],[185,40],[95,30],[220,40],[5,45],[280,30]];
 const AREA = {'Студия':24,'1-комн.':38,'2-комн.':58,'3-комн.':82};
 const ROOMS_FULL = {'Студия':tx('Студия'),'1-комн.':tx('1-комнатная'),'2-комн.':tx('2-комнатная'),'3-комн.':tx('3-комнатная')};
-const LANDMARK = {'Есиль':tx('рядом с Байтереком'),'Алматинский':tx('у парка Жетысу'),'Сарыарка':tx('в старом центре'),'Байконур':tx('у набережной'),'Нура':tx('у ЭКСПО')};
-const txStreet = st => { if(!IS_EN) return st; const m=/^(ул\.|пр\.)\s*(.+?),\s*(\S+)$/.exec(st); return m ? `${m[3]} ${tx(m[2])} ${m[1]==='пр.'?'Ave':'St'}` : tx(st); };
+const LANDMARK = {'Есиль':tx('рядом с Байтереком'),'Сарайшык':tx('пр. Кошкарбаева, посольство США'),'Алматинский':tx('у парка Жетысу'),'Сарыарка':tx('в старом центре'),'Байконур':tx('у набережной'),'Нура':tx('у ЭКСПО')};
+const txStreet = st => { if(!IS_EN) return st; const m=/^(ул\.|пр\.)\s*(.+?),\s*(\S+?)(?:,\s*блок\s+(\S+))?$/.exec(st); return m ? `${m[3]} ${tx(m[2])} ${m[1]==='пр.'?'Ave':'St'}${m[4]?', block '+m[4]:''}` : tx(st); };
 const guestApts = apartments.map(a=>Object.assign({}, a, {
   title: `${ROOMS_FULL[a.rooms]} ${tx("в")} ${tx(a.complex)}`,
   near: a.embassy ? tx('рядом с посольством США') : LANDMARK[a.district],
@@ -59,8 +59,13 @@ function toast(t){ document.querySelectorAll('.toast').forEach(x=>x.remove()); c
 const TIMES = []; for(let h=0;h<24;h++) for(let q=0;q<60;q+=15) TIMES.push(String(h).padStart(2,'0')+':'+String(q).padStart(2,'0'));
 const timeOpts = (v, ph) => `<option value="">${ph||'--:--'}</option>` + TIMES.map(t=>`<option ${t===v?'selected':''}>${t}</option>`).join('');
 
-/* ---------- SVG-«фото» квартиры (иллюстрация интерьера) ---------- */
+/* ---------- фото квартиры: у квартир в ЖК Хайвил первое фото — настоящий дом (блок G-1), остальные — иллюстрации интерьера ---------- */
+const BUILDING_PHOTO = 'assets/photos/highvill-g1-800.jpg';
+const photoList = a => a.embassy ? ['b',0,1,2] : [0,1,2];
+const coverKey = a => a.embassy ? 'b' : a.id%3;
 function photo(a, v, key){
+  if(v==='b'){ const pos = key && key[0]==='g' ? ['50% 28%','50% 62%','38% 45%','62% 38%','50% 80%'][a.id%5] : '50% 40%';
+    return `<img class="real" src="${BUILDING_PHOTO}" alt="${esc(tx('Дом'))}: ${esc(tx(a.complex))}" loading="lazy" decoding="async" style="object-position:${pos}">`; }
   const h = a.pal[0], s = a.pal[1];
   const wall=`hsl(${h} ${s}% 93%)`, wall2=`hsl(${h} ${s}% 86%)`, acc=`hsl(${(h+180)%360} 45% 45%)`, wood=`hsl(30 35% ${58+(a.id%3)*6}%)`;
   const sky = `<linearGradient id="sk${key}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#8ec5d6"/><stop offset="1" stop-color="#f6d9a0"/></linearGradient>`;
@@ -125,10 +130,10 @@ function renderPerks(){ $('perks').innerHTML = [['pin',tx('Центр, рядо�
 renderPerks();
 const stars5 = ic('star',15).repeat(5);
 $('revs').innerHTML = [
-  [tx('Дана, Алматы'),tx('Остановились в ЖК Хайвил на 3 ночи. Чисто, всё как на фото, заселение по коду в час ночи — без проблем.'),'#0f5566'],
-  [tx('Ержан, Караганда'),tx('Командировка на неделю, жил в Хайвиле — до посольства США пешком, центр рядом. Документы для бухгалтерии сделали сразу, водитель встретил с табличкой.'),'#e0a526'],
+  [tx('Дана, Алматы'),tx('Остановились в ЖК Хайвил на 3 ночи. Чисто, всё как на фото, заселение по коду в час ночи — без проблем.'),'#2c3038'],
+  [tx('Ержан, Караганда'),tx('Командировка на неделю, жил в Хайвиле — до посольства США пешком, центр рядом. Документы для бухгалтерии сделали сразу, водитель встретил с табличкой.'),'#c9824f'],
   [tx('Мария, Москва'),tx('Приехали с собакой — нашли квартиру, где можно с животными. Ответили в Telegram за пару минут.'),'#e76f51']
-].map(([w,t,c])=>`<div class="rev"><div style="color:#e0a526">${stars5}</div><div style="margin-top:8px;color:#3b4d57">«${t}»</div><div class="who"><span class="av" style="background:${c}">${w[0]}</span><b>${w}</b></div></div>`).join('');
+].map(([w,t,c])=>`<div class="rev"><div style="color:#c9824f">${stars5}</div><div style="margin-top:8px;color:#3b4d57">«${t}»</div><div class="who"><span class="av" style="background:${c}">${w[0]}</span><b>${w}</b></div></div>`).join('');
 
 /* ---------- поиск: одна разметка для блока на первом экране и для выпадающей панели ---------- */
 function searchFormHTML(p){
@@ -176,7 +181,7 @@ function renderGrid(){
   const L = filtered(); const n = G.ci!=null&&G.co!=null ? G.co-G.ci : 0;
   $('resInfo').textContent = n ? `${tx("Свободно")} ${L.length} ${tx("из")} ${guestApts.length} ${tx("на")} ${fDL(G.ci)} – ${fDL(G.co)} (${nightsWord(n)})${G.pets?tx(' · можно с животными'):''}` : `${L.length} ${plural(L.length,tx('квартира'),tx('квартиры'),tx('квартир'))}${G.pets?tx(' с животными'):''} ${tx("· выберите даты, чтобы увидеть свободные")}`;
   $('grid').innerHTML = L.length ? L.map(a=>`<article class="apt" data-open="${a.id}" tabindex="0">
-    <div class="ph">${photo(a,a.id%3,'g'+a.id)}${n?tx('<span class="badge free">Свободно на ваши даты</span>'):a.reviews>120?tx('<span class="badge">Популярное</span>'):a.rating>=4.9?tx('<span class="badge">Гости в восторге</span>'):''}<button class="fav ${fav.has(a.id)?'on':''}" data-fav="${a.id}" aria-label="${tx("В избранное")}">${ic('star',17)}</button>${a.pets.allowed?`<span class="pawb" title="${esc(petText(a.pets))}">${ic('paw',14)} ${tx("можно с животными")}</span>`:''}</div>
+    <div class="ph">${photo(a,coverKey(a),'g'+a.id)}${n?tx('<span class="badge free">Свободно на ваши даты</span>'):a.reviews>120?tx('<span class="badge">Популярное</span>'):a.rating>=4.9?tx('<span class="badge">Гости в восторге</span>'):''}<button class="fav ${fav.has(a.id)?'on':''}" data-fav="${a.id}" aria-label="${tx("В избранное")}">${ic('star',17)}</button>${a.pets.allowed?`<span class="pawb" title="${esc(petText(a.pets))}">${ic('paw',14)} ${tx("можно с животными")}</span>`:''}</div>
     <div class="bd"><div style="display:flex;justify-content:space-between;gap:8px;align-items:center"><span class="loc">${ic('pin',14)} ${tx(a.district)} · ${a.near}</span><span class="rt">${ic('star',14)} ${aptRating(a)} <small>(${a.reviews})</small></span></div>
       <h3>${esc(a.title)}</h3>
       <div class="feat"><span>${ic('bed',15)} ${tx(a.rooms)}</span><span>${ic('users',15)} ${tx("до")} ${a.maxGuests}</span><span>${ic('home',15)} ${a.area} ${tx("м²")}</span>${a.parking?`<span>${ic('parking',15)} ${tx("парковка")}</span>`:''}</div>
@@ -191,7 +196,8 @@ const DZ = {
   'Сарыарка':   {c:'#bfdbfe', d:'M40 60 L250 40 L262 150 L230 176 L40 170 Z', p:[150,108]},
   'Байконур':   {c:'#c7d2fe', d:'M250 40 L410 50 L420 168 L330 184 L262 150 Z', p:[335,110]},
   'Алматинский':{c:'#fde68a', d:'M410 50 L570 70 L580 300 L450 290 L420 168 Z', p:[495,175]},
-  'Есиль':      {c:'#bbf7d0', d:'M230 200 L420 190 L450 290 L420 350 L250 350 Z', p:[338,270]},
+  'Есиль':      {c:'#bbf7d0', d:'M230 200 L338 196 L346 350 L250 350 Z', p:[292,286]},
+  'Сарайшык':   {c:'#fed7aa', d:'M338 196 L420 190 L450 290 L420 350 L346 350 Z', p:[396,314]},
   'Нура':       {c:'#fbcfe8', d:'M30 190 L230 200 L250 350 L40 370 Z', p:[135,285]}
 };
 function renderMap(){
@@ -208,19 +214,19 @@ function renderMap(){
     <path d="M450 290 C480 320 510 345 530 356" stroke="#cbbfa8" stroke-width="4" stroke-dasharray="8 6" fill="none"/>
     <g transform="translate(530 356)"><circle r="16" fill="#fff" stroke="#10212b" stroke-width="1.5"/><svg x="-9" y="-9" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10212b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${I.plane}</svg></g>
     <text x="500" y="392" font-size="11.5" font-weight="700" fill="#10212b">${tx("Аэропорт NQZ")}</text>
-    <g transform="translate(300 232)"><rect x="-2" y="-18" width="4" height="18" fill="#10212b"/><circle cy="-22" r="6" fill="#e0a526" stroke="#10212b" stroke-width="1.5"/><text x="10" y="-4" font-size="11" fill="#10212b" font-weight="600">${tx("Байтерек")}</text></g>
+    <g transform="translate(300 232)"><rect x="-2" y="-18" width="4" height="18" fill="#10212b"/><circle cy="-22" r="6" fill="#c9824f" stroke="#10212b" stroke-width="1.5"/><text x="10" y="-4" font-size="11" fill="#10212b" font-weight="600">${tx("Байтерек")}</text></g>
     <g transform="translate(268 330)"><path d="M-10 0 L0 -18 L10 0Z" fill="#10212b"/><text x="13" y="-2" font-size="11" fill="#10212b" font-weight="600">${tx("Хан Шатыр")}</text></g>
     <g transform="translate(80 340)"><circle r="9" fill="#10212b"/><circle r="4" fill="#7cc3dc"/><text x="13" y="4" font-size="11" fill="#10212b" font-weight="600">${tx("ЭКСПО")}</text></g>
-    <g class="hv" transform="translate(376 222)"><circle r="9" fill="#e0a526" stroke="#10212b" stroke-width="1.5"/><path d="M0-5l1.5 3 3.3.5-2.4 2.3.6 3.3L0 2.5l-3 1.6.6-3.3-2.4-2.3 3.3-.5z" fill="#10212b"/><text x="14" y="-2" font-size="12" fill="#10212b" font-weight="800" stroke="#fff" stroke-width="3" paint-order="stroke">${tx("ЖК Хайвил")}</text><text x="14" y="12" font-size="10.5" fill="#3b4d57" font-weight="600" stroke="#fff" stroke-width="3" paint-order="stroke">${tx("большинство наших квартир")}</text></g>
-    <g transform="translate(414 256)"><rect x="-1" y="-16" width="2" height="18" fill="#10212b"/><rect x="1" y="-16" width="13" height="8" fill="#1d4ed8"/><path d="M1 -12h13" stroke="#fff" stroke-width="1.2"/><text x="18" y="-6" font-size="10.5" fill="#10212b" font-weight="700" stroke="#fff" stroke-width="3" paint-order="stroke">${tx("Посольство США")}</text></g>
+    <g class="hv" transform="translate(372 222)"><circle r="9" fill="#c9824f" stroke="#10212b" stroke-width="1.5"/><path d="M0-5l1.5 3 3.3.5-2.4 2.3.6 3.3L0 2.5l-3 1.6.6-3.3-2.4-2.3 3.3-.5z" fill="#10212b"/><text x="14" y="-2" font-size="12" fill="#10212b" font-weight="800" stroke="#fff" stroke-width="3" paint-order="stroke">${tx("ЖК Хайвил")}</text><text x="14" y="12" font-size="10.5" fill="#3b4d57" font-weight="600" stroke="#fff" stroke-width="3" paint-order="stroke">${tx("большинство наших квартир")}</text></g>
+    <g transform="translate(398 266)"><rect x="-1" y="-16" width="2" height="18" fill="#10212b"/><rect x="1" y="-16" width="13" height="8" fill="#1d4ed8"/><path d="M1 -12h13" stroke="#fff" stroke-width="1.2"/><text x="18" y="-6" font-size="10.5" fill="#10212b" font-weight="700" stroke="#fff" stroke-width="3" paint-order="stroke">${tx("Посольство США")}</text></g>
     <g transform="translate(70 80)"><rect x="-8" y="-6" width="16" height="10" rx="2" fill="#10212b"/><text x="12" y="3" font-size="11" fill="#10212b" font-weight="600">${tx("Ж/д вокзал")}</text></g>
     ${Object.entries(DZ).map(([n,z])=>{ const c=cnt(n); return `<g class="pin" data-dist="${n}" transform="translate(${z.p[0]} ${z.p[1]})">
       <text y="30" text-anchor="middle" font-size="12.5" font-weight="700" fill="#10212b" stroke="#fff" stroke-width="3" paint-order="stroke">${tx(n)}</text>
-      <g class="pin-b" style="transform-origin:0 0;transition:transform .15s"><path d="M0 12 C-4 4 -20 -2 -20 -16 A20 20 0 1 1 20 -16 C20 -2 4 4 0 12Z" fill="${G.district===n?'#e0a526':'#0b3b4a'}" stroke="#fff" stroke-width="2"/>
+      <g class="pin-b" style="transform-origin:0 0;transition:transform .15s"><path d="M0 12 C-4 4 -20 -2 -20 -16 A20 20 0 1 1 20 -16 C20 -2 4 4 0 12Z" fill="${G.district===n?'#c9824f':'#17191d'}" stroke="#fff" stroke-width="2"/>
       <text y="-10" text-anchor="middle" font-size="14" font-weight="800" fill="#fff">${c}</text></g></g>`; }).join('')}
   </svg><span class="note">${tx("Схема условная, не в масштабе · демо")}</span>`;
-  document.getElementById('dlist').innerHTML = `<button class="dl ${!G.district?'on':''}" data-dist=""><span class="sw" style="background:#0b3b4a"></span><div><b>${tx("Все районы")}</b><small>${tx("вся Астана")}</small></div><span class="n">${base.length} ${kvW(base.length)}</span></button>`
-    + DISTRICTS.map(d=>`<button class="dl ${G.district===d?'on':''}" data-dist="${d}"><span class="sw" style="background:${DZ[d].c}"></span><div><b>${tx(d)}</b><small>${d==='Есиль'?tx('ЖК Хайвил, посольство США'):LANDMARK[d]} ${tx("· от")} ${gm(minP(d))}</small></div><span class="n">${cnt(d)} ${kvW(cnt(d))}</span></button>`).join('');
+  document.getElementById('dlist').innerHTML = `<button class="dl ${!G.district?'on':''}" data-dist=""><span class="sw" style="background:#17191d"></span><div><b>${tx("Все районы")}</b><small>${tx("вся Астана")}</small></div><span class="n">${base.length} ${kvW(base.length)}</span></button>`
+    + DISTRICTS.map(d=>`<button class="dl ${G.district===d?'on':''}" data-dist="${d}"><span class="sw" style="background:${DZ[d].c}"></span><div><b>${tx(d)}</b><small>${d==='Сарайшык'?tx('ЖК Хайвил, посольство США'):LANDMARK[d]} ${tx("· от")} ${gm(minP(d))}</small></div><span class="n">${cnt(d)} ${kvW(cnt(d))}</span></button>`).join('');
 }
 
 /* ---------- большой календарь: выбор периода (и одной даты для трансфера) ----------
@@ -367,9 +373,9 @@ function trBlockHTML(T, c){
 }
 function carSVG(k){
   const body = k==='minivan'
-    ? '<path d="M6 30 L10 14 Q11 11 15 11 L52 11 Q58 11 61 16 L68 24 Q72 25 72 30 L72 34 L6 34Z" fill="#0f5566"/><path d="M14 14h12v9H12zM29 14h13v9H29zM45 14h8q3 0 5 3l4 6H45z" fill="#cfe7ee"/>'
-    : '<path d="M4 31 Q4 25 10 24 L20 22 L28 14 Q30 12 34 12 L48 12 Q52 12 55 15 L62 22 L70 24 Q74 25 74 30 L74 34 L4 34Z" fill="#0b3b4a"/><path d="M24 22 L31 15 H40 V22Z M43 15 H48 Q50 15 52 17 L57 22 H43Z" fill="#cfe7ee"/>';
-  return `<svg viewBox="0 0 78 42" width="78" height="42" aria-hidden="true">${body}<circle cx="20" cy="34" r="6" fill="#10212b"/><circle cx="20" cy="34" r="2.5" fill="#cbd5dc"/><circle cx="58" cy="34" r="6" fill="#10212b"/><circle cx="58" cy="34" r="2.5" fill="#cbd5dc"/><rect x="70" y="27" width="4" height="3" rx="1" fill="#e0a526"/></svg>`;
+    ? '<path d="M6 30 L10 14 Q11 11 15 11 L52 11 Q58 11 61 16 L68 24 Q72 25 72 30 L72 34 L6 34Z" fill="#2c3038"/><path d="M14 14h12v9H12zM29 14h13v9H29zM45 14h8q3 0 5 3l4 6H45z" fill="#cfe7ee"/>'
+    : '<path d="M4 31 Q4 25 10 24 L20 22 L28 14 Q30 12 34 12 L48 12 Q52 12 55 15 L62 22 L70 24 Q74 25 74 30 L74 34 L4 34Z" fill="#17191d"/><path d="M24 22 L31 15 H40 V22Z M43 15 H48 Q50 15 52 17 L57 22 H43Z" fill="#cfe7ee"/>';
+  return `<svg viewBox="0 0 78 42" width="78" height="42" aria-hidden="true">${body}<circle cx="20" cy="34" r="6" fill="#10212b"/><circle cx="20" cy="34" r="2.5" fill="#cbd5dc"/><circle cx="58" cy="34" r="6" fill="#10212b"/><circle cx="58" cy="34" r="2.5" fill="#cbd5dc"/><rect x="70" y="27" width="4" height="3" rx="1" fill="#c9824f"/></svg>`;
 }
 const trData = T => ({place:T.place, dir:T.dir, cls:T.cls, arrDate:T.dir!=='to'?T.arrDate:null, arrTime:T.dir!=='to'?T.arrTime:'', arrCode:T.dir!=='to'?T.arrCode:'', depDate:T.dir!=='from'?T.depDate:null, depTime:T.dir!=='from'?T.depTime:'', depCode:T.dir!=='from'?T.depCode:'', pax:T.pax, bags:T.bags, seats:T.seats, sign:T.sign, price:trPrice(T).total});
 /* проверка блока трансфера; bad(el, msg) подсвечивает поле */
@@ -401,7 +407,7 @@ function renderTransferSection(){
   $('trSec').innerHTML = `
   <div class="tr-grid">
     <div class="tr-info">
-      <div class="tr-sign" aria-hidden="true"><div class="sg-card"><small>ASTANA STAY</small><b>AIDANA SERIKOVA</b></div><div class="sg-txt"><b>${tx("Встретим с табличкой")}</b><span>${tx("в аэропорту NQZ или на вокзале «Нурлы Жол» и довезём до двери")}</span></div></div>
+      <div class="tr-sign" aria-hidden="true"><div class="sg-card"><small>${esc(((window.BRAND&&BRAND.name)||"").toUpperCase())}</small><b>AIDANA SERIKOVA</b></div><div class="sg-txt"><b>${tx("Встретим с табличкой")}</b><span>${tx("в аэропорту NQZ или на вокзале «Нурлы Жол» и довезём до двери")}</span></div></div>
       <ul class="tr-points">
         <li><span class="pi">${ic('sign',18)}</span><div><b>${tx("Табличка с вашим именем")}</b><span>${tx("Аэропорт — в зоне прилёта у выхода из таможни; вокзал — у выхода с платформы в главном зале.")}</span></div></li>
         <li><span class="pi">${ic('clock',18)}</span><div><b>${tx("Бесплатное ожидание")}</b><span>${tx("60 минут в аэропорту (следим за рейсом — задержка не страшна) и 20 минут на вокзале.")}</span></div></li>
@@ -452,10 +458,12 @@ function sumHTML(){ const t=totals(); if(!t.n) return `<div class="sum muted">${
   return `<div class="sum"><div class="ln"><span>${gmN(M.apt)} × ${nightsWord(t.n)}</span><span>${fc(t.cStay)}</span></div>${TR.bk.on?`<div class="ln"><span>${tx("Трансфер:")} ${P.dirs[TR.bk.dir].toLowerCase()}${TR.bk.place==='station'&&TR.bk.dir==='round'?tx(' (вокзал)'):''}</span><span>${fc(t.cTr)}</span></div>`:''}${M.pet&&M.apt.pets.allowed?`<div class="ln"><span>${ic('paw',13)} ${tx("Проживание с животным")}</span><span>${t.pet?fc(t.cPet):tx('<span style="color:var(--ok)">бесплатно</span>')}</span></div>`:''}<div class="ln"><span>${tx("Сервисный сбор")}</span><span style="color:var(--ok)">${fc(0)}</span></div><div class="ln tot"><span>${tx("Итого")}</span><span>${fc(t.cTotal)}</span></div></div>`; }
 function selText(){ const t=totals(); return M.ci!=null?(M.co!=null?`${fDL(M.ci)} → ${fDL(M.co)} · ${nightsWord(t.n)}`:`${tx("Заезд")} ${fDL(M.ci)} ${tx("— выберите дату выезда")}`):''; }
 const CAPS=[tx('Гостиная'),tx('Спальня'),tx('Кухня')];
+const capOf = v => v==='b' ? tx('Дом') : CAPS[v];
 function galleryHTML(a){
-  return `<div class="mgal"><div class="big">${photo(a,M.photo,'m0')}<span class="cap">${CAPS[M.photo]} ${tx("· иллюстрация")}</span></div><div class="side">${[1,2].map(k=>{ const v=(M.photo+k)%3; return `<div class="sm2" data-photo="${v}" style="cursor:pointer">${photo(a,v,'m'+k)}<span class="cap">${CAPS[v]}</span></div>`; }).join('')}</div></div>`;
+  const L = photoList(a), i0 = M.photo % L.length, v0 = L[i0];
+  return `<div class="mgal"><div class="big" data-photo="${(i0+1)%L.length}" style="cursor:pointer" title="${esc(tx('Следующее фото'))}">${photo(a,v0,'m0')}<span class="cap">${capOf(v0)}${v0==='b'?'':' '+tx("· иллюстрация")}</span>${L.length>3?`<span class="cnt">${i0+1} / ${L.length}</span>`:''}</div><div class="side">${[1,2].map(k=>{ const i=(i0+k)%L.length, v=L[i]; return `<div class="sm2" data-photo="${i}" style="cursor:pointer">${photo(a,v,'m'+k)}<span class="cap">${capOf(v)}</span></div>`; }).join('')}</div></div>`;
 }
-function miniApt(a,key,sub){ return `<div class="mini-apt"><div class="th">${photo(a,0,key)}</div><div><b style="font-size:14.5px">${esc(a.title)}</b><div class="muted" style="font-size:12.5px">${sub}</div></div></div>`; }
+function miniApt(a,key,sub){ return `<div class="mini-apt"><div class="th">${photo(a,coverKey(a),key)}</div><div><b style="font-size:14.5px">${esc(a.title)}</b><div class="muted" style="font-size:12.5px">${sub}</div></div></div>`; }
 function dateFieldsHTML(attr){
   return `<div class="dfs"><button type="button" class="dfb" ${attr}="ci" id="dfCi"><small>${tx("Заезд")}</small><b>${M.ci!=null?fDW(M.ci):tx('<span class="ph">Выбрать</span>')}</b></button><button type="button" class="dfb" ${attr}="co" id="dfCo"><small>${tx("Выезд")}</small><b>${M.co!=null?fDW(M.co):tx('<span class="ph">Выбрать</span>')}</b></button></div>`;
 }
@@ -492,7 +500,7 @@ function renderModal(){
     renderPK('apt');
   }
   else if(M.step==='form'){
-    const payIc = {card:['card','#0f5566'],cash:['cash','#15803d'],telegram:['send','#229ED9'],whatsapp:['msg','#22B35E']};
+    const payIc = {card:['card','#2c3038'],cash:['cash','#15803d'],telegram:['send','#229ED9'],whatsapp:['msg','#22B35E']};
     const paySub = {card:tx('Visa, Mastercard · мгновенное подтверждение'),cash:tx('Оплата в ₸ при заселении'),telegram:tx('Обсудить и оплатить в чате'),whatsapp:tx('Обсудить и оплатить в чате')};
     const p=a.pets;
     box.innerHTML = close + `<div class="pane has-bar"><div class="step-h"><button type="button" class="backb" data-back="details" aria-label="${tx("Назад")}">${ic('chevL',18)}</button><div><h2 style="font-size:22px">${tx("Оформление брони")}</h2><div class="muted" style="font-size:13px">${tx("Шаг 2 из 3 · без регистрации")}</div></div></div>
@@ -624,7 +632,7 @@ function renderTrModal(box, close){
   const T=TR.sa;
   if(M.step==='tr'){
     const rs=REF_SRC[M.ref.src];
-    box.innerHTML = close + `<div class="pane has-bar"><div class="step-h"><span class="pi-big">${ic('plane',20)}</span><div><h2 style="font-size:22px">${tx("Заказ трансфера")}</h2><div class="muted" style="font-size:13px">${tx("Для гостей Astana Stay, Airbnb, Booking и других · цена считается сразу").replace('Astana Stay', BRAND.name)}</div></div></div>
+    box.innerHTML = close + `<div class="pane has-bar"><div class="step-h"><span class="pi-big">${ic('plane',20)}</span><div><h2 style="font-size:22px">${tx("Заказ трансфера")}</h2><div class="muted" style="font-size:13px">${tx("Для гостей The Address, Airbnb, Booking и других · цена считается сразу").replace('The Address', BRAND.name)}</div></div></div>
       <form id="trForm" class="form-grid" novalidate><div>
         <h3 class="fh"><span>1</span> ${tx("Поездка")}</h3>
         ${trBlockHTML(T,'sa')}
@@ -636,7 +644,7 @@ function renderTrModal(box, close){
         <div class="two"><div class="field"><label for="tName">${tx("Имя и фамилия")}</label><input class="inp" id="tName" value="${esc(M.form.name)}" placeholder="${tx("Айдана Серикова")}" autocomplete="name"></div>
           <div class="field"><label for="tPhone">${tx("Телефон (Telegram/WhatsApp)")}</label><input class="inp" id="tPhone" type="tel" inputmode="tel" value="${esc(M.form.phone)}" placeholder="+7 7__ ___ __ __" autocomplete="tel"></div></div>
         <div class="field"><label for="tCom">${tx("Комментарий")} <span class="opt">${tx("(необязательно)")}</span></label><textarea class="inp" id="tCom" placeholder="${tx("Например: с нами собака в переноске, нужна помощь с коляской")}">${esc(M.form.comment)}</textarea></div>
-        <div class="pays">${Object.entries(TR_PAY).map(([k,v])=>`<button type="button" class="pay ${M.trPay===k?'on':''}" data-trpay="${k}"><span class="pi" style="background:${k==='card'?'#0f5566':'#15803d'}">${ic(k==='card'?'card':'cash',18)}</span><span><b>${v.label}</b><small>${v.sub}</small></span></button>`).join('')}</div>
+        <div class="pays">${Object.entries(TR_PAY).map(([k,v])=>`<button type="button" class="pay ${M.trPay===k?'on':''}" data-trpay="${k}"><span class="pi" style="background:${k==='card'?'#2c3038':'#15803d'}">${ic(k==='card'?'card':'cash',18)}</span><span><b>${v.label}</b><small>${v.sub}</small></span></button>`).join('')}</div>
         <div class="err" id="tErr"></div>
       </div>
       <aside><div class="bookbox" id="trSide"></div></aside></form></div>
