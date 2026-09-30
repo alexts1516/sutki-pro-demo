@@ -505,5 +505,8 @@ window.I18N && (I18N.en = {
 "Жубанова": "Zhubanov",
 "Рыскулова": "Ryskulov",
 "Сейфуллина": "Seifullin",
-"Кенесары": "Kenesary"
+"Кенесары": "Kenesary",
+"Язык": "Language",
+"Язык и валюта": "Language and currency",
+"Меню": "Menu"
 });

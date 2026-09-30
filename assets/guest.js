@@ -18,10 +18,12 @@ let CUR = localStorage.getItem(CUR_LS) || (IS_EN ? 'USD' : 'KZT'); if(!FX.show[C
 if(window.I18N) I18N.applyStatic();
 BRAND.apply();
 function renderSwitch(){
-  const shown = FX_CODES.filter(c=>c==='KZT' || FX.show[c]);
-  $('lsw').innerHTML = `<div class="lang" role="group" aria-label="Language / Язык"><button type="button" data-lang="ru" class="${IS_EN?'':'on'}" aria-pressed="${!IS_EN}">RU</button><button type="button" data-lang="en" class="${IS_EN?'on':''}" aria-pressed="${IS_EN}">EN</button></div>`
-    + (shown.length>1 ? `<label class="cursel"><span class="sr">${tx("Валюта")}</span><select id="curSel" aria-label="${tx("Валюта")}">${shown.map(c=>`<option value="${c}" ${c===CUR?'selected':''}>${FX_CUR[c].sym} ${c}</option>`).join('')}</select></label>` : '');
+  const shown = FX_CODES.filter(c=>c==='KZT' || FX.show[c]); const open = !!S_LP;
+  $('lsw').innerHTML = `<button type="button" class="lcb" id="lcb" aria-haspopup="true" aria-expanded="${open}" aria-controls="lpop" aria-label="${tx("Язык и валюта")}">${ic('globe',15)}<b>${IS_EN?'EN':'RU'}</b><span class="lcd">·</span><span class="lcs">${FX_CUR[CUR].sym} ${CUR}</span><svg class="ic" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+    <div class="lpop" id="lpop" ${open?'':'hidden'}><div class="lp-h">${tx("Язык")}</div><div class="lang" role="group" aria-label="Language / Язык"><button type="button" data-lang="ru" class="${IS_EN?'':'on'}" aria-pressed="${!IS_EN}">Русский</button><button type="button" data-lang="en" class="${IS_EN?'on':''}" aria-pressed="${IS_EN}">English</button></div>
+    ${shown.length>1?`<div class="lp-h">${tx("Валюта")}</div><div class="curs">${shown.map(c=>`<button type="button" data-cur="${c}" class="${c===CUR?'on':''}" aria-pressed="${c===CUR}"><b>${FX_CUR[c].sym}</b>${c}</button>`).join('')}</div>`:''}</div>`;
 }
+let S_LP = false;
 renderSwitch();
 const conv = kzt => fxConv(kzt, CUR, FX);
 const fc = v => fxFmt(v, CUR);
@@ -762,7 +764,19 @@ function rerenderAll(){
   syncSearch(); renderGrid(); renderPerks(); renderTransferSection(); renderSwitch();
   if($('modal').classList.contains('open')){ if(M.flow==='tr') readTrForm(); else readForm(); renderModal(); }
 }
-document.addEventListener('change', e=>{ if(e.target.id==='curSel'){ CUR=e.target.value; localStorage.setItem(CUR_LS, CUR); rerenderAll(); } });
+/* язык/валюта (одна кнопка с выпадающим окном) и меню-бургер в шапке */
+function setLP(v){ S_LP = v; const p=$('lpop'), b=$('lcb'); if(p) p.hidden=!v; if(b) b.setAttribute('aria-expanded', String(v)); }
+function setMenu(v){ const m=$('mnav'), b=$('burger'); m.hidden=!v; b.setAttribute('aria-expanded', String(v)); }
+document.addEventListener('click', e=>{
+  const t=e.target;
+  if(t.closest('#lcb')){ setLP(!S_LP); setMenu(false); return; }
+  const cb=t.closest('[data-cur]'); if(cb){ CUR=cb.dataset.cur; try{ localStorage.setItem(CUR_LS, CUR); }catch(_){} S_LP=false; rerenderAll(); return; }
+  if(S_LP && !t.closest('#lpop')) setLP(false);
+  if(t.closest('#burger')){ setMenu($('mnav').hidden); return; }
+  if(t.closest('#mnav a')) setMenu(false);
+});
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ if(S_LP) setLP(false); if(!$('mnav').hidden) setMenu(false); } });
+window.addEventListener('resize', ()=>{ if(innerWidth>1080 && !document.body.classList.contains('sb-on') && !$('mnav').hidden) setMenu(false); });
 document.addEventListener('click', e=>{ const b=e.target.closest('[data-lang]'); if(b && window.I18N) I18N.set(b.dataset.lang); });
 window.addEventListener('storage', e=>{
   if(e.key===STORE_KEY){ ST=Store.load(); rerenderAll(); }
