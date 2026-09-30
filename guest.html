@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b3b4a'/%3E%3Ctext x='16' y='22.5' font-size='18' text-anchor='middle' fill='white' font-family='Arial,sans-serif' font-weight='700'%3EA%3C/text%3E%3C/svg%3E">
+<meta name="theme-color" content="#0b3b4a">
+<title>Astana Stay — квартиры посуточно в Астане (демо)</title>
+<link rel="stylesheet" href="assets/guest.css">
+</head>
+<body>
+<div class="demo-ribbon"><b>Демо-данные</b> · сайт-пример для презентации: квартиры, цены и отзывы вымышленные, оплата не проводится</div>
+<header class="site">
+  <div class="wrap hdr">
+    <a class="logo" href="guest.html"><span class="logo-mk" id="logoMk"></span><span><b>Astana Stay</b><small>квартиры посуточно</small></span></a>
+    <nav class="hnav"><a href="#catalog">Квартиры</a><a href="#map">Карта</a><a href="#how">Как забронировать</a><a href="#contacts">Контакты</a></nav>
+    <div class="hright"><span class="demo-badge"><i></i>Демо-данные</span><a class="btn brand sm" href="#catalog">Забронировать</a></div>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="hero-sky" id="sky"></div>
+  <div class="wrap hero-in">
+    <span class="kicker" id="kicker"></span>
+    <h1>Квартиры посуточно в&nbsp;Астане — как дома, только лучше</h1>
+    <p>Новые ЖК на левом и правом берегу, заселение 24/7 через кодовый замок, чистота с фотоотчётом и трансфер из аэропорта.</p>
+  </div>
+</section>
+
+<div class="wrap search">
+  <form class="search-card" id="searchForm">
+    <div class="sf"><label for="fCi">Заезд</label><input type="date" id="fCi"></div>
+    <div class="sf"><label for="fCo">Выезд</label><input type="date" id="fCo"></div>
+    <div class="sf"><label for="fG">Гости</label><select id="fG"><option value="1">1 гость</option><option value="2" selected>2 гостя</option><option value="3">3 гостя</option><option value="4">4 гостя</option><option value="5">5 гостей</option><option value="6">6 гостей</option></select></div>
+    <div class="sf"><label for="fD">Район</label><select id="fD"><option value="">Все районы</option></select></div>
+    <div class="sf full"><label for="fP">Цена за ночь</label><select id="fP"><option value="0">Любая</option><option value="20000">до 20 000 ₸</option><option value="25000">до 25 000 ₸</option><option value="35000">до 35 000 ₸</option><option value="50000">до 50 000 ₸</option></select></div>
+    <button class="btn gold" type="submit" id="searchBtn"></button>
+  </form>
+  <div class="perks" id="perks"></div>
+</div>
+
+<section class="blk" id="catalog">
+  <div class="wrap">
+    <div class="sec-h"><div><h2>Наши квартиры</h2><p id="resInfo"></p></div>
+      <div class="tools"><div class="chips" id="roomChips"></div>
+        <select class="sort" id="sort" aria-label="Сортировка"><option value="pop">Сначала популярные</option><option value="cheap">Сначала дешевле</option><option value="exp">Сначала дороже</option><option value="rate">По рейтингу</option></select></div></div>
+    <div class="grid" id="grid"></div>
+  </div>
+</section>
+
+<section class="blk" id="map">
+  <div class="wrap">
+    <div class="sec-h"><div><h2>Квартиры на карте</h2><p>Нажмите на район, чтобы показать квартиры в нём</p></div></div>
+    <div class="map-wrap"><div class="map" id="mapBox"></div><div class="dlist" id="dlist"></div></div>
+  </div>
+</section>
+
+<section class="blk" id="how">
+  <div class="wrap">
+    <div class="sec-h"><div><h2>Как забронировать</h2><p>Без регистрации и комиссий площадок</p></div></div>
+    <div class="steps">
+      <div class="stp"><div class="n">1</div><b>Выберите квартиру и даты</b><span>В календаре видно, какие даты свободны.</span></div>
+      <div class="stp"><div class="n">2</div><b>Оставьте контакты</b><span>Оплатите картой, наличными при заселении или напишите нам в мессенджер.</span></div>
+      <div class="stp"><div class="n">3</div><b>Получите инструкцию</b><span>Код от замка и схему проезда пришлём в день заезда.</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="blk">
+  <div class="wrap">
+    <div class="sec-h"><div><h2>Отзывы гостей</h2><p>Средняя оценка 4,86 из 5 · отзывы вымышленные (демо)</p></div></div>
+    <div class="revs" id="revs"></div>
+  </div>
+</section>
+
+<footer class="site" id="contacts">
+  <div class="wrap">
+    <div class="fgrid">
+      <div><div class="logo" style="margin-bottom:10px"><span class="logo-mk" id="logoMk2"></span><span><b>Astana Stay</b></span></div>Квартиры посуточно в Астане. Работаем 24/7.</div>
+      <div><b>Контакты (демо)</b><br>+7 700 000 00 00<br>Telegram: @astanastay_demo<br>hello@astanastay.example</div>
+      <div><b>Для команды</b><br><a href="login.html?role=owner">Вход для владельца →</a><br><a href="login.html?role=cleaner">Вход для уборщика →</a><br><a href="index.html">О прототипе Сутки·Pro →</a></div>
+    </div>
+    <div class="fdemo"><span>Демо-данные: бренд «Astana Stay», квартиры, цены, отзывы и контакты вымышленные.</span><span>Работает на Сутки·Pro (прототип)</span></div>
+  </div>
+</footer>
+
+<div class="modal" id="modal" aria-modal="true" role="dialog"><div class="mbox" id="mbox"></div></div>
+
+<script src="assets/data.js"></script>
+<script src="assets/store.js"></script>
+<script src="assets/guest.js"></script>
+</body>
+</html>

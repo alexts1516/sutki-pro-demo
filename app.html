@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234f46e5'/%3E%3Ctext x='16' y='22.5' font-size='18' text-anchor='middle' fill='white' font-family='Arial,sans-serif' font-weight='700'%3E%D0%A1%3C/text%3E%3C/svg%3E">
+<title>Сутки·Pro — панель управления (демо)</title>
+<style>
+:root{
+  --bg:#f4f6fb; --card:#fff; --text:#0f172a; --text2:#334155; --muted:#64748b; --muted2:#94a3b8;
+  --border:#e6e9f0; --border2:#eef1f6; --primary:#4f46e5; --primary-50:#eef2ff; --primary-100:#e0e7ff;
+  --green:#16a34a; --green-50:#dcfce7; --amber:#d97706; --amber-50:#fef3c7; --red:#dc2626; --red-50:#fee2e2;
+  --blue:#2563eb; --blue-50:#dbeafe; --grey-50:#f1f5f9;
+  --radius:14px; --shadow:0 1px 2px rgba(15,23,42,.04),0 4px 16px rgba(15,23,42,.05);
+  --sidebar:232px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0}
+body{font-family:Inter,"SF Pro Text",-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;background:var(--bg);color:var(--text);font-size:14px;line-height:1.45;-webkit-font-smoothing:antialiased}
+button{font:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select,textarea{font:inherit;color:inherit}
+.ic{display:inline-block;vertical-align:middle;flex:none}
+h1,h2,h3{margin:0;letter-spacing:-.01em}
+.app{display:flex;min-height:100vh}
+.sidebar{width:var(--sidebar);flex:none;background:#0f172a;color:#cbd5e1;display:flex;flex-direction:column;position:fixed;inset:0 auto 0 0;z-index:40;transition:transform .25s}
+.brand{display:flex;align-items:center;gap:10px;padding:20px 20px 18px}
+.logo{width:34px;height:34px;border-radius:10px;background:linear-gradient(135deg,#6366f1,#a855f7);display:grid;place-items:center;color:#fff;font-weight:800;font-size:15px;box-shadow:0 4px 14px rgba(99,102,241,.45)}
+.brand b{color:#fff;font-size:16px;letter-spacing:-.01em}
+.brand small{display:block;color:#64748b;font-size:11px;margin-top:1px}
+.nav{padding:6px 12px;display:flex;flex-direction:column;gap:2px}
+.nav-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#475569;padding:14px 12px 6px}
+.nav button{white-space:nowrap;display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:10px;color:#cbd5e1;font-weight:500;text-align:left;transition:background .15s,color .15s}
+.nav button:hover{background:rgba(255,255,255,.06);color:#fff}
+.nav button.active{background:rgba(99,102,241,.18);color:#fff}
+.nav button.active .ic{color:#a5b4fc}
+.nav .count{margin-left:auto;background:#ef4444;color:#fff;font-size:11px;font-weight:700;border-radius:999px;padding:1px 7px;min-width:20px;text-align:center}
+.side-foot{margin-top:auto;padding:16px}
+.demo-card{background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:#fcd34d;border-radius:12px;padding:12px;font-size:12px;line-height:1.4}
+.demo-card b{display:block;color:#fde68a;margin-bottom:2px}
+.main-wrap{flex:1;margin-left:var(--sidebar);min-width:0;display:flex;flex-direction:column}
+.topbar{height:60px;background:rgba(255,255,255,.85);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:14px;padding:0 28px;position:sticky;top:0;z-index:30}
+.menu-btn{display:none;width:38px;height:38px;border-radius:10px;align-items:center;justify-content:center;border:1px solid var(--border)}
+.search{display:flex;align-items:center;gap:8px;background:var(--grey-50);border:1px solid var(--border);border-radius:10px;padding:0 12px;height:38px;width:300px;color:var(--muted)}
+.search input{border:none;background:none;outline:none;flex:1;min-width:0}
+.top-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+.demo-badge{display:inline-flex;align-items:center;gap:6px;background:var(--amber-50);color:#92400e;border:1px solid #fde68a;font-weight:600;font-size:12px;padding:5px 10px;border-radius:999px;white-space:nowrap}
+.demo-badge i{width:7px;height:7px;border-radius:50%;background:#f59e0b;display:inline-block}
+.today-lbl{color:var(--muted);font-size:13px;white-space:nowrap}
+.icon-btn{width:38px;height:38px;border-radius:10px;display:grid;place-items:center;border:1px solid var(--border);background:#fff;color:var(--text2);position:relative;flex:none}
+.icon-btn .dot{position:absolute;top:8px;right:9px;width:8px;height:8px;border-radius:50%;background:#ef4444;border:2px solid #fff}
+.avatar{width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;display:grid;place-items:center;font-weight:700;font-size:13px;flex:none}
+.main{padding:24px 28px 40px;min-width:0}
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:16px;margin-bottom:18px;flex-wrap:wrap}
+.page-head h1{font-size:24px;font-weight:700}
+.sub{color:var(--muted);margin:4px 0 0;font-size:13.5px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+.card-h{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px 18px 0;flex-wrap:wrap}
+.card-h h3{font-size:15px;font-weight:650}
+.card-b{padding:16px 18px 18px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 14px;border-radius:10px;font-weight:600;font-size:13px;border:1px solid var(--border);background:#fff;color:var(--text2);transition:all .15s;white-space:nowrap}
+.btn:hover{border-color:#cbd5e1;background:#f8fafc}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff;box-shadow:0 2px 8px rgba(79,70,229,.3)}
+.btn.primary:hover{background:#4338ca}
+.btn.success{background:var(--green);border-color:var(--green);color:#fff}
+.btn.success:hover{background:#15803d}
+.btn.sm{height:30px;padding:0 10px;font-size:12.5px;border-radius:8px}
+.btn.ghost{border-color:transparent;background:transparent}
+.chip{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap;line-height:1.5}
+.chip i{width:6px;height:6px;border-radius:50%;background:currentColor;display:inline-block}
+.chip.green{background:var(--green-50);color:#15803d}
+.chip.amber{background:var(--amber-50);color:#b45309}
+.chip.red{background:var(--red-50);color:#b91c1c}
+.chip.blue{background:var(--blue-50);color:#1d4ed8}
+.chip.violet{background:#ede9fe;color:#6d28d9}
+.chip.grey{background:var(--grey-50);color:#475569}
+.chb{display:inline-grid;place-items:center;border-radius:50%;color:#fff;font-weight:800;flex:none;font-size:11px;line-height:1}
+.tabs{display:inline-flex;background:#eef1f6;border-radius:10px;padding:3px;gap:2px;flex-wrap:wrap}
+.tabs button{padding:6px 12px;border-radius:8px;font-weight:600;font-size:13px;color:var(--muted);white-space:nowrap}
+.tabs button.active{background:#fff;color:var(--text);box-shadow:0 1px 3px rgba(15,23,42,.1)}
+.tabs button .n{color:var(--muted2);font-weight:600;margin-left:4px}
+.muted{color:var(--muted)}
+.row{display:flex;align-items:center;gap:8px}
+.grow{flex:1;min-width:0}
+.ellipsis{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.table-wrap{overflow-x:auto}
+table.t{width:100%;border-collapse:collapse;font-size:13.5px}
+table.t th{text-align:left;font-size:12px;color:var(--muted);font-weight:600;padding:10px 14px;border-bottom:1px solid var(--border);background:#fafbfd;white-space:nowrap;position:sticky;top:0;z-index:1}
+table.t th.sortable{cursor:pointer;user-select:none}
+table.t th.sortable:hover{color:var(--text)}
+table.t td{padding:11px 14px;border-bottom:1px solid var(--border2);white-space:nowrap}
+table.t tr:last-child td{border-bottom:none}
+table.t tbody tr:hover td{background:#fafbff}
+table.t .num{text-align:right;font-variant-numeric:tabular-nums}
+.clickable{cursor:pointer}
+.kpis{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;margin-bottom:18px}
+.kpi{padding:14px 16px;display:flex;gap:12px;align-items:flex-start;min-width:0}
+.kpi .k-ic{width:38px;height:38px;border-radius:11px;display:grid;place-items:center;flex:none}
+.kpi .k-lbl{color:var(--muted);font-size:12.5px;font-weight:500}
+.kpi .k-val{font-size:22px;font-weight:700;letter-spacing:-.02em;margin-top:1px;white-space:nowrap}
+.kpi .k-sub{color:var(--muted);font-size:12px;margin-top:1px}
+.kpi .k-sub b{color:var(--green);font-weight:600}
+.cal-toolbar{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.nav-group{display:flex;align-items:center;gap:6px}
+.nav-group .btn{height:34px}
+.nav-group .sq{width:34px;padding:0}
+.range{font-weight:650;margin-left:6px;white-space:nowrap}
+.filters{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-left:auto}
+.fchip{display:inline-flex;align-items:center;gap:6px;padding:5px 10px 5px 6px;border-radius:999px;border:1px solid var(--border);font-size:12.5px;font-weight:600;background:#fff;color:var(--text2);transition:all .15s}
+.fchip .chb{width:18px;height:18px;font-size:9.5px}
+.fchip.off{opacity:.45;background:#f8fafc}
+.fchip.off .chb{background:#94a3b8!important}
+.fchip:hover{border-color:#cbd5e1}
+.cal-scroll{overflow:auto;max-height:calc(100vh - 330px);min-height:380px;position:relative}
+.cal{position:relative}
+.cal-head{position:sticky;top:0;z-index:6;display:flex;background:#fff;border-bottom:1px solid var(--border)}
+.cal-corner{position:sticky;left:0;z-index:7;background:#fff;flex:none;display:flex;align-items:flex-end;padding:0 14px 8px;font-size:12px;font-weight:600;color:var(--muted);border-right:1px solid var(--border)}
+.cal-days{position:relative;flex:none}
+.cal-months{display:flex;height:24px;border-bottom:1px solid var(--border2)}
+.cal-month{font-size:11.5px;font-weight:700;color:var(--text2);padding:5px 8px;border-left:1px solid var(--border2);white-space:nowrap;overflow:hidden}
+.cal-daycells{display:flex;height:40px}
+.cal-dc{flex:none;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:10.5px;color:var(--muted);border-left:1px solid var(--border2);line-height:1.15}
+.cal-dc b{font-size:12.5px;color:var(--text);font-weight:600}
+.cal-dc.we{background:#fafbfd}
+.cal-dc.we b{color:#e11d48}
+.cal-dc.today b{background:var(--primary);color:#fff;border-radius:6px;padding:0 5px}
+.cal-dc.today{color:var(--primary);font-weight:700}
+.cal-row{display:flex;height:46px;border-bottom:1px solid var(--border2)}
+.cal-row:hover .cal-apt{background:#fafbff}
+.cal-apt{position:sticky;left:0;z-index:4;background:#fff;flex:none;padding:6px 14px;border-right:1px solid var(--border);display:flex;flex-direction:column;justify-content:center;min-width:0}
+.cal-apt b{font-size:12.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal-apt span{font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cal-track{position:relative;flex:none}
+.cal-bgc{position:absolute;top:0;bottom:0}
+.cal-bgc.we{background:rgba(148,163,184,.07)}
+.cal-bgc.today{background:rgba(79,70,229,.07);border-left:1.5px solid rgba(79,70,229,.35)}
+.bar{position:absolute;top:8px;height:29px;border-radius:8px;color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center;gap:5px;padding:0 10px 0 12px;overflow:hidden;white-space:nowrap;cursor:pointer;box-shadow:0 1px 2px rgba(15,23,42,.15);transition:transform .12s,box-shadow .12s;z-index:1}
+.bar:hover{transform:translateY(-1px);box-shadow:0 4px 12px rgba(15,23,42,.2);z-index:3}
+.bar span{overflow:hidden;text-overflow:ellipsis}
+.bar .ic{opacity:.9}
+.bar.cut-l{border-top-left-radius:0;border-bottom-left-radius:0}
+.bar.cut-r{border-top-right-radius:0;border-bottom-right-radius:0}
+.udot{width:7px;height:7px;border-radius:50%;background:#fff;box-shadow:0 0 0 2px rgba(220,38,38,.95);flex:none;margin:0 2px 0 1px}
+.bar.block{background:repeating-linear-gradient(135deg,#cbd5e1 0 6px,#d7dee8 6px 12px);color:#334155;box-shadow:none;border:1px solid #b8c2cf}
+.clean-mk{position:absolute;top:13px;width:20px;height:20px;margin-left:-10px;border-radius:50%;background:#fff;border:1.5px solid #f59e0b;color:#d97706;display:grid;place-items:center;z-index:2;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.legend{display:flex;gap:16px;flex-wrap:wrap;padding:12px 16px;border-top:1px solid var(--border);font-size:12px;color:var(--muted)}
+.legend>span{display:inline-flex;align-items:center;gap:6px}
+.lg-sw{width:16px;height:10px;border-radius:3px;display:inline-block}
+.backdrop{position:fixed;inset:0;background:rgba(15,23,42,.35);opacity:0;pointer-events:none;transition:opacity .2s;z-index:60}
+.backdrop.open{opacity:1;pointer-events:auto}
+.drawer{position:fixed;top:0;right:0;bottom:0;width:420px;max-width:100%;background:#fff;z-index:61;transform:translateX(105%);transition:transform .25s ease;display:flex;flex-direction:column;box-shadow:-10px 0 40px rgba(15,23,42,.15)}
+.drawer.open{transform:none}
+.dr-head{padding:18px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.dr-body{padding:20px;overflow:auto;flex:1}
+.dr-foot{padding:14px 20px;border-top:1px solid var(--border);display:flex;gap:8px;flex-wrap:wrap}
+.guest-big{font-size:20px;font-weight:700;letter-spacing:-.01em}
+.kv{display:grid;grid-template-columns:120px 1fr;gap:10px 12px;margin:18px 0 0;font-size:13.5px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;font-weight:500;min-width:0}
+.note{margin-top:18px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:10px 12px;font-size:13px;color:#78350f}
+.stay-box{display:flex;margin-top:16px;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.stay-box>div{flex:1;padding:10px 12px}
+.stay-box>div+div{border-left:1px solid var(--border)}
+.stay-box small{color:var(--muted);font-size:11.5px;display:block}
+.stay-box b{font-size:14px}
+.toasts{position:fixed;right:20px;bottom:20px;z-index:100;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.toast{background:#0f172a;color:#fff;padding:11px 14px;border-radius:12px;box-shadow:0 10px 30px rgba(15,23,42,.3);display:flex;align-items:center;gap:10px;font-size:13.5px;animation:tin .25s ease;max-width:380px}
+.toast .t-ic{width:22px;height:22px;border-radius:50%;background:#22c55e;display:grid;place-items:center;flex:none}
+.toast.out{animation:tout .25s ease forwards}
+@keyframes tin{from{opacity:0;transform:translateY(10px)}}
+@keyframes tout{to{opacity:0;transform:translateY(10px)}}
+.req-list{display:flex;flex-direction:column}
+.req{display:flex;gap:14px;padding:16px 18px;border-bottom:1px solid var(--border2);transition:background .4s}
+.req:last-child{border-bottom:none}
+.req.new{background:linear-gradient(90deg,rgba(79,70,229,.05),transparent 40%)}
+.req.flash{background:#f0fdf4}
+.req-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.req-top b{font-size:14.5px}
+.req-time{margin-left:auto;color:var(--muted2);font-size:12px;white-space:nowrap}
+.req-msg{color:var(--text2);margin:5px 0 8px;font-size:13.5px}
+.req-meta{display:flex;gap:14px;flex-wrap:wrap;color:var(--muted);font-size:12.5px}
+.req-meta span{display:inline-flex;align-items:center;gap:5px}
+.req-actions{display:flex;flex-direction:column;gap:6px;align-items:flex-end;justify-content:center;flex:none}
+.kanban{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px;align-items:start}
+.col{background:#eef1f6;border-radius:var(--radius);padding:12px;min-width:0}
+.col-h{display:flex;align-items:center;gap:8px;padding:2px 4px 12px;font-weight:650}
+.col-h .cnt{background:#fff;border-radius:999px;font-size:12px;padding:1px 8px;color:var(--muted)}
+.col-h .cdot{width:9px;height:9px;border-radius:50%}
+.task{background:#fff;border:1px solid var(--border);border-radius:12px;padding:13px;margin-bottom:10px;box-shadow:0 1px 2px rgba(15,23,42,.04);animation:tin .25s}
+.task:last-child{margin-bottom:0}
+.task h4{margin:0;font-size:14px;font-weight:650}
+.task .addr{color:var(--muted);font-size:12px;margin-top:1px}
+.task-meta{display:flex;flex-wrap:wrap;gap:6px 12px;margin-top:10px;font-size:12.5px;color:var(--text2)}
+.task-meta span{display:inline-flex;align-items:center;gap:5px}
+.cleaner{display:flex;align-items:center;gap:8px;margin-top:10px;font-size:12.5px}
+.cleaner .avatar{width:26px;height:26px;font-size:11px}
+.prog{height:6px;background:#eef1f6;border-radius:99px;overflow:hidden;margin-top:10px}
+.prog i{display:block;height:100%;background:linear-gradient(90deg,#6366f1,#8b5cf6);border-radius:99px;transition:width .3s}
+.checklist{list-style:none;margin:10px 0 0;padding:0;font-size:12.5px}
+.checklist li{display:flex;align-items:center;gap:8px;padding:3px 0;cursor:pointer;color:var(--text2)}
+.checklist li .cb{width:16px;height:16px;border-radius:5px;border:1.5px solid #cbd5e1;display:grid;place-items:center;flex:none;color:#fff;transition:all .15s}
+.checklist li.on .cb{background:var(--green);border-color:var(--green)}
+.checklist li.on{color:var(--muted);text-decoration:line-through}
+.checklist.ro li{cursor:default}
+.photos{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
+.photo{position:relative;border-radius:8px;overflow:hidden;aspect-ratio:4/3;border:1px solid var(--border)}
+.photo svg{width:100%;height:100%;display:block}
+.photo span{position:absolute;left:0;right:0;bottom:0;font-size:9.5px;font-weight:600;color:#fff;background:linear-gradient(transparent,rgba(15,23,42,.6));padding:8px 2px 3px;text-align:center;white-space:nowrap;overflow:hidden}
+.task-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;padding-top:10px;border-top:1px dashed var(--border);flex-wrap:wrap}
+details.cl summary{cursor:pointer;font-size:12.5px;color:var(--text2);margin-top:10px;font-weight:600;list-style:none;display:flex;align-items:center;gap:6px}
+details.cl summary::-webkit-details-marker{display:none}
+.urgent{background:var(--red-50);color:#b91c1c;font-weight:600;font-size:11.5px;padding:2px 7px;border-radius:6px;white-space:nowrap}
+.rep{display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid var(--border2);flex-wrap:wrap}
+.rep:last-child{border-bottom:none}
+.rep.fresh{animation:fresh 2.4s ease}
+@keyframes fresh{0%{background:#e0e7ff}100%{background:transparent}}
+.prio{width:4px;align-self:stretch;border-radius:4px;flex:none}
+.rep-title{font-weight:600;font-size:14px}
+.rep-title.done{text-decoration:line-through;color:var(--muted)}
+.rep-meta{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12.5px;color:var(--muted);margin-top:3px}
+.rep-meta span{display:inline-flex;align-items:center;gap:5px}
+.add-form{display:none;gap:8px;padding:14px 18px;border-bottom:1px solid var(--border);background:#fafbfd;flex-wrap:wrap}
+.add-form.open{display:flex}
+.add-form input,.add-form select{height:36px;border:1px solid var(--border);border-radius:9px;padding:0 10px;background:#fff;outline:none;max-width:100%}
+.add-form input:focus,.add-form select:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-100)}
+.voice{position:fixed;inset:0;background:rgba(15,23,42,.5);backdrop-filter:blur(3px);z-index:80;display:none;align-items:center;justify-content:center;padding:20px}
+.voice.open{display:flex}
+.voice-card{background:#fff;border-radius:20px;padding:30px 28px 22px;width:380px;max-width:100%;text-align:center;box-shadow:0 30px 80px rgba(15,23,42,.35);animation:tin .2s}
+.mic-wrap{position:relative;width:96px;height:96px;margin:0 auto 18px}
+.mic{position:absolute;inset:14px;border-radius:50%;background:linear-gradient(135deg,#6366f1,#a855f7);display:grid;place-items:center;color:#fff;box-shadow:0 8px 24px rgba(99,102,241,.5);transition:background .3s}
+.ring{position:absolute;inset:0;border-radius:50%;background:rgba(99,102,241,.25);animation:pulse 1.4s ease-out infinite}
+.ring.r2{animation-delay:.7s}
+.voice.done .ring{animation:none;opacity:0}
+.voice.done .mic{background:linear-gradient(135deg,#22c55e,#16a34a);box-shadow:0 8px 24px rgba(34,197,94,.45)}
+@keyframes pulse{0%{transform:scale(.7);opacity:1}100%{transform:scale(1.35);opacity:0}}
+.voice-title{font-size:18px;font-weight:700}
+.wave{display:flex;justify-content:center;align-items:center;gap:4px;height:36px;margin:14px 0 6px}
+.wave i{width:4px;border-radius:4px;background:#818cf8;height:8px;animation:wv 1s ease-in-out infinite}
+.voice.done .wave i{animation:none;height:4px;background:#cbd5e1}
+@keyframes wv{0%,100%{height:6px}50%{height:32px}}
+.voice-text{min-height:48px;font-size:15px;color:var(--text2);padding:10px 12px;background:var(--grey-50);border-radius:12px;margin:10px 0 16px;display:flex;align-items:center;justify-content:center}
+.voice-text .caret{display:inline-block;width:2px;height:18px;background:var(--primary);margin-left:2px;animation:blink .8s steps(1) infinite;vertical-align:middle}
+@keyframes blink{50%{opacity:0}}
+.fin-grid{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1.4fr);gap:16px;margin-bottom:16px}
+.fin-grid2{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:16px;margin-bottom:16px}
+.donut-wrap{display:flex;align-items:center;gap:22px;flex-wrap:wrap}
+.donut-leg{flex:1;min-width:180px;display:flex;flex-direction:column;gap:9px}
+.donut-leg div{display:flex;align-items:center;gap:8px;font-size:13px}
+.donut-leg .sw{width:10px;height:10px;border-radius:3px;flex:none}
+.donut-leg .v{margin-left:auto;font-weight:600;font-variant-numeric:tabular-nums;white-space:nowrap}
+.donut-leg .p{color:var(--muted);width:38px;text-align:right;font-variant-numeric:tabular-nums}
+.exp-row{margin-bottom:12px}
+.exp-row:last-child{margin-bottom:0}
+.exp-row .row{justify-content:space-between;font-size:13px;margin-bottom:5px}
+.exp-bar{height:8px;border-radius:99px;background:#eef1f6;overflow:hidden}
+.exp-bar i{display:block;height:100%;border-radius:99px}
+.occ-cell{display:flex;align-items:center;gap:8px}
+.occ-cell .exp-bar{width:64px;height:6px}
+.pos{color:var(--green)} .neg{color:var(--red)}
+.empty{padding:40px;text-align:center;color:var(--muted)}
+/* --- пользователи, сотрудники, доступ --- */
+.user-box{display:flex;align-items:center;gap:10px}
+.user-chip{display:flex;align-items:center;gap:9px;padding:3px 10px 3px 3px;border:1px solid var(--border);border-radius:999px;background:#fff}
+.user-chip .avatar{width:30px;height:30px;font-size:12px}
+.user-chip b{display:block;font-size:13px;line-height:1.15}
+.user-chip small{display:block;font-size:11px;color:var(--muted);line-height:1.15}
+.role-chip{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.role-owner{background:#ede9fe;color:#6d28d9}.role-admin{background:var(--blue-50);color:#1d4ed8}.role-cleaner{background:#d1fae5;color:#047857}
+.switch{position:relative;width:38px;height:22px;border-radius:999px;background:#cbd5e1;transition:background .15s;flex:none;display:inline-block;vertical-align:middle}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .15s}
+.switch.on{background:var(--green)}.switch.on::after{transform:translateX(16px)}
+.switch[disabled]{opacity:.45;cursor:not-allowed}
+.st-dot{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;font-weight:600}
+.st-dot i{width:8px;height:8px;border-radius:50%;display:inline-block}
+.act-list{max-height:460px;overflow:auto}
+.act{display:flex;gap:12px;padding:11px 18px;border-bottom:1px solid var(--border2);align-items:flex-start}
+.act:last-child{border-bottom:none}
+.act .a-ic{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;flex:none}
+.act .a-t{color:var(--muted2);font-size:12px;white-space:nowrap;margin-left:auto;font-variant-numeric:tabular-nums}
+.act.fresh{background:linear-gradient(90deg,rgba(79,70,229,.06),transparent 60%)}
+table.staff-t th,table.staff-t td{padding-left:10px;padding-right:10px}
+table.staff-t th:first-child,table.staff-t td:first-child{padding-left:18px}
+.staff-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:16px;margin-top:16px}
+.photo img{width:100%;height:100%;object-fit:cover;display:block}
+.deny{min-height:100vh;display:grid;place-items:center;padding:24px}
+.deny-card{background:#fff;border:1px solid var(--border);border-radius:20px;box-shadow:var(--shadow);max-width:460px;width:100%;padding:32px 28px;text-align:center}
+.deny-ic{width:64px;height:64px;border-radius:18px;background:var(--red-50);color:var(--red);display:grid;place-items:center;margin:0 auto 16px}
+.src-note{font-size:12px;color:var(--muted);margin-top:6px}
+@media (max-width:1000px){.staff-grid{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:640px){.user-chip .u-txt{display:none}.user-chip{padding:3px}}
+@media (max-width:1180px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.search{width:200px}}
+@media (max-width:1000px){.fin-grid,.fin-grid2{grid-template-columns:minmax(0,1fr)}}
+@media (max-width:900px){
+  .sidebar{transform:translateX(-100%)}
+  .sidebar.open{transform:none;box-shadow:10px 0 40px rgba(0,0,0,.3)}
+  .main-wrap{margin-left:0}
+  .menu-btn{display:inline-flex}
+  .topbar{padding:0 14px}
+  .search,.today-lbl{display:none}
+  .main{padding:18px 14px 30px}
+  .kanban{grid-template-columns:minmax(0,1fr)}
+  .kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:10px}
+  .filters{margin-left:0}
+  .req{flex-wrap:wrap}
+  .req-actions{flex-direction:row;width:100%;justify-content:flex-end;flex-wrap:wrap}
+  .cal-scroll{max-height:70vh}
+}
+@media (max-width:520px){.kpi{padding:12px}.kpi .k-val{font-size:18px}.kpi .k-ic{display:none}.page-head h1{font-size:20px}.demo-badge span{display:none}.kv{grid-template-columns:100px 1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><div class="logo">С</div><div><b>Сутки·Pro</b><small id="brandSub">Панель владельца</small></div></div>
+    <nav class="nav" id="nav"></nav>
+    <div class="side-foot"><div class="demo-card"><b>Демо-данные</b>Все квартиры, гости и суммы — вымышленные, сгенерированы для примера.</div></div>
+  </aside>
+  <div class="main-wrap">
+    <header class="topbar">
+      <button class="menu-btn" data-action="toggle-menu" aria-label="Меню"></button>
+      <label class="search"><span id="searchIc"></span><input placeholder="Поиск гостя, квартиры, брони…"></label>
+      <div class="top-right">
+        <span class="demo-badge" title="Все данные на этой странице — вымышленные"><i></i>Демо-данные<span>&nbsp;· пример</span></span>
+        <span class="today-lbl" id="todayLbl"></span>
+        <button class="icon-btn" data-action="bell" aria-label="Уведомления" id="bellBtn"></button>
+        <div class="user-box" id="userBox"></div>
+      </div>
+    </header>
+    <main class="main" id="main"></main>
+  </div>
+</div>
+<div class="backdrop" id="backdrop" data-action="close-drawer"></div>
+<aside class="drawer" id="drawer"></aside>
+<div class="voice" id="voice"></div>
+<div class="toasts" id="toasts"></div>
+<script src="assets/data.js"></script>
+<script src="assets/store.js"></script>
+<script>
+(function(){
+'use strict';
+/* =================== Демо-авторизация и права =================== */
+const USER = Auth.check();
+if(!USER){ location.replace('login.html?role=owner&next=app'); return; }
+if(USER.role==='cleaner'){
+  document.title = 'Нет доступа — Сутки·Pro (демо)';
+  document.body.innerHTML = `<div class="deny"><div class="deny-card"><div class="deny-ic">${ic('lock',30)}</div>
+    <h1 style="font-size:21px">Нет доступа к панели владельца</h1>
+    <p class="sub" style="margin:10px 0 18px;font-size:14px">Вы вошли как <b>${esc(USER.short)}</b> (уборщик). Уборщикам доступен только раздел «Мои задачи» — без финансов, контактов гостей и задач других сотрудников.</p>
+    <div class="row" style="justify-content:center;flex-wrap:wrap"><a class="btn primary" href="cleaner.html" style="text-decoration:none">${ic('sparkle',16)} Мои задачи</a><button class="btn" id="denyLogout">${ic('logout',16)} Войти другим пользователем</button></div>
+    <div style="margin-top:20px"><span class="demo-badge"><i></i>Демо-данные · пример</span></div></div></div>`;
+  document.getElementById('denyLogout').onclick = ()=>{ Auth.logout(); location.href='login.html'; };
+  return;
+}
+const IS_OWNER = USER.role==='owner';
+const ME = staffById(USER.id) || {short:USER.short, g:'f'};
+/* данные и утилиты — assets/data.js, общее состояние — assets/store.js */
+
+/* =================== Состояние =================== */
+const S = {
+  view:'calendar',
+  calStart: TODAY - ((wd(TODAY)+6)%7),   // понедельник текущей недели
+  calDays: 35,
+  filters: new Set(CH_KEYS),
+  reqTab:'all', cleanTab:'today', repTab:'all',
+  finMonth: 9, finSort:{key:'revenue',dir:-1},
+  voiceIdx:0
+};
+const VIEWS = [
+  ['calendar','Календарь','calendar'],['requests','Заявки','inbox'],['cleaning','Уборки','sparkle'],
+  ['repairs','Ремонты и задачи','wrench'],['finance','Финансы','chart'],['transfers','Трансферы','car'],['staff','Сотрудники','users']
+].filter(v=> IS_OWNER || v[0]!=='finance');   // администратор не видит «Финансы»
+const ALL_VIEWS = ['calendar','requests','cleaning','repairs','finance','transfers','staff'];
+
+/* =================== Расчёты =================== */
+function monthStats(month){
+  const y=2026, from=di(y,month+1,1), to=di(y,month+2,1), days=to-from;
+  const byCh = {}; CH_KEYS.forEach(k=>byCh[k]=0);
+  const per = {}; apartments.forEach(a=>per[a.id]={apt:a,nights:0,revenue:0,comm:0,cleanings:0,repairs:0});
+  const daily = new Array(days).fill(0);
+  let revenue=0, nights=0, comm=0, clean=0, stays=0;
+  bookings.forEach(b=>{
+    const s=Math.max(b.ci,from), e=Math.min(b.co,to);
+    if(e>s){ const n=e-s, r=n*b.nightly; revenue+=r; nights+=n; byCh[b.source]+=r; per[b.aptId].nights+=n; per[b.aptId].revenue+=r;
+      const c=r*CH[b.source].comm; comm+=c; per[b.aptId].comm+=c; for(let d=s; d<e; d++) daily[d-from]++; }
+    if(b.co>=from && b.co<to){ clean++; per[b.aptId].cleanings++; }
+    if(b.ci>=from && b.ci<to) stays++;
+  });
+  let rep=0; repairs.forEach(r=>{ if(r.date>=from && r.date<to){ rep+=r.cost; per[r.aptId].repairs+=r.cost; } });
+  const UTIL=32000, CLEAN=8000, STAFF=1450000, TAX=.04;
+  const util = UTIL*apartments.length, cleanCost = clean*CLEAN, staff = STAFF, tax = revenue*TAX;
+  const expenses = comm+util+cleanCost+rep+staff+tax;
+  const staffPer = STAFF/apartments.length;
+  const rows = Object.values(per).map(p=>{ const exp=p.comm+UTIL+p.cleanings*CLEAN+p.repairs+staffPer+p.revenue*TAX; return {...p, occ:p.nights/days, expenses:exp, profit:p.revenue-exp}; });
+  return {from,to,days,revenue,nights,occ:nights/(days*apartments.length),byCh,daily:daily.map(v=>v/apartments.length),comm,util,cleanCost,rep,staff,tax,expenses,profit:revenue-expenses,rows,adr:nights?revenue/nights:0,stays,cleanCount:clean};
+}
+/* =================== Навигация =================== */
+function renderNav(){
+  const newReq = requests.filter(r=>r.status==='new').length;
+  const openRep = repairs.filter(r=>r.status!=='done').length;
+  const todayClean = cleanings.filter(c=>c.date===TODAY && c.status!=='done').length;
+  const badge = {requests:[newReq,'#ef4444'], cleaning:[todayClean,'#475569'], repairs:[openRep,'#475569']};
+  document.getElementById('nav').innerHTML = '<div class="nav-label">Управление</div>' + VIEWS.map(([k,l,i])=>{
+    const bd = badge[k];
+    return `<button class="${S.view===k?'active':''}" data-action="nav" data-view="${k}">${ic(i)}<span>${l}</span>${bd&&bd[0]?`<span class="count" style="background:${bd[1]}">${bd[0]}</span>`:''}</button>`; }).join('');
+}
+function go(view){
+  S.view=view; renderNav(); render();
+  document.getElementById('sidebar').classList.remove('open');
+  history.replaceState(null,'','#'+view);
+  window.scrollTo(0,0);
+}
+function render(){
+  const m = document.getElementById('main');
+  if(!VIEWS.some(v=>v[0]===S.view)){ m.innerHTML = `<div class="card empty" style="padding:48px 20px"><div class="deny-ic" style="margin-bottom:12px">${ic('lock',28)}</div><h2 style="font-size:18px;color:var(--text)">Раздел недоступен</h2><p style="margin:8px 0 16px">Роль «${ROLE_NAME[USER.role]}» не имеет доступа к этому разделу.</p><button class="btn primary" data-action="nav" data-view="calendar">К календарю</button></div>`; return; }
+  ({calendar:renderCalendar,requests:renderRequests,cleaning:renderCleaning,repairs:renderRepairs,finance:renderFinance,transfers:renderTransfers,staff:renderStaff})[S.view](m);
+}
+function kpiCard(icon, bg, fg, label, val, sub){
+  return `<div class="card kpi"><div class="k-ic" style="background:${bg};color:${fg}">${ic(icon,19)}</div><div class="grow"><div class="k-lbl">${label}</div><div class="k-val">${val}</div><div class="k-sub">${sub}</div></div></div>`;
+}
+
+/* =================== Календарь =================== */
+function renderCalendar(m){
+  const arr = bookings.filter(b=>b.ci===TODAY), dep = bookings.filter(b=>b.co===TODAY);
+  const cl = cleanings.filter(c=>c.date===TODAY);
+  const st = monthStats(9), prev = monthStats(8);
+  const trToday = arr.filter(b=>b.transfer).length;
+  const diff = prev.revenue? Math.round((st.revenue/prev.revenue-1)*100):0;
+  const rangeEnd = S.calStart+S.calDays-1;
+  m.innerHTML = `
+  <div class="page-head"><div><h1>Календарь</h1><p class="sub">Шахматка по всем квартирам · ${apartments.length} ${plural(apartments.length,'объект','объекта','объектов')} · ${bookings.filter(b=>b.co>TODAY).length} активных и будущих броней</p></div>
+    <div class="row"><button class="btn" data-action="nav" data-view="requests">${ic('inbox',16)} Новые заявки: ${requests.filter(r=>r.status==='new').length}</button></div></div>
+  <div class="kpis">
+    ${kpiCard('in','#e0e7ff','#4f46e5','Заезды сегодня',arr.length, `${arr.reduce((s,b)=>s+b.guests,0)} гостей · ${trToday} трансф.`)}
+    ${kpiCard('out','#fce7f3','#db2777','Выезды сегодня',dep.length, (()=>{const u=dep.filter(b=>b.payment!=='paid').length; return u?`до 12:00 · ${u} не оплач.`:'до 12:00 · всё оплачено';})())}
+    ${kpiCard('sparkle','#fef3c7','#d97706','Уборки сегодня',cl.length, `${cl.filter(c=>c.status==='done').length} готово · ${cl.filter(c=>c.status==='progress').length} в работе`)}
+    ${kpiCard('percent','#dcfce7','#16a34a','Загрузка · окт',Math.round(st.occ*100)+'%', `${st.nights} из ${st.days*apartments.length} ноч.`)}
+    ${IS_OWNER ? kpiCard('wallet','#e0f2fe','#0284c7','Доход · окт',moneyShort(st.revenue), `<b>${diff>=0?'+':''}${diff}%</b> к сентябрю`)
+      : kpiCard('car','#e0f2fe','#0284c7','Трансферы сегодня',transfers.filter(t=>t.date===TODAY).length, 'встречи и проводы')}
+  </div>
+  <div class="card">
+    <div class="cal-toolbar">
+      <div class="nav-group">
+        <button class="btn sq" data-action="cal-prev" title="Неделя назад">${ic('chevL',16)}</button>
+        <button class="btn" data-action="cal-today">Сегодня</button>
+        <button class="btn sq" data-action="cal-next" title="Неделя вперёд">${ic('chevR',16)}</button>
+        <span class="range">${fD(S.calStart)} – ${fD(rangeEnd)} ${dt(rangeEnd).getUTCFullYear()}</span>
+      </div>
+      <div class="tabs"><button class="${S.calDays===14?'active':''}" data-action="cal-mode" data-days="14">2 недели</button><button class="${S.calDays===35?'active':''}" data-action="cal-mode" data-days="35">5 недель</button><button data-action="cal-month" title="Весь октябрь">Октябрь</button></div>
+      <div class="filters">${CH_KEYS.map(k=>`<button class="fchip ${S.filters.has(k)?'':'off'}" data-action="filter" data-ch="${k}" title="Показать/скрыть ${CH[k].name}">${chb(k,18)}${CH[k].name}</button>`).join('')}</div>
+    </div>
+    <div class="cal-scroll" id="calScroll"></div>
+    <div class="legend">
+      ${CH_KEYS.map(k=>`<span><i class="lg-sw" style="background:${CH[k].color}"></i>${CH[k].name}</span>`).join('')}
+      <span><i class="lg-sw" style="background:repeating-linear-gradient(135deg,#cbd5e1 0 3px,#e2e8f0 3px 6px);border:1px solid #b8c2cf"></i>Ремонт / блокировка</span>
+      <span><span class="clean-mk" style="position:static;margin:0;width:16px;height:16px">${ic('sparkle',9,2.5)}</span>Уборка в день выезда</span>
+      <span><span style="width:8px;height:8px;border-radius:50%;box-shadow:0 0 0 2px #dc2626;background:#fff;display:inline-block;margin:0 2px"></span>Не оплачено</span>
+      <span style="margin-left:auto">Нажмите на бронь, чтобы открыть детали</span>
+    </div>
+  </div>`;
+  renderGrid();
+}
+function renderGrid(){
+  const sc = document.getElementById('calScroll'); if(!sc) return;
+  const keepScroll = sc.scrollLeft;
+  const LABEL = window.innerWidth<600 ? 130 : 188;
+  const minW = S.calDays<=14 ? 52 : 30;
+  const W = Math.max(minW, Math.floor((sc.clientWidth - LABEL - 2)/S.calDays));
+  const start=S.calStart, days=S.calDays, end=start+days;
+  const totalW = LABEL + W*days;
+  let months='', cur=start;
+  while(cur<end){ const mo=mm(cur); let e=cur; while(e<end && mm(e)===mo) e++; months+=`<div class="cal-month" style="width:${(e-cur)*W}px">${(e-cur)*W>90?MON_N[mo]+' '+dt(cur).getUTCFullYear():(e-cur)*W>40?MON_S[mo]:''}</div>`; cur=e; }
+  let dayc='', bgc='';
+  for(let d=start; d<end; d++){ const we=wd(d)===0||wd(d)===6;
+    dayc+=`<div class="cal-dc ${we?'we':''} ${d===TODAY?'today':''}" style="width:${W}px">${WD[wd(d)]}<b>${dd(d)}</b></div>`;
+    if(d===TODAY) bgc+=`<div class="cal-bgc today" style="left:${(d-start)*W}px;width:${W}px"></div>`;
+    else if(we) bgc+=`<div class="cal-bgc we" style="left:${(d-start)*W}px;width:${W}px"></div>`; }
+  const gridBg = `background-image:linear-gradient(to right,#eef1f6 1px,transparent 1px);background-size:${W}px 100%;`;
+  const placeBar = (ci,co) => { const L=Math.max(ci+.5,start), R=Math.min(co+.5,end); if(R<=L) return null; return {left:(L-start)*W+2, width:(R-L)*W-4, cutL:ci+.5<start, cutR:co+.5>end}; };
+  let rows='';
+  apartments.forEach(a=>{
+    let items='';
+    blocks.filter(b=>b.aptId===a.id).forEach(b=>{ const p=placeBar(b.from,b.to); if(!p) return;
+      items+=`<div class="bar block ${p.cutL?'cut-l':''} ${p.cutR?'cut-r':''}" style="left:${p.left}px;width:${p.width}px" data-action="open-block" data-id="${b.id}" title="Ремонт: ${esc(b.title)}">${p.width>34?ic('wrench',12):''}<span>${p.width>80?'Ремонт':''}</span></div>`; });
+    bookings.filter(b=>b.aptId===a.id && S.filters.has(b.source)).forEach(b=>{ const p=placeBar(b.ci,b.co); if(!p) return;
+      const parts=b.guest.split(' ');
+      const label = p.width>124?b.guest : p.width>74? parts[0]+(parts[1]?' '+parts[1][0]+'.':'') : p.width>36? initials(b.guest):'';
+      items+=`<div class="bar ${p.cutL?'cut-l':''} ${p.cutR?'cut-r':''} " style="left:${p.left}px;width:${p.width}px;background:${CH[b.source].color}" data-action="open-booking" data-id="${b.id}" title="${esc(b.guest)} · ${CH[b.source].name} · ${fD(b.ci)}–${fD(b.co)} · ${money(b.total)}">${b.payment==='unpaid'&&p.width>40?'<i class="udot"></i>':''}${b.transfer&&p.width>150?ic('car',13):''}<span>${esc(label)}</span></div>`; });
+    bookings.filter(b=>b.aptId===a.id && b.co>=start && b.co<end && S.filters.has(b.source)).forEach(b=>{
+      items+=`<div class="clean-mk" style="left:${(b.co-start+.5)*W}px" title="Уборка ${fD(b.co)} после выезда: ${esc(b.guest)} · ${b.cleaner}">${ic('sparkle',10,2.5)}</div>`; });
+    rows+=`<div class="cal-row" style="width:${totalW}px"><div class="cal-apt" style="width:${LABEL}px"><b title="${esc(a.name)}">${esc(a.name)}</b><span>${a.district} · ${a.rooms} · ${moneyShort(a.price)}</span></div><div class="cal-track" style="width:${W*days}px;${gridBg}">${bgc}${items}</div></div>`;
+  });
+  sc.innerHTML = `<div class="cal" style="width:${totalW}px"><div class="cal-head"><div class="cal-corner" style="width:${LABEL}px">Квартира</div><div class="cal-days" style="width:${W*days}px"><div class="cal-months">${months}</div><div class="cal-daycells">${dayc}</div></div></div>${rows}</div>`;
+  sc.scrollLeft = keepScroll;
+}
+
+/* =================== Карточка брони (боковая панель) =================== */
+const PAY = {paid:['green','Оплачено'],prepaid:['amber','Предоплата 30%'],unpaid:['red','Не оплачено']};
+const payChip = p => `<span class="chip ${PAY[p][0]}"><i></i>${PAY[p][1]}</span>`;
+const CL_ST = {assigned:['#6366f1','Назначена'],enroute:['#0ea5e9','В пути'],progress:['#f59e0b','В процессе'],done:['#16a34a','Готово']};
+function openDrawer(html){ const d=document.getElementById('drawer'); d.innerHTML=html; d.classList.add('open'); document.getElementById('backdrop').classList.add('open'); }
+function closeDrawer(){ document.getElementById('drawer').classList.remove('open'); document.getElementById('backdrop').classList.remove('open'); }
+function openBooking(id){
+  const b=bById(id); if(!b) return; const a=aptById(b.aptId);
+  const n=b.co-b.ci; const tr = transfers.filter(t=>t.bookingId===b.id);
+  const cl = cleanings.find(c=>c.bookingId===b.id);
+  const status = b.co<=TODAY?['grey','Завершена']:b.ci<=TODAY?['blue','Проживает']:['violet','Предстоит'];
+  openDrawer(`
+    <div class="dr-head">${chb(b.source,32)}<div class="grow"><div style="font-weight:700">Бронь №${b.id}</div><div class="muted" style="font-size:12.5px">через ${CH[b.source].name}</div></div>
+      <span class="chip ${status[0]}"><i></i>${status[1]}</span><button class="icon-btn" data-action="close-drawer" aria-label="Закрыть">${ic('x',16)}</button></div>
+    <div class="dr-body">
+      <div class="guest-big">${esc(b.guest)}</div>
+      <div class="muted row" style="margin-top:4px;font-size:13px;flex-wrap:wrap">${ic('phone',14)} ${b.phone} <span>·</span> ${ic('users',14)} ${b.guests} ${plural(b.guests,'гость','гостя','гостей')}</div>
+      <div class="stay-box"><div><small>Заезд</small><b>${fD(b.ci)}</b><div class="muted" style="font-size:12px">${WD[wd(b.ci)].toLowerCase()}, ${b.checkinTime}</div></div><div><small>Выезд</small><b>${fD(b.co)}</b><div class="muted" style="font-size:12px">${WD[wd(b.co)].toLowerCase()}, ${b.checkoutTime}</div></div><div><small>Ночей</small><b>${n}</b></div></div>
+      <dl class="kv">
+        <dt>Квартира</dt><dd>${esc(a.name)}<div class="muted" style="font-size:12px">${a.district} р-н · ${esc(a.address)}</div></dd>
+        <dt>Источник</dt><dd>${chChip(b.source)}</dd>
+        <dt>Сумма</dt><dd><b style="font-size:16px">${money(b.total)}</b> <span class="muted">(${money(b.nightly)} × ${n})</span>${CH[b.source].comm?`<div class="muted" style="font-size:12px">Комиссия канала ${CH[b.source].comm*100}%: ${money(b.total*CH[b.source].comm)}</div>`:''}</dd>
+        <dt>Оплата</dt><dd>${payChip(b.payment)}</dd>
+        <dt>Трансфер</dt><dd>${b.transfer? `<span class="chip blue">${ic('car',13)} Заказан</span>${tr.map(t=>`<div class="muted" style="font-size:12px;margin-top:4px">${t.dir==='in'?'Аэропорт → квартира':'Квартира → аэропорт'} · ${fD(t.date)}, ${t.time} · рейс ${t.flight}</div>`).join('')}` : '<span class="chip grey">Нет</span>'}</dd>
+        <dt>Уборщица</dt><dd class="row"><span class="avatar" style="width:24px;height:24px;font-size:10px;background:linear-gradient(135deg,#34d399,#059669)">${b.cleaner[0]}</span>${b.cleaner}${cl?` <span class="muted" style="font-size:12px">· ${CL_ST[cl.status][1].toLowerCase()}</span>`:''}</dd>
+      </dl>
+      ${b.note?`<div class="note"><b>Заметка:</b> ${esc(b.note)}</div>`:'<div class="note" style="background:#f8fafc;border-color:var(--border);color:var(--muted)">Заметок нет</div>'}
+    </div>
+    <div class="dr-foot">
+      ${b.payment!=='paid'?`<button class="btn success" data-action="mark-paid" data-id="${b.id}">${ic('check',16)} Отметить оплату</button>`:''}
+      <button class="btn" data-action="toggle-transfer" data-id="${b.id}">${ic('car',16)} ${b.transfer?'Отменить трансфер':'Заказать трансфер'}</button>
+      <button class="btn" data-action="msg-guest" data-id="${b.id}">${ic('msg',16)} Написать гостю</button>
+    </div>`);
+}
+function openBlock(id){
+  const b=blocks.find(x=>x.id===id); const a=aptById(b.aptId); const r=repairs.find(x=>x.id===b.repairId);
+  openDrawer(`<div class="dr-head"><div style="width:32px;height:32px;border-radius:9px;background:#e2e8f0;display:grid;place-items:center">${ic('wrench',16)}</div><div class="grow"><div style="font-weight:700">Блокировка: ремонт</div><div class="muted" style="font-size:12.5px">Квартира закрыта для бронирования</div></div><button class="icon-btn" data-action="close-drawer" aria-label="Закрыть">${ic('x',16)}</button></div>
+  <div class="dr-body"><div class="guest-big">${esc(b.title)}</div>
+    <div class="stay-box"><div><small>С</small><b>${fD(b.from)}</b></div><div><small>По</small><b>${fD(b.to)}</b></div><div><small>Дней</small><b>${b.to-b.from}</b></div></div>
+    <dl class="kv"><dt>Квартира</dt><dd>${esc(a.name)}</dd><dt>Исполнитель</dt><dd>${esc(r.assignee)}</dd><dt>Смета</dt><dd>${money(r.cost)}</dd><dt>Статус</dt><dd>${repStatusChip(r.status)}</dd></dl></div>
+  <div class="dr-foot"><button class="btn primary" data-action="goto-repairs">${ic('wrench',16)} Открыть в «Ремонтах»</button></div>`);
+}
+
+/* =================== Заявки =================== */
+const REQ_S = {new:['blue','Новая'],progress:['amber','В работе'],confirmed:['green','Подтверждена']};
+function renderRequests(m){
+  const cnt = k => k==='all'?requests.length:requests.filter(r=>r.status===k).length;
+  const list = requests.filter(r=>S.reqTab==='all'||r.status===S.reqTab);
+  m.innerHTML = `<div class="page-head"><div><h1>Заявки</h1><p class="sub">Единый входящий поток из Airbnb, Booking, Telegram, WhatsApp и сайта</p></div>
+    <div class="row" style="gap:6px">${CH_KEYS.map(k=>`<span title="${CH[k].name}: ${requests.filter(r=>r.channel===k).length}">${chb(k,28)}</span>`).join('')}</div></div>
+  <div class="card">
+    <div class="card-h" style="padding-bottom:14px;border-bottom:1px solid var(--border)"><div class="tabs">${[['all','Все'],['new','Новые'],['progress','В работе'],['confirmed','Подтверждены']].map(([k,l])=>`<button class="${S.reqTab===k?'active':''}" data-action="req-tab" data-tab="${k}">${l}<span class="n">${cnt(k)}</span></button>`).join('')}</div>
+      <span class="muted" style="font-size:12.5px">${ic('clock',14)} Среднее время ответа — 7 мин</span></div>
+    <div class="req-list">${list.length? list.map(reqRow).join('') : '<div class="empty">Здесь пока пусто</div>'}</div>
+  </div>`;
+}
+function reqRow(r){
+  const a=aptById(r.aptId); const s=REQ_S[r.status]; const n=r.co-r.ci;
+  return `<div class="req ${r.status==='new'?'new':''}" id="req-${r.id}">${chb(r.channel,40)}
+    <div class="grow"><div class="req-top"><b>${esc(r.name)}</b><span class="chip ${s[0]}"><i></i>${s[1]}</span><span class="muted" style="font-size:12px">через ${CH[r.channel].name}</span><span class="req-time">${r.time}</span></div>
+      <div class="req-msg">«${esc(r.text)}»</div>
+      <div class="req-meta"><span>${ic('home',14)} ${esc(a.name)}</span><span>${ic('calendar',14)} ${fD(r.ci)} – ${fD(r.co)} · ${n} ${plural(n,'ночь','ночи','ночей')}</span><span>${ic('users',14)} ${r.guests}</span><span>${ic('wallet',14)} ${money(r.sum)}</span></div>
+      ${r.site?`<div class="req-meta" style="margin-top:8px"><span class="chip ${(PAY_METHODS[r.payment]||{}).color||'grey'}">${ic(r.payment==='card'?'card':r.payment==='cash'?'cash':r.payment==='telegram'?'send':'msg',12)} Оплата: ${esc((PAY_METHODS[r.payment]||{}).short||'—')}</span><span>${ic('phone',14)} ${esc(r.phone||'')}</span>${r.transfer?`<span class="chip blue">${ic('car',12)} Нужен трансфер</span>`:''}<span class="chip violet">${ic('globe',12)} Сайт Astana Stay</span></div>`:''}</div>
+    <div class="req-actions">
+      ${r.status==='new'?`<button class="btn sm" data-action="req-take" data-id="${r.id}">Взять в работу</button>`:''}
+      ${r.status!=='confirmed'?`<button class="btn sm success" data-action="req-confirm" data-id="${r.id}">${ic('check',14)} Подтвердить</button>`:(r.bookingId?`<button class="btn sm" data-action="open-booking" data-id="${r.bookingId}">Открыть бронь</button>`:`<span class="muted" style="font-size:12px">${ic('check',13)} Бронь оформлена</span>`)}
+      <button class="btn sm ghost" data-action="req-reply" data-id="${r.id}">${ic('msg',14)} Ответить</button>
+    </div></div>`;
+}
+/* =================== Уборки =================== */
+function photoTile(label,h){ return `<div class="photo" title="Фото: ${label}"><svg viewBox="0 0 80 60" preserveAspectRatio="xMidYMid slice"><rect width="80" height="60" fill="hsl(${h} 70% 88%)"/><circle cx="60" cy="16" r="7" fill="hsl(${h} 80% 96%)"/><path d="M0 60 L24 28 L40 46 L54 34 L80 60Z" fill="hsl(${h} 40% 70%)"/><path d="M0 60 L30 40 L80 60Z" fill="hsl(${h} 35% 60%)" opacity=".6"/></svg><span>${label}</span></div>`; }
+function renderCleaning(m){
+  const list = cleanings.filter(c=> S.cleanTab==='all' ? true : S.cleanTab==='today' ? c.date===TODAY : S.cleanTab==='tomorrow' ? c.date===TODAY+1 : c.date===TODAY-1);
+  const byCleaner = {}; list.forEach(c=>byCleaner[c.cleaner]=(byCleaner[c.cleaner]||0)+1);
+  m.innerHTML = `<div class="page-head"><div><h1>Уборки</h1><p class="sub">Задачи для клинеров создаются автоматически из выездов гостей</p></div>
+    <div class="tabs">${[['yesterday','Вчера'],['today','Сегодня'],['tomorrow','Завтра'],['all','Все']].map(([k,l])=>`<button class="${S.cleanTab===k?'active':''}" data-action="clean-tab" data-tab="${k}">${l}</button>`).join('')}</div></div>
+  <div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:16px"><span class="muted" style="font-size:12.5px">Клинеры:</span>${Object.entries(byCleaner).map(([n,c])=>`<span class="chip grey" style="padding:3px 10px 3px 3px"><span class="avatar" style="width:20px;height:20px;font-size:10px;background:linear-gradient(135deg,#34d399,#059669)">${n[0]}</span>${n} · ${c}</span>`).join('')}</div>
+  <div class="kanban">${['assigned','progress','done'].map(st=>{ const items=list.filter(c=>c.status===st || (st==='assigned' && c.status==='enroute'));
+    return `<div class="col"><div class="col-h"><span class="cdot" style="background:${CL_ST[st][0]}"></span>${CL_ST[st][1]}<span class="cnt">${items.length}</span></div>${items.length?items.map(cleanCard).join(''):'<div class="empty" style="padding:24px;font-size:13px">Нет задач</div>'}</div>`; }).join('')}</div>`;
+}
+function cleanCard(c){
+  const a=aptById(c.aptId); const done=c.checked.filter(Boolean).length; const pct=Math.round(done/CHECKLIST.length*100);
+  const urgent = c.nextCheckin && c.status!=='done';
+  let body='';
+  if(c.status==='progress'){
+    body = `<div class="row" style="margin-top:10px;font-size:12px;justify-content:space-between"><span class="muted">Чек-лист</span><b>${done}/${CHECKLIST.length}</b></div><div class="prog" style="margin-top:5px"><i style="width:${pct}%"></i></div><ul class="checklist">${CHECKLIST.map((t,k)=>`<li class="${c.checked[k]?'on':''}" data-action="clean-check" data-id="${c.id}" data-k="${k}"><span class="cb">${ic('check',11,3)}</span>${t}</li>`).join('')}</ul>`;
+  } else if(c.status==='done'){
+    const ph = c.photos && c.photos.length ? c.photos : ROOMS_PH.map(([l,h])=>({demo:true,label:l,hue:h}));
+    body = `<div class="row" style="margin-top:10px;font-size:12.5px;font-weight:600;color:var(--text2)">${ic('camera',14)} Фотоотчёт · ${ph.length} фото${c.by?` <span class="muted" style="font-weight:500">· из приложения уборщика</span>`:''}</div><div class="photos">${ph.map(p=>p.src?`<div class="photo" title="${esc(p.label||'Фото')}"><img src="${p.src}" alt="${esc(p.label||'Фото')}"><span>${esc(p.label||'Фото')}</span></div>`:photoTile(esc(p.label||'Фото'),p.hue||200)).join('')}</div>
+      ${c.comment?`<div class="note" style="margin-top:10px;font-size:12.5px"><b>Комментарий уборщика:</b> ${esc(c.comment)}</div>`:''}
+      <details class="cl"><summary><span style="color:var(--green)">${ic('check',14,2.5)}</span> Чек-лист: ${done}/${CHECKLIST.length} <span class="muted" style="font-weight:500">— показать</span></summary><ul class="checklist ro">${CHECKLIST.map((t,k)=>`<li class="${c.checked[k]?'on':''}"><span class="cb">${ic('check',11,3)}</span>${t}</li>`).join('')}</ul></details>`;
+  } else {
+    body = `<div class="muted" style="font-size:12px;margin-top:10px">Чек-лист из ${CHECKLIST.length} пунктов · фотоотчёт после завершения</div>`;
+  }
+  if(c.status==='enroute') body = `<div class="row" style="margin-top:10px;font-size:12.5px;color:#0369a1;font-weight:600">${ic('nav',14)} Уборщик в пути${c.enrouteAt?' · с '+c.enrouteAt:''}</div>` + body;
+  const btn = (c.status==='assigned'||c.status==='enroute') ? `<button class="btn sm primary" data-action="clean-next" data-id="${c.id}">Начать ${ic('arrowR',14)}</button>`
+    : c.status==='progress' ? `<button class="btn sm success" data-action="clean-next" data-id="${c.id}">${ic('check',14)} Завершить</button>`
+    : `<span class="chip green">${ic('check',12,3)} Готово в ${c.doneAt}</span>`;
+  return `<div class="task"><div class="row" style="align-items:flex-start"><div class="grow"><h4 class="ellipsis" title="${esc(a.name)}">${esc(a.name)}</h4><div class="addr ellipsis">${esc(a.address)}</div></div>${urgent?`<span class="urgent">Заезд в ${c.nextCheckin}</span>`:''}</div>
+    <div class="task-meta"><span>${ic('calendar',13)} ${relDay(c.date)}</span><span>${ic('clock',13)} ${c.from}–${c.to}</span><span>${ic('home',13)} ${a.rooms}</span></div>
+    <div class="cleaner"><span class="avatar" style="background:linear-gradient(135deg,#34d399,#059669)">${c.cleaner[0]}</span><span><b>${c.cleaner}</b><span class="muted"> · клинер</span></span></div>
+    ${body}
+    <div class="task-foot"><span class="muted" style="font-size:12px">${c.nextGuest?`Далее: ${esc(c.nextGuest.split(' ')[0])}`:'Новых заездов нет'}</span>${btn}</div></div>`;
+}
+
+/* =================== Ремонты и задачи =================== */
+const PRIO = {high:['#dc2626','Высокий','red'],medium:['#f59e0b','Средний','amber'],low:['#94a3b8','Низкий','grey']};
+const REP_S = {open:['blue','Открыта'],progress:['amber','В работе'],done:['green','Выполнена']};
+const repStatusChip = s => `<span class="chip ${REP_S[s][0]}"><i></i>${REP_S[s][1]}</span>`;
+const VOICE_PHRASES = [
+  {text:'Кв. 12: течёт кран в ванной', num:12, title:'Течёт кран в ванной', prio:'high', who:'Сантехник Марат'},
+  {text:'Кв. 45: не работает телевизор, гости жалуются', num:45, title:'Не работает телевизор, гости жалуются', prio:'high', who:'Мастер Ерлан'},
+  {text:'Кв. 7: перегорела лампа в прихожей, купить две лампочки', num:7, title:'Перегорела лампа в прихожей, купить две лампочки', prio:'low', who:'Администратор'},
+  {text:'Кв. 88: заменить замок на входной двери', num:88, title:'Заменить замок на входной двери', prio:'medium', who:'Мастер Ерлан'}
+];
+function renderRepairs(m){
+  const cnt = k => k==='all'?repairs.length:repairs.filter(r=>r.status===k).length;
+  const list = repairs.filter(r=>S.repTab==='all'||r.status===S.repTab).sort((a,b)=>(a.status==='done')-(b.status==='done') || b.id-a.id);
+  const openCost = repairs.filter(r=>r.status!=='done').reduce((s,r)=>s+r.cost,0);
+  m.innerHTML = `<div class="page-head"><div><h1>Ремонты и задачи</h1><p class="sub">Поломки, закупки и хозяйственные задачи по квартирам · смета открытых: ${money(openCost)}</p></div>
+    <div class="row" style="flex-wrap:wrap"><button class="btn" data-action="rep-form">${ic('plus',16)} Добавить задачу</button><button class="btn primary" data-action="voice-start">${ic('mic',16)} Добавить голосом</button></div></div>
+  <div class="card">
+    <div class="card-h" style="padding-bottom:14px;border-bottom:1px solid var(--border)"><div class="tabs">${[['all','Все'],['open','Открытые'],['progress','В работе'],['done','Выполненные']].map(([k,l])=>`<button class="${S.repTab===k?'active':''}" data-action="rep-tab" data-tab="${k}">${l}<span class="n">${cnt(k)}</span></button>`).join('')}</div>
+    <span class="muted" style="font-size:12.5px">${ic('mic',14)} Например: «Кв. 12: течёт кран в ванной»</span></div>
+    <form class="add-form" id="repForm"><input id="repTitle" class="grow" placeholder="Что нужно сделать?" style="min-width:200px">
+      <select id="repApt">${apartments.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select>
+      <select id="repPrio"><option value="high">Высокий</option><option value="medium" selected>Средний</option><option value="low">Низкий</option></select>
+      <button class="btn primary" type="submit">Добавить</button></form>
+    <div id="repList">${list.length?list.map(repRow).join(''):'<div class="empty">Задач нет</div>'}</div>
+  </div>`;
+}
+function repRow(r){
+  const a=aptById(r.aptId); const p=PRIO[r.priority];
+  const next = r.status==='open'?`<button class="btn sm" data-action="rep-next" data-id="${r.id}">В работу ${ic('arrowR',14)}</button>`:r.status==='progress'?`<button class="btn sm success" data-action="rep-next" data-id="${r.id}">${ic('check',14)} Выполнено</button>`:'';
+  return `<div class="rep ${r.fresh?'fresh':''}" id="rep-${r.id}"><span class="prio" style="background:${p[0]}"></span>
+    <div class="grow" style="min-width:220px"><div class="rep-title ${r.status==='done'?'done':''}">${esc(r.title)}</div>
+    <div class="rep-meta"><span>${ic('home',13)} ${esc(a.name)}</span><span>${ic('user',13)} ${esc(r.assignee)}</span><span>${ic('calendar',13)} ${relDay(r.date)}</span>${r.cost?`<span>${ic('wallet',13)} ${money(r.cost)}</span>`:''}${r.blockDays?`<span>${ic('alert',13)} Блокировка ${r.blockDays} ${plural(r.blockDays,'день','дня','дней')}</span>`:''}${r.source==='Голос'?`<span style="color:var(--primary)">${ic('mic',13)} Добавлено голосом</span>`:''}${r.source==='Уборщик'?`<span style="color:#b91c1c;font-weight:600">${ic('flag',13)} От уборщика: ${esc(r.reporter||'')}${r.photos?` · ${r.photos} фото`:''}</span>`:''}</div></div>
+    <span class="chip ${p[2]}">${p[1]}</span>${repStatusChip(r.status)}${next}</div>`;
+}
+function voiceStart(){
+  const v=document.getElementById('voice'); const ph = VOICE_PHRASES[S.voiceIdx % VOICE_PHRASES.length]; S.voiceIdx++;
+  v.className='voice open';
+  v.innerHTML = `<div class="voice-card"><div class="mic-wrap"><span class="ring"></span><span class="ring r2"></span><div class="mic">${ic('mic',30)}</div></div>
+    <div class="voice-title" id="vTitle">Слушаю…</div><div class="muted" style="font-size:13px" id="vSub">Назовите номер квартиры и опишите проблему</div>
+    <div class="wave">${Array.from({length:14},(_,i)=>`<i style="animation-delay:${(i*0.07).toFixed(2)}s"></i>`).join('')}</div>
+    <div class="voice-text" id="vText"><span class="muted">…</span></div>
+    <button class="btn" data-action="voice-cancel">Отмена</button></div>`;
+  clearTimeout(S.vt1); clearInterval(S.vt2); clearTimeout(S.vt3);
+  S.vt1 = setTimeout(()=>{
+    v.classList.add('done'); document.getElementById('vTitle').textContent='Распознано'; document.getElementById('vSub').textContent='Создаю задачу…';
+    let i=0; const el=document.getElementById('vText');
+    S.vt2 = setInterval(()=>{ i+=2; el.innerHTML = esc(ph.text.slice(0,i))+'<span class="caret"></span>';
+      if(i>=ph.text.length){ clearInterval(S.vt2); el.innerHTML='«'+esc(ph.text)+'»';
+        S.vt3 = setTimeout(()=>{ addVoiceTask(ph); v.className='voice'; },700); } },28);
+  },2000);
+}
+function addVoiceTask(ph){
+  const a = apartments.find(x=>x.num===ph.num) || apartments[0];
+  repairs.forEach(r=>r.fresh=false);
+  repairs.push({id:repId++, aptId:a.id, title:ph.title, assignee:ph.who, priority:ph.prio, status:'open', date:TODAY, cost:0, source:'Голос', fresh:true});
+  S.view='repairs';
+  if(S.repTab==='done'||S.repTab==='progress') S.repTab='all';
+  renderNav(); render();
+  toast(`Задача добавлена: кв. ${a.num} — ${ph.title.charAt(0).toLowerCase()+ph.title.slice(1)}`);
+}
+/* =================== Финансы =================== */
+function renderFinance(m){
+  const st = monthStats(S.finMonth), prev = monthStats(S.finMonth-1);
+  const pct = (a,b) => b? Math.round((a/b-1)*100) : 0;
+  const dl = (a,b,inv) => { const p=pct(a,b); const good = inv? p<=0 : p>=0; return `<b style="color:${good?'var(--green)':'var(--red)'}">${p>=0?'+':''}${p}%</b> к ${['янв.','фев.','мар.','апр.','маю','июню','июлю','авг.','сент.','окт.','нояб.','дек.'][S.finMonth-1]}`; };
+  // кольцевая диаграмма
+  const R=62, C=2*Math.PI*R; let off=0;
+  const segs = CH_KEYS.map(k=>{ const v=st.revenue?st.byCh[k]/st.revenue:0; const len=Math.max(v*C-2,0); const s=`<circle r="${R}" cx="80" cy="80" fill="none" stroke="${CH[k].color}" stroke-width="22" stroke-dasharray="${len.toFixed(2)} ${(C-len).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 80 80)"><title>${CH[k].name}: ${money(st.byCh[k])}</title></circle>`; off+=v*C; return s; }).join('');
+  const donut = `<svg width="160" height="160" viewBox="0 0 160 160" style="flex:none">${segs}<text x="80" y="75" text-anchor="middle" font-size="11" fill="#64748b">Доход</text><text x="80" y="95" text-anchor="middle" font-size="17" font-weight="700" fill="#0f172a">${(st.revenue/1e6).toFixed(1).replace('.',',')} млн ₸</text></svg>`;
+  // столбчатая диаграмма загрузки по дням
+  const BW=620, BH=190, pl=36, pb=24, pt=10, n=st.days, bw=(BW-pl-8)/n;
+  let bars='';
+  st.daily.forEach((v,i)=>{ const d=st.from+i; const h=(BH-pb-pt)*v; const we=wd(d)===0||wd(d)===6; const x=pl+i*bw+1.5;
+    bars+=`<rect x="${x.toFixed(1)}" y="${(BH-pb-h).toFixed(1)}" width="${(bw-3).toFixed(1)}" height="${h.toFixed(1)}" rx="3" fill="${d===TODAY?'#f59e0b':we?'#818cf8':'#4f46e5'}" opacity="${d<TODAY?.55:1}"><title>${fD(d)}: ${Math.round(v*100)}%</title></rect>`;
+    if(i%5===0||i===n-1) bars+=`<text x="${(x+bw/2-1.5).toFixed(1)}" y="${BH-8}" text-anchor="middle" font-size="10" fill="#94a3b8">${dd(d)}</text>`; });
+  let grid=''; [0,.25,.5,.75,1].forEach(g=>{ const y=BH-pb-(BH-pb-pt)*g; grid+=`<line x1="${pl}" x2="${BW-4}" y1="${y}" y2="${y}" stroke="#eef1f6"/><text x="${pl-6}" y="${y+3.5}" text-anchor="end" font-size="10" fill="#94a3b8">${g*100}%</text>`; });
+  const occSvg = `<svg viewBox="0 0 ${BW} ${BH}" width="100%" style="display:block">${grid}${bars}</svg>`;
+  const exps = [['Зарплата персонала',st.staff,'#6366f1'],['Комиссии каналов',st.comm,'#FF5A5F'],['Уборки и расходники',st.cleanCost,'#f59e0b'],['Коммунальные и интернет',st.util,'#0ea5e9'],['Налог (упрощёнка), 4%',st.tax,'#94a3b8'],['Ремонт и закупки',st.rep,'#64748b']];
+  const maxE = Math.max(...exps.map(e=>e[1]));
+  const k=S.finSort.key, dir=S.finSort.dir;
+  const rows = st.rows.slice().sort((a,b)=> (k==='name'? a.apt.name.localeCompare(b.apt.name,'ru') : a[k]-b[k])*dir);
+  const th = (key,label,num) => `<th class="sortable ${num?'num':''}" data-action="fin-sort" data-key="${key}">${label}${k===key?(dir>0?' ↑':' ↓'):''}</th>`;
+  m.innerHTML = `<div class="page-head"><div><h1>Финансы</h1><p class="sub">Доход считается по ночам внутри месяца · комиссия Airbnb и Booking — 15%</p></div>
+    <div class="tabs">${[8,9].map(mo=>`<button class="${S.finMonth===mo?'active':''}" data-action="fin-month" data-m="${mo}">${MON_N[mo]} 2026</button>`).join('')}</div></div>
+  <div class="kpis">
+    ${kpiCard('wallet','#e0f2fe','#0284c7','Доход',moneyShort(st.revenue), dl(st.revenue,prev.revenue))}
+    ${kpiCard('out','#fee2e2','#dc2626','Расходы',moneyShort(st.expenses), dl(st.expenses,prev.expenses,true))}
+    ${kpiCard('trend','#dcfce7','#16a34a','Прибыль',moneyShort(st.profit), `маржа ${Math.round(st.profit/st.revenue*100)}%`)}
+    ${kpiCard('percent','#ede9fe','#7c3aed','Загрузка',Math.round(st.occ*100)+'%', `${st.nights} из ${st.days*apartments.length} ноч.`)}
+    ${kpiCard('moon','#fef3c7','#d97706','Цена за ночь',money(st.adr), `${st.stays} ${plural(st.stays,'заезд','заезда','заездов')} за месяц`)}
+  </div>
+  <div class="fin-grid">
+    <div class="card"><div class="card-h"><h3>Доход по каналам</h3><span class="muted" style="font-size:12.5px">${MON_N[S.finMonth]} 2026</span></div><div class="card-b"><div class="donut-wrap">${donut}<div class="donut-leg">${CH_KEYS.slice().sort((a,b)=>st.byCh[b]-st.byCh[a]).map(c=>`<div><span class="sw" style="background:${CH[c].color}"></span>${CH[c].name}<span class="v">${moneyShort(st.byCh[c])}</span><span class="p">${Math.round(st.byCh[c]/st.revenue*100)}%</span></div>`).join('')}</div></div></div></div>
+    <div class="card"><div class="card-h"><h3>Загрузка по дням</h3><span class="muted" style="font-size:12.5px">в среднем ${Math.round(st.occ*100)}% · <span style="color:#818cf8">■</span> выходные${st.from<=TODAY&&TODAY<st.to?' · <span style="color:#f59e0b">■</span> сегодня':''}</span></div><div class="card-b">${occSvg}</div></div>
+  </div>
+  <div class="fin-grid2">
+    <div class="card"><div class="card-h"><h3>Структура расходов</h3><b>${money(st.expenses)}</b></div><div class="card-b">${exps.map(e=>`<div class="exp-row"><div class="row"><span>${e[0]}</span><b>${money(e[1])}</b></div><div class="exp-bar"><i style="width:${(e[1]/maxE*100).toFixed(1)}%;background:${e[2]}"></i></div></div>`).join('')}
+      <div style="margin-top:16px;padding-top:14px;border-top:1px dashed var(--border);display:flex;justify-content:space-between;align-items:center"><span class="muted">Чистая прибыль</span><b class="pos" style="font-size:16px">${money(st.profit)}</b></div>
+      <div class="muted" style="font-size:12px;margin-top:10px">Условно: уборка — 8 000 ₸ за выезд, коммуналка — 32 000 ₸ на квартиру, персонал — 1,45 млн ₸ в месяц.</div></div></div>
+    <div class="card"><div class="card-h" style="padding-bottom:12px"><h3>По квартирам</h3><span class="muted" style="font-size:12.5px">сортировка — клик по заголовку</span></div>
+      <div class="table-wrap" style="max-height:430px;overflow:auto;border-top:1px solid var(--border)"><table class="t"><thead><tr>${th('name','Квартира')}${th('nights','Ночей',1)}${th('occ','Загрузка')}${th('revenue','Доход',1)}${th('expenses','Расходы',1)}${th('profit','Прибыль',1)}</tr></thead><tbody>
+      ${rows.map(r=>`<tr><td><b style="font-weight:600">${esc(r.apt.name)}</b><div class="muted" style="font-size:12px">${r.apt.district} · ${r.apt.rooms}</div></td><td class="num">${r.nights}</td><td><div class="occ-cell"><div class="exp-bar"><i style="width:${Math.round(r.occ*100)}%;background:${r.occ>.75?'#16a34a':r.occ>.5?'#f59e0b':'#dc2626'}"></i></div>${Math.round(r.occ*100)}%</div></td><td class="num">${money(r.revenue)}</td><td class="num muted">${money(r.expenses)}</td><td class="num ${r.profit>=0?'pos':'neg'}"><b>${money(r.profit)}</b></td></tr>`).join('')}
+      </tbody></table></div></div>
+  </div>`;
+}
+
+/* =================== Трансферы =================== */
+const TR_S = {planned:['amber','Запланирован'],driver:['blue','Назначен'],done:['green','Выполнен']};
+function renderTransfers(m){
+  const list = transfers.slice().sort((a,b)=>{ const fa=a.date>=TODAY, fb=b.date>=TODAY; if(fa!==fb) return fa?-1:1; const s=(a.date-b.date)||a.time.localeCompare(b.time); return fa?s:-s; });
+  const today = list.filter(t=>t.date===TODAY), week=list.filter(t=>t.date>=TODAY&&t.date<TODAY+7);
+  const noDriver = list.filter(t=>t.status==='planned' && t.date>=TODAY).length;
+  const monthRev = list.filter(t=>mm(t.date)===9).reduce((s,t)=>s+t.price,0);
+  m.innerHTML = `<div class="page-head"><div><h1>Трансферы</h1><p class="sub">Встречи и проводы в аэропорт Астаны (NQZ), привязанные к броням · нажмите на строку, чтобы открыть бронь</p></div></div>
+  <div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+    ${kpiCard('plane','#e0e7ff','#4f46e5','Сегодня',today.length, today.length?`ближайший в ${today[0].time}`:'поездок нет')}
+    ${kpiCard('calendar','#e0f2fe','#0284c7','На 7 дней',week.length,'встречи и проводы')}
+    ${kpiCard('alert','#fef3c7','#d97706','Без водителя',noDriver,'нужно назначить')}
+    ${kpiCard('wallet','#dcfce7','#16a34a','Доход · окт',money(monthRev),'оплачивают гости')}
+  </div>
+  <div class="card"><div class="table-wrap"><table class="t"><thead><tr><th>Когда · рейс</th><th>Гость и квартира</th><th>Водитель</th><th class="num">Цена</th><th>Статус</th><th></th></tr></thead><tbody>
+  ${list.length?list.map(t=>{ const b=bById(t.bookingId); const a=aptById(b.aptId); const s=TR_S[t.status]; const dr=t.driver?t.driver.split(' · '):null;
+    return `<tr class="clickable" data-action="open-booking" data-id="${b.id}"><td><b style="font-weight:600">${relDay(t.date)}</b>, ${t.time}<div class="muted row" style="font-size:12px;gap:5px">${t.dir==='in'?ic('plane',13)+' Встреча · NQZ → кв.':ic('home',13)+' Проводы · кв. → NQZ'} · ${t.flight}</div></td>
+    <td><span class="row" style="gap:6px">${chb(b.source,16)} <b style="font-weight:600">${esc(b.guest)}</b></span><div class="muted" style="font-size:12px">${esc(a.name)} · ${t.pax} ${plural(t.pax,'пассажир','пассажира','пассажиров')}</div></td>
+    <td>${dr?`${esc(dr[0])}<div class="muted" style="font-size:12px">${esc(dr[1])}</div>`:'<span class="muted">не назначен</span>'}</td><td class="num">${money(t.price)}</td><td><span class="chip ${s[0]}"><i></i>${s[1]}</span></td>
+    <td>${t.status==='planned'?`<button class="btn sm" data-action="tr-driver" data-id="${t.id}">Назначить</button>`:t.status==='driver'?`<button class="btn sm success" data-action="tr-done" data-id="${t.id}">${ic('check',14)} Готово</button>`:''}</td></tr>`; }).join(''):'<tr><td colspan="8" class="empty">Трансферов нет</td></tr>'}
+  </tbody></table></div></div>`;
+}
+
+/* =================== Уведомления (toast) =================== */
+function toast(text){
+  const el=document.createElement('div'); el.className='toast'; el.innerHTML=`<span class="t-ic">${ic('check',13,3)}</span><span>${esc(text)}</span>`;
+  document.getElementById('toasts').appendChild(el);
+  setTimeout(()=>{ el.classList.add('out'); setTimeout(()=>el.remove(),260); },3200);
+}
+function refreshAfterBookingChange(){ if(S.view==='calendar') renderGrid(); else render(); }
+
+/* =================== События =================== */
+document.addEventListener('click', e=>{
+  const t = e.target.closest('[data-action]'); if(!t) return;
+  const a = t.dataset.action, id = t.dataset.id;
+  switch(a){
+    case 'nav': go(t.dataset.view); break;
+    case 'toggle-menu': document.getElementById('sidebar').classList.toggle('open'); break;
+    case 'bell': toast(`${requests.filter(r=>r.status==='new').length} новых заявок · ${cleanings.filter(c=>c.date===TODAY&&c.status!=='done').length} уборок ещё не завершены`); break;
+    case 'cal-prev': S.calStart-=7; render(); break;
+    case 'cal-next': S.calStart+=7; render(); break;
+    case 'cal-today': S.calStart = TODAY-((wd(TODAY)+6)%7); if(S.calDays===31) S.calDays=35; render(); break;
+    case 'cal-mode': S.calDays=+t.dataset.days; render(); break;
+    case 'cal-month': S.calStart=di(2026,10,1); S.calDays=31; render(); break;
+    case 'filter': { const k=t.dataset.ch; if(S.filters.has(k)) S.filters.delete(k); else S.filters.add(k); if(!S.filters.size) CH_KEYS.forEach(x=>S.filters.add(x)); render(); break; }
+    case 'open-booking': openBooking(+id); break;
+    case 'open-block': openBlock(id); break;
+    case 'close-drawer': closeDrawer(); break;
+    case 'goto-repairs': closeDrawer(); go('repairs'); break;
+    case 'mark-paid': { const b=bById(+id); b.payment='paid'; openBooking(b.id); refreshAfterBookingChange(); toast(`Оплата по брони №${b.id} отмечена: ${money(b.total)}`); break; }
+    case 'toggle-transfer': { const b=bById(+id); b.transfer=!b.transfer;
+      if(b.transfer){ const tr=makeTransfer(b,'in'); tr.status=b.ci<TODAY?'done':'planned'; if(tr.status==='planned') tr.driver=null; transfers.push(tr); toast(`Трансфер заказан: ${b.guest}, ${fD(b.ci)} в ${tr.time}`); }
+      else { for(let i=transfers.length-1;i>=0;i--) if(transfers[i].bookingId===b.id) transfers.splice(i,1); toast(`Трансфер отменён: ${b.guest}`); }
+      openBooking(b.id); refreshAfterBookingChange(); break; }
+    case 'msg-guest': toast('Демо: сообщение гостю не отправляется'); break;
+    case 'req-tab': S.reqTab=t.dataset.tab; render(); break;
+    case 'req-take': { const r=requests.find(x=>x.id===+id); r.status='progress'; persistReq(r); renderNav(); render(); toast(`Взято в работу: ${r.name}`); break; }
+    case 'req-confirm': { const r=requests.find(x=>x.id===+id); r.status='confirmed';
+      let msg = `Подтверждено: ${r.name}`;
+      if(r.site){ persistReq(r); if(bookingFromSiteReq(r)) msg+=' — бронь добавлена в календарь'; }
+      else if(isFree(r.aptId,r.ci,r.co)){ const ap=aptById(r.aptId); const n=r.co-r.ci;
+        const b={id:bookingSeq++,aptId:r.aptId,guest:r.name,phone:'+7 701 555 '+ri(10,99)+' '+ri(10,99),source:r.channel,ci:r.ci,co:r.co,guests:r.guests,nightly:ap.price,total:ap.price*n,payment:'unpaid',transfer:false,cleaner:pick(CLEANERS),note:'Из заявки: «'+r.text+'»',checkinTime:'14:00',checkoutTime:'12:00'};
+        bookings.push(b); r.bookingId=b.id; msg+=' — бронь добавлена в календарь'; }
+      renderNav(); render(); const el=document.getElementById('req-'+r.id); if(el){ el.classList.add('flash'); setTimeout(()=>el.classList.remove('flash'),1500); }
+      toast(msg); break; }
+    case 'req-reply': toast('Демо: здесь откроется чат в '+CH[requests.find(x=>x.id===+id).channel].name); break;
+    case 'clean-tab': S.cleanTab=t.dataset.tab; render(); break;
+    case 'clean-check': { const c=cleanings.find(x=>x.id===+id); const k=+t.dataset.k; c.checked[k]=!c.checked[k]; saveCleaning(c); render(); break; }
+    case 'clean-next': { const c=cleanings.find(x=>x.id===+id); const ap=aptById(c.aptId);
+      if(c.status==='assigned'||c.status==='enroute'){ c.status='progress'; c.startedAt=nowHM(); saveCleaning(c); Store.update(st=>logActivity(st, ME.short, `${ME.short} ${verb(ME,'отметил','отметила')} начало уборки кв. ${ap.num} (${c.cleaner})`, 'start')); toast(`${c.cleaner}: уборка начата — ${ap.name}`); }
+      else if(c.status==='progress'){ c.status='done'; c.checked=c.checked.map(()=>true); c.doneAt=nowHM(); saveCleaning(c); Store.update(st=>logActivity(st, ME.short, `${ME.short} ${verb(ME,'закрыл','закрыла')} уборку кв. ${ap.num} вручную (${c.cleaner})`, 'done')); toast(`Уборка завершена — ${ap.name}`); }
+      renderNav(); render(); break; }
+    case 'rep-tab': S.repTab=t.dataset.tab; render(); break;
+    case 'rep-form': { const f=document.getElementById('repForm'); f.classList.toggle('open'); if(f.classList.contains('open')) document.getElementById('repTitle').focus(); break; }
+    case 'rep-next': { const r=repairs.find(x=>x.id===+id); r.fresh=false; r.status = r.status==='open'?'progress':'done'; if(r.persist) Store.update(st=>{ st.repairStatus[r.id]=r.status; }); renderNav(); render(); toast(r.status==='done'?`Задача выполнена: ${r.title}`:`Задача передана в работу: ${r.assignee}`); break; }
+    case 'voice-start': voiceStart(); break;
+    case 'voice-cancel': clearTimeout(S.vt1); clearInterval(S.vt2); clearTimeout(S.vt3); document.getElementById('voice').className='voice'; break;
+    case 'fin-month': S.finMonth=+t.dataset.m; render(); break;
+    case 'fin-sort': { const k=t.dataset.key; if(S.finSort.key===k) S.finSort.dir*=-1; else S.finSort={key:k,dir:k==='name'?1:-1}; render(); break; }
+    case 'tr-driver': { e.stopPropagation(); const tr=transfers.find(x=>x.id===+id); tr.status='driver'; tr.driver=DRIVERS[tr.id%DRIVERS.length]; render(); toast(`Водитель назначен: ${tr.driver}`); break; }
+    case 'logout': Auth.logout(); location.href='login.html'; break;
+    case 'staff-form': { const f=document.getElementById('staffForm'); f.classList.toggle('open'); if(f.classList.contains('open')) document.getElementById('stName').focus(); break; }
+    case 'staff-access': { const sid=t.dataset.sid; const s=staffById(sid); if(!s || s.role==='owner' || sid===USER.id) break;
+      if(!IS_OWNER && s.role==='admin') { toast('Изменять доступ администратора может только владелец'); break; }
+      Store.update(st=>{ st.access[sid] = !s.access; if(s.access) st.presence[sid]=Object.assign({}, st.presence[sid]||{lastLogin:s.lastLogin}, {online:false}); logActivity(st, ME.short, `${ME.short} ${s.access?verb(ME,'отключил','отключила'):verb(ME,'включил','включила')} доступ: ${s.short}`, 'access'); });
+      render(); toast(s.access?`Доступ отключён: ${s.short} больше не сможет войти`:`Доступ включён: ${s.short}`); break; }
+    case 'tr-done': { e.stopPropagation(); const tr=transfers.find(x=>x.id===+id); tr.status='done'; render(); toast('Трансфер отмечен как выполненный'); break; }
+  }
+});
+document.addEventListener('submit', e=>{
+  if(e.target.id==='staffForm'){ e.preventDefault(); const name=document.getElementById('stName').value.trim(); const phone=document.getElementById('stPhone').value.trim(); const role=document.getElementById('stRole').value;
+    if(name.length<2){ document.getElementById('stName').focus(); return; }
+    let added; Store.update(st=>{ const n=++st.seq; const short=name.split(' ')[0]; added={id:'u'+n, name, short, role, login:'user'+n, pass:'demo', phone:phone||'+7 700 000 00 00', g:/[ая]$/i.test(short)?'f':'m', online:false, lastLogin:'ещё не входил(а)', rating:role==='cleaner'?5.0:undefined, monthDone:role==='cleaner'?0:undefined}; st.staffAdded.push(added); logActivity(st, ME.short, `${ME.short} ${verb(ME,'добавил','добавила')} сотрудника: ${name} (${ROLE_NAME[role].toLowerCase()})`, 'access'); });
+    render(); toast(`Сотрудник добавлен. Логин: ${added.login}, пароль: demo`); return; }
+  if(e.target.id==='repForm'){ e.preventDefault(); const title=document.getElementById('repTitle').value.trim(); if(!title){ document.getElementById('repTitle').focus(); return; }
+    repairs.forEach(r=>r.fresh=false);
+    repairs.push({id:repId++, aptId:+document.getElementById('repApt').value, title, assignee:'Мастер Ерлан', priority:document.getElementById('repPrio').value, status:'open', date:TODAY, cost:0, source:'Вручную', fresh:true});
+    if(S.repTab!=='all'&&S.repTab!=='open') S.repTab='all'; renderNav(); render(); toast('Задача добавлена: '+title); }
+});
+document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ closeDrawer(); document.getElementById('voice').className='voice'; } });
+let rsz; window.addEventListener('resize', ()=>{ clearTimeout(rsz); rsz=setTimeout(()=>{ if(S.view==='calendar') renderGrid(); },120); });
+
+/* =================== Общее состояние (localStorage) =================== */
+const SEED_CLEAN = {}; cleanings.forEach(c=>SEED_CLEAN[c.id]={status:c.status, doneAt:c.doneAt, cleaner:c.cleaner});
+function persistReq(r){ if(!r.site) return; Store.update(st=>{ const x=st.requests.find(q=>q.id===r.id); if(x){ x.status=r.status; } }); }
+function bookingFromSiteReq(r){
+  if(r.bookingId || !isFree(r.aptId,r.ci,r.co)) return null; const ap=aptById(r.aptId); const n=r.co-r.ci;
+  const b={id:bookingSeq++,aptId:r.aptId,guest:r.name,phone:r.phone||'—',source:'site',ci:r.ci,co:r.co,guests:r.guests,nightly:ap.price,total:ap.price*n,payment:r.paid?'paid':'unpaid',transfer:!!r.transfer,cleaner:CLEANERS[r.aptId%CLEANERS.length],note:'С сайта Astana Stay · оплата: '+((PAY_METHODS[r.payment]||{}).label||'—')+(r.text&&r.custom?' · «'+r.text+'»':''),checkinTime:'14:00',checkoutTime:'12:00'};
+  bookings.push(b); r.bookingId=b.id; if(b.transfer){ const tr=makeTransfer(b,'in'); tr.status='planned'; tr.driver=null; transfers.push(tr); } return b;
+}
+function syncFromStore(){
+  const st = Store.load(); let added=0;
+  st.requests.slice().sort((a,b)=>a.id-b.id).forEach(q=>{
+    let r = requests.find(x=>x.id===q.id);
+    if(!r){ r={id:q.id, channel:'site', site:true, name:q.name, phone:q.phone, text:q.comment||('Бронь с сайта Astana Stay'+(q.transfer?' + трансфер из аэропорта':'')), custom:!!q.comment, aptId:q.aptId, ci:q.ci, co:q.co, guests:q.guests, sum:q.total, time:(q.day||'Сегодня')+', '+q.time, status:q.status||'new', bookingId:null, payment:q.payment, paid:!!q.paid, transfer:!!q.transfer};
+      requests.unshift(r); added++; }
+    else r.status = q.status||r.status;
+    if(r.status==='confirmed') bookingFromSiteReq(r);
+  });
+  st.problems.forEach(p=>{ if(repairs.some(r=>r.id===p.id)) return;
+    repairs.push({id:p.id, aptId:p.aptId, title:p.title, assignee:'Не назначен', priority:p.priority||'high', status:'open', date:TODAY, cost:0, source:'Уборщик', reporter:p.by, persist:true, photos:p.photos||0}); });
+  repairs.forEach(r=>{ if(r.id<12) r.persist=true; const s2=st.repairStatus[r.id]; if(s2 && r.persist) r.status=s2; });
+  applyCleaningOverrides(st);
+  return added;
+}
+/* =================== Сотрудники =================== */
+const ACT_IC = {login:['in','#e0e7ff','#4f46e5'],logout:['out','#f1f5f9','#64748b'],enroute:['nav','#e0f2fe','#0284c7'],start:['sparkle','#fef3c7','#d97706'],done:['check','#dcfce7','#16a34a'],problem:['alert','#fee2e2','#dc2626'],access:['key','#ede9fe','#7c3aed'],booking:['globe','#ede9fe','#7c3aed'],info:['clock','#f1f5f9','#64748b']};
+function seededActivity(){
+  const L=[['08:15','Азамат','Азамат вошёл в 08:15','login'],['08:47','Алина','Алина вошла в 08:47','login'],['09:12','Гульнара','Гульнара вошла в 09:12','login'],['09:30','Айгерим','Айгерим вошла в 09:30','login'],['10:05','Динара','Динара вошла в 10:05','login'],['10:20','Светлана','Светлана вошла в 10:20','login']];
+  cleanings.forEach(c=>{ const s0=SEED_CLEAN[c.id]; if(c.date!==TODAY) return; const a=aptById(c.aptId);
+    if(s0.status==='progress'||s0.status==='done') L.push([s0.status==='done'?'11:20':'12:10', s0.cleaner, `${s0.cleaner} начала уборку кв. ${a.num}`, 'start']);
+    if(s0.status==='done') L.push([s0.doneAt, s0.cleaner, `${s0.cleaner} завершила уборку кв. ${a.num} — ${ROOMS_PH.length} фото`, 'done']); });
+  L.push(['13:58','Светлана','Светлана вышла в 13:58','logout']);
+  return L.sort((a,b)=>a[0].localeCompare(b[0])).map(x=>({t:x[0],who:x[1],text:x[2],type:x[3],seed:true}));
+}
+function renderStaff(m){
+  const st = Store.load(); const staff = allStaff(st);
+  const acts = seededActivity().concat(st.activity).reverse();
+  const todayCl = cleanings.filter(c=>c.date===TODAY);
+  const probs = repairs.filter(r=>r.source==='Уборщик' && r.status!=='done').length;
+  const monthDone = s => (s.monthDone||0) + cleanings.filter(c=>c.status==='done' && SEED_CLEAN[c.id] && SEED_CLEAN[c.id].status!=='done' && c.cleaner===s.short).length;
+  m.innerHTML = `<div class="page-head"><div><h1>Сотрудники</h1><p class="sub">Роли, доступы, смены и журнал действий команды · демо-аккаунты, пароль у всех <b>demo</b></p></div>
+    <button class="btn primary" data-action="staff-form">${ic('plus',16)} Добавить сотрудника</button></div>
+  <div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr))">
+    ${kpiCard('users','#e0e7ff','#4f46e5','Сотрудников',staff.length, `${staff.filter(s=>s.role==='cleaner').length} уборщ. · ${staff.filter(s=>s.role==='admin').length} админ.`)}
+    ${kpiCard('in','#dcfce7','#16a34a','Сейчас на смене',staff.filter(s=>s.online&&s.access).length, 'онлайн в приложении')}
+    ${kpiCard('sparkle','#fef3c7','#d97706','Уборки сегодня',`${todayCl.filter(c=>c.status==='done').length} / ${todayCl.length}`, `${todayCl.filter(c=>c.status==='progress'||c.status==='enroute').length} в работе сейчас`)}
+    ${kpiCard('alert','#fee2e2','#dc2626','Проблемы от уборщиков',probs, 'открыты в «Ремонтах»')}
+  </div>
+  <div class="card">
+    <form class="add-form" id="staffForm" style="border-radius:var(--radius) var(--radius) 0 0"><input id="stName" placeholder="Имя и фамилия" style="min-width:200px" class="grow"><input id="stPhone" placeholder="+7 7__ ___ __ __" style="width:170px"><select id="stRole"><option value="cleaner">Уборщик</option>${IS_OWNER?'<option value="admin">Администратор</option>':''}</select><button class="btn primary" type="submit">Добавить</button><span class="muted" style="font-size:12px;align-self:center">Логин выдаётся автоматически, пароль — demo</span></form>
+    <div class="table-wrap"><table class="t staff-t"><thead><tr><th>Сотрудник</th><th>Роль</th><th>Статус</th><th>Последний вход</th><th class="num" title="Выполнено из назначенных на сегодня">Сегодня</th><th class="num" title="Завершённых уборок за сентябрь">За месяц</th><th>Рейтинг</th><th>Доступ</th></tr></thead><tbody>
+    ${staff.map(s=>{ const my=todayCl.filter(c=>c.cleaner===s.short); const isMe=s.id===USER.id; const lock = s.role==='owner'||isMe||(!IS_OWNER&&s.role==='admin');
+      return `<tr style="${s.access?'':'opacity:.55'}"><td><div class="row"><span class="avatar" style="width:32px;height:32px;font-size:12px;background:${s.role==='cleaner'?'linear-gradient(135deg,#34d399,#059669)':s.role==='admin'?'linear-gradient(135deg,#60a5fa,#2563eb)':'linear-gradient(135deg,#a78bfa,#6d28d9)'}">${initials(s.name)}</span><div><b style="font-weight:600">${esc(s.name)}${isMe?' <span class="muted" style="font-weight:500">(вы)</span>':''}</b><div class="muted" style="font-size:12px">${esc(s.phone)} · логин: ${esc(s.login)}</div></div></div></td>
+        <td><span class="role-chip role-${s.role}">${ROLE_NAME[s.role]}</span></td>
+        <td>${!s.access?'<span class="st-dot" style="color:#b91c1c"><i style="background:#dc2626"></i>Доступ отключён</span>':s.online?'<span class="st-dot" style="color:#15803d"><i style="background:#22c55e;box-shadow:0 0 0 3px #dcfce7"></i>На смене</span>':'<span class="st-dot" style="color:#64748b"><i style="background:#cbd5e1"></i>Не в сети</span>'}</td>
+        <td class="muted">${esc(s.lastLogin)}</td>
+        <td class="num">${s.role==='cleaner'?`<b>${my.filter(c=>c.status==='done').length}</b> из ${my.length}`:'<span class="muted">—</span>'}</td>
+        <td class="num">${s.role==='cleaner'?monthDone(s):'<span class="muted">—</span>'}</td>
+        <td>${s.rating?`<span class="row" style="gap:4px;color:#b45309;font-weight:600">${ic('star',14)} ${String(s.rating.toFixed(1)).replace('.',',')}</span>`:'<span class="muted">—</span>'}</td>
+        <td><button class="switch ${s.access?'on':''}" data-action="staff-access" data-sid="${s.id}" ${lock?'disabled title="Нельзя изменить"':'title="Включить/отключить доступ"'} aria-label="Доступ"></button></td></tr>`; }).join('')}
+    </tbody></table></div>
+  </div>
+  <div class="staff-grid">
+    <div class="card"><div class="card-h" style="padding-bottom:12px;border-bottom:1px solid var(--border)"><h3>Журнал действий · сегодня</h3><span class="muted" style="font-size:12.5px">${acts.length} ${plural(acts.length,'событие','события','событий')}</span></div>
+      <div class="act-list">${acts.map(a=>{ const k=ACT_IC[a.type]||ACT_IC.info; return `<div class="act ${a.seed?'':'fresh'}"><span class="a-ic" style="background:${k[1]};color:${k[2]}">${ic(k[0],15)}</span><div class="grow">${esc(a.text)}${a.seed?'':' <span class="chip violet" style="font-size:10.5px;padding:1px 7px">новое</span>'}</div><span class="a-t">${a.t||''}</span></div>`; }).join('')}</div></div>
+    <div class="card"><div class="card-h"><h3>Права ролей</h3></div><div class="card-b" style="font-size:13px;line-height:1.6">
+      <div style="margin-bottom:10px"><span class="role-chip role-owner">Владелец</span> — все разделы, включая «Финансы» и управление доступами.</div>
+      <div style="margin-bottom:10px"><span class="role-chip role-admin">Администратор</span> — всё, кроме «Финансов»; не может менять доступ других администраторов.</div>
+      <div style="margin-bottom:10px"><span class="role-chip role-cleaner">Уборщик</span> — только свои уборки на сегодня и завтра: адрес, код двери, чек-лист, фотоотчёт, сообщение о проблеме. Без цен, финансов и контактов гостей.</div>
+      <div class="note" style="margin-top:14px">Отключённый сотрудник не сможет войти. Всё хранится в localStorage этого браузера (демо, без сервера).</div></div></div>
+  </div>`;
+}
+/* =================== Старт =================== */
+const newFromSite = syncFromStore();
+document.getElementById('brandSub').textContent = IS_OWNER ? 'Панель владельца' : 'Панель администратора';
+document.getElementById('userBox').innerHTML = `<div class="user-chip" title="${esc(USER.name)} · ${ROLE_NAME[USER.role]}"><div class="avatar" style="background:${IS_OWNER?'linear-gradient(135deg,#a78bfa,#6d28d9)':'linear-gradient(135deg,#60a5fa,#2563eb)'}">${initials(USER.name)}</div><div class="u-txt"><b>${esc(USER.short)}</b><small>${ROLE_NAME[USER.role]}</small></div></div><button class="btn sm" data-action="logout" title="Выйти">${ic('logout',15)} <span class="u-txt">Выйти</span></button>`;
+document.querySelector('.menu-btn').innerHTML = ic('menu',18);
+document.getElementById('searchIc').innerHTML = ic('search',16);
+document.getElementById('bellBtn').innerHTML = ic('bell',18)+'<span class="dot"></span>';
+const wdl = WD_L[wd(TODAY)];
+document.getElementById('todayLbl').textContent = `${wdl[0].toUpperCase()+wdl.slice(1)}, ${dd(TODAY)} ${MON_G[mm(TODAY)]} 2026`;
+const hash = location.hash.replace('#','');
+if(ALL_VIEWS.includes(hash)) S.view=hash;
+renderNav(); render();
+(()=>{ const seen=+(sessionStorage.getItem('sutkipro.seenReq')||0); const fresh=requests.filter(r=>r.site && r.status==='new' && r.id>seen); if(fresh.length){ setTimeout(()=>toast(`Новых заявок с сайта: ${fresh.length} — раздел «Заявки»`),400); sessionStorage.setItem('sutkipro.seenReq', String(Math.max(...fresh.map(r=>r.id)))); } })();
+window.addEventListener('hashchange', ()=>{ const h=location.hash.replace('#',''); if(ALL_VIEWS.includes(h) && h!==S.view) go(h); });
+/* изменения из другой вкладки (гость/уборщик) подтягиваются без перезагрузки */
+window.addEventListener('storage', e=>{ if(e.key===USER_KEY){ const u=Auth.current(); if(!u||u.id!==USER.id) location.reload(); return; } if(e.key!==STORE_KEY) return; const n=syncFromStore(); renderNav(); if(S.view!=='calendar') render(); else renderGrid(); if(n) toast(`Новая заявка с сайта (${n})`); });
+window.__demo = {S, bookings, requests, cleanings, repairs, transfers, go, USER};
+})();
+</script>
+</body>
+</html>
