@@ -35,9 +35,8 @@ function demoPhotoSVG(label,h){ return `<svg viewBox="0 0 80 80" preserveAspectR
 function photoHTML(p, idx, removable){ return `<div class="ph">${p.src?`<img src="${p.src}" alt="${esc(p.label||'Фото')}">`:demoPhotoSVG(p.label,p.hue||200)}<span>${esc(p.label||'Фото')}${p.demo?' · демо':''}</span>${removable?`<button class="rm" data-rm="${idx}" aria-label="Удалить фото">${ic('x',13,2.5)}</button>`:''}</div>`; }
 function urgency(c){
   if(c.status==='done') return `<span class="urg green" style="background:var(--green-50);color:#15803d">${ic('check',12,3)} Готово${c.doneAt?' в '+c.doneAt:''}</span>`;
-  if(!c.nextCheckin) return `<span class="urg grey">${ic('clock',12)} Заезда в этот день нет</span>`;
-  const urgent = c.nextCheckin <= '16:00';
-  return `<span class="urg ${urgent?'red':'amber'}">${ic(urgent?'alert':'clock',12)} ${urgent?'Срочно · ':''}заезд в ${c.nextCheckin}</span>`;
+  const u = cleanUrgency(c);
+  return `<span class="urg ${u.level}" data-urg="${u.level}" title="${esc(u.title)}">${ic(u.level==='red'?'alert':'clock',12)} ${u.text}${u.gapText?` <span class="gap">· ${u.gapText}</span>`:''}</span>`;
 }
 const stepsBar = c => `<div class="steps">${FLOW.map((s,i)=>`<i class="${FLOW.indexOf(c.status)>=i?'on':''}"></i>`).join('')}</div>`;
 
@@ -45,13 +44,14 @@ const stepsBar = c => `<div class="steps">${FLOW.map((s,i)=>`<i class="${FLOW.in
 function renderList(){
   const all = myTasks(); const today = all.filter(c=>c.date===TODAY), tom = all.filter(c=>c.date===TODAY+1);
   const list = V.tab==='today' ? today : tom;
-  const doneT = today.filter(c=>c.status==='done').length; const urgentN = today.filter(c=>c.status!=='done' && c.nextCheckin && c.nextCheckin<='16:00').length;
+  const doneT = today.filter(c=>c.status==='done').length; const urgentN = today.filter(c=>c.status!=='done' && cleanUrgency(c).level==='red').length;
   app.innerHTML = topbar() + `<div class="pad">
     <div class="day"><h1>${WDL[0].toUpperCase()+WDL.slice(1)}, ${dd(TODAY)} ${MON_G[mm(TODAY)]}</h1>
       <p>${today.length ? `${today.length} ${plural(today.length,'уборка','уборки','уборок')} сегодня · готово ${doneT}${urgentN?` · срочных ${urgentN}`:''}` : 'Сегодня уборок нет'}</p>
       <div class="bar"><i style="width:${today.length?Math.round(doneT/today.length*100):0}%"></i></div></div>
     <div id="pwaSlot">${window.PWA?PWA.bannerHTML():''}</div>
     <div class="tabs"><button class="${V.tab==='today'?'active':''}" data-tab="today">Сегодня<span class="n">${today.length}</span></button><button class="${V.tab==='tomorrow'?'active':''}" data-tab="tomorrow">Завтра<span class="n">${tom.length}</span></button></div>
+    ${list.some(c=>c.status!=='done') ? `<div class="urg-legend" aria-label="Что значат цвета">${URG_LEGEND.map(([k,l,d])=>`<span><i class="${k}"></i><b>${l}</b> — ${d}</span>`).join('')}<span class="muted">Запас = время заезда следующего гостя минус конец окна уборки</span></div>` : ''}
     ${list.length ? list.map(c=>{ const a=aptById(c.aptId); return `<button class="task ${c.status==='done'?'done':''} ${c.sim&&c.status==='assigned'?'fresh-t':''}" data-open="${c.id}">
       <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><span class="chip ${FLOW_C[c.status]}">${FLOW_L[c.status]}</span>${urgency(c)}</div>
       <h3>Кв. ${a.num} · ${esc(a.complex)}</h3><div class="addr">${esc(a.address)}</div>
@@ -89,7 +89,7 @@ function renderTask(){
     <div class="sec"><h4>${ic('clock',16)} Время</h4><div class="info">
       <div><small>Окно уборки</small><b>${c.from}–${c.to}</b></div>
       <div><small>Выезд гостя</small><b>${b?b.checkoutTime:c.from}</b><div class="muted" style="font-size:12px">${b?esc(firstName(b.guest)):''}</div></div>
-      <div style="grid-column:span 2;${c.nextCheckin&&c.nextCheckin<='16:00'&&!done?'background:#fee2e2':''}"><small>Следующий заезд</small><b>${c.nextCheckin?`${relDay(c.date)} в ${c.nextCheckin}`:'Сегодня заезда нет'}</b>${c.nextGuest?`<div class="muted" style="font-size:12px">Гость: ${esc(firstName(c.nextGuest))}${c.nextCheckin<='16:00'&&!done?' · успеть до заезда!':''}</div>`:''}</div></div></div>
+      <div class="urg-box ${done?'':cleanUrgency(c).level}" style="grid-column:span 2"><small>Следующий заезд</small><b>${c.nextCheckin?`${relDay(c.date)} в ${c.nextCheckin}`:`${relDay(c.date)} заезда нет`}</b>${c.nextCheckin?`<div class="muted" style="font-size:12px">${c.nextGuest?`Гость: ${esc(firstName(c.nextGuest))} · `:''}${cleanUrgency(c).gapText}${cleanUrgency(c).level==='red'&&!done?' · успеть до заезда!':''}</div>`:''}</div></div></div>
     <div class="sec"><h4>${ic('list',16)} Чек-лист <span class="muted" style="margin-left:auto;font-weight:600">${c.checked.filter(Boolean).length}/${CHECKLIST.length}</span></h4>
       ${canCheck||done?'':`<div class="hint" style="margin:-4px 0 6px">Отмечать пункты можно после «Начать уборку»</div>`}
       <ul class="cl ${canCheck?'':'ro'}">${CHECKLIST.map((t,k)=>`<li class="${c.checked[k]?'on':''}" ${canCheck?`data-check="${k}"`:''}><span class="cb">${ic('check',14,3)}</span>${t}</li>`).join('')}</ul>

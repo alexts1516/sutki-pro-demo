@@ -220,7 +220,7 @@ apartments.forEach(a => {
     if((src==='airbnb' || src==='booking') && pay==='unpaid' && rnd()<.6) pay='paid';
     bookings.push({id:bookingSeq++, aptId:a.id, guest:pick(GUESTS), phone:'+7 70'+ri(0,8)+' '+ri(100,999)+' '+ri(10,99)+' '+ri(10,99),
       source:src, ci, co, guests:ri(1,a.maxGuests), nightly, total:nightly*n, payment:pay, transfer: rnd()<.24,
-      cleaner:pick(CLEANERS), note:pick(NOTES), checkinTime: pick(['14:00','14:00','15:00','16:00','20:00','23:30']), checkoutTime: pick(['12:00','12:00','11:00','10:00'])});
+      cleaner:pick(CLEANERS), note:pick(NOTES), checkinTime: pick(['20:00','14:00','18:00','14:00','15:00','16:00']), checkoutTime: pick(['12:00','12:00','11:00','10:00'])});
     cur = co;
   }
 });
@@ -228,6 +228,23 @@ const bById = id => bookings.find(b=>b.id===id);
 const isFree = (aptId, ci, co) => !bookings.some(b=>b.aptId===aptId && b.ci<co && ci<b.co) && !overlapsBlock(aptId,ci,co);
 
 /* --- уборки --- */
+/* Единое правило срочности уборки (используется в приложении клининга, в «Уборках» владельца и в календаре):
+   запас = заезд следующего гостя в эту квартиру − конец окна уборки.
+   ≤ 2 ч (или заезд раньше конца окна) → красный «Срочно»; 2–5 ч → жёлтый; > 5 ч или заезда в этот день нет → серый. */
+const URG_RED_MIN = 120, URG_AMBER_MIN = 300;
+const hhmmToMin = t => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(t||'').trim()); return m ? +m[1]*60 + +m[2] : null; };
+const fmtGap = min => { const h = Math.floor(min/60), m = min%60; return h && m ? `${h} ч ${m} мин` : h ? `${h} ч` : `${m} мин`; };
+function cleanUrgency(c){
+  const ci = c && hhmmToMin(c.nextCheckin), end = c && hhmmToMin(c.to);
+  if(ci==null) return {level:'grey', gap:null, gapText:'', text:'Заезда в этот день нет', title:'В этот день новых гостей нет — можно не спешить'};
+  const gap = end==null ? null : ci - end;
+  const level = gap==null ? 'amber' : gap <= URG_RED_MIN ? 'red' : gap <= URG_AMBER_MIN ? 'amber' : 'grey';
+  const gapText = gap==null ? '' : gap < 0 ? `заезд на ${fmtGap(-gap)} раньше конца окна` : gap === 0 ? 'запаса нет' : `запас ${fmtGap(gap)}`;
+  return {level, gap, gapText, text: (level==='red' ? 'Срочно · заезд в ' : 'Заезд в ') + c.nextCheckin,
+    title: `Окно уборки до ${c.to}, заезд следующего гостя в ${c.nextCheckin}` + (gapText ? ` — ${gapText}` : '')};
+}
+const URG_LEGEND = [['red','Срочно','запас до заезда 2 ч и меньше'],['amber','Заезд скоро','запас 2–5 ч'],['grey','Спокойно','больше 5 ч или заезда нет']];
+
 const CHECKLIST = ['Сменить постельное бельё','Заменить полотенца','Помыть посуду и кухню','Убрать санузел','Пропылесосить и помыть полы','Вынести мусор','Пополнить чай, кофе, мыло','Проверить технику и пульты'];
 const ROOMS_PH = [['Спальня',235],['Кухня',38],['Ванная',190],['Гостиная',140]];
 let cleanId = 1;

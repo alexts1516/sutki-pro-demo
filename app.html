@@ -273,7 +273,15 @@ table.t td.wrap-td{white-space:normal;min-width:250px}
 .task-foot{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:12px;padding-top:10px;border-top:1px dashed var(--border);flex-wrap:wrap}
 details.cl summary{cursor:pointer;font-size:12.5px;color:var(--text2);margin-top:10px;font-weight:600;list-style:none;display:flex;align-items:center;gap:6px}
 details.cl summary::-webkit-details-marker{display:none}
-.urgent{background:var(--red-50);color:#b91c1c;font-weight:600;font-size:11.5px;padding:2px 7px;border-radius:6px;white-space:nowrap}
+.urgent{background:var(--red-50);color:#b91c1c;font-weight:600;font-size:11.5px;padding:2px 7px;border-radius:6px;white-space:nowrap;text-align:right;line-height:1.35}
+.urgent small{display:block;font-size:10.5px;font-weight:500;opacity:.85}
+.urgent.amber{background:#fef3c7;color:#b45309}
+.urgent.grey{background:#f1f5f9;color:#475569}
+.urg-legend{display:flex;flex-wrap:wrap;gap:4px 14px;font-size:12px;color:var(--text2);margin:0 0 14px}
+.urg-legend i{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:1px}
+.urg-legend i.red{background:#dc2626}.urg-legend i.amber{background:#f59e0b}.urg-legend i.grey{background:#94a3b8}
+.dp-urg{font-size:11.5px;font-weight:600;padding:1px 7px;border-radius:6px;background:#f1f5f9;color:#475569;white-space:nowrap}
+.dp-urg.red{background:var(--red-50);color:#b91c1c}.dp-urg.amber{background:#fef3c7;color:#b45309}
 .rep{display:flex;align-items:center;gap:14px;padding:14px 18px;border-bottom:1px solid var(--border2);flex-wrap:wrap}
 .rep:last-child{border-bottom:none}
 .rep.fresh{animation:fresh 2.4s ease}
@@ -725,7 +733,7 @@ function dayRowIn(b, back){ const a=aptById(b.aptId); const tr=transfers.find(t=
 function dayRowClean(c, back){ const a=aptById(c.aptId); const b=bById(c.bookingId);
   return `<button class="dp-row" ${b?`data-action="open-booking" data-id="${b.id}"${back?' data-back="1"':''}`:''}><div class="dp-time">${esc(c.from||'12:00')}<small>до ${esc(c.to||'18:00')}</small></div>
     <div class="grow" style="min-width:0">${aptCell(a)}<div class="dp-meta">${clAv(c.cleaner)} <b style="font-weight:600">${esc(c.cleaner)}</b> ${clStatus(c)}</div>
-    <div class="dp-meta">${c.nextGuest?`${ic('in',13)} Следующий заезд: ${esc(c.nextGuest)}, ${esc(c.nextCheckin||'14:00')}`:'<span class="muted">в этот день заезда нет</span>'}</div></div>${b?ic('chevR',16):''}</button>`; }
+    <div class="dp-meta">${c.nextGuest?`${ic('in',13)} Следующий заезд: ${esc(c.nextGuest)}, ${esc(c.nextCheckin||'14:00')}${c.status!=='done'?(u=>` <span class="dp-urg ${u.level}" data-urg="${u.level}" title="${esc(u.title)}">${u.level==='red'?'срочно · ':''}${u.gapText}</span>`)(cleanUrgency(c)):''}`:'<span class="muted">в этот день заезда нет</span>'}</div></div>${b?ic('chevR',16):''}</button>`; }
 function dayRepairs(d){
   return repairs.filter(r=>r.date===d || blocks.some(b=>b.repairId===r.id && b.from<=d && d<b.to) || (r.status==='progress' && r.date<d && d===TODAY))
     .sort((x,y)=>({high:0,medium:1,low:2}[x.priority]-{high:0,medium:1,low:2}[y.priority]) || x.aptId-y.aptId);
@@ -899,12 +907,13 @@ function renderCleaning(m){
   m.innerHTML = `<div class="page-head"><div><h1>Уборки</h1><p class="sub">Задачи для специалистов по клинингу создаются автоматически из выездов гостей</p></div>
     <div class="tabs">${[['yesterday','Вчера'],['today','Сегодня'],['tomorrow','Завтра'],['all','Все']].map(([k,l])=>`<button class="${S.cleanTab===k?'active':''}" data-action="clean-tab" data-tab="${k}">${l}</button>`).join('')}</div></div>
   <div class="row" style="flex-wrap:wrap;gap:8px;margin-bottom:16px"><span class="muted" style="font-size:12.5px">Клининг:</span>${Object.entries(byCleaner).map(([n,c])=>`<span class="chip grey" style="padding:3px 10px 3px 3px"><span class="avatar" style="width:20px;height:20px;font-size:10px;background:linear-gradient(135deg,#34d399,#059669)">${n[0]}</span>${n} · ${c}</span>`).join('')}</div>
+  <div class="urg-legend" aria-label="Что значат цвета">${URG_LEGEND.map(([k,l,d])=>`<span><i class="${k}"></i><b>${l}</b> — ${d}</span>`).join('')}<span class="muted">запас = заезд следующего гостя минус конец окна уборки</span></div>
   <div class="kanban">${['assigned','progress','done'].map(st=>{ const items=list.filter(c=>c.status===st || (st==='assigned' && c.status==='enroute'));
     return `<div class="col"><div class="col-h"><span class="cdot" style="background:${CL_ST[st][0]}"></span>${CL_ST[st][1]}<span class="cnt">${items.length}</span></div>${items.length?items.map(cleanCard).join(''):'<div class="empty" style="padding:24px;font-size:13px">Нет задач</div>'}</div>`; }).join('')}</div>`;
 }
 function cleanCard(c){
   const a=aptById(c.aptId); const done=c.checked.filter(Boolean).length; const pct=Math.round(done/CHECKLIST.length*100);
-  const urgent = c.nextCheckin && c.status!=='done';
+  const u = c.status!=='done' ? cleanUrgency(c) : null;
   let body='';
   if(c.status==='progress'){
     body = `<div class="row" style="margin-top:10px;font-size:12px;justify-content:space-between"><span class="muted">Чек-лист</span><b>${done}/${CHECKLIST.length}</b></div><div class="prog" style="margin-top:5px"><i style="width:${pct}%"></i></div><ul class="checklist">${CHECKLIST.map((t,k)=>`<li class="${c.checked[k]?'on':''}" data-action="clean-check" data-id="${c.id}" data-k="${k}"><span class="cb">${ic('check',11,3)}</span>${t}</li>`).join('')}</ul>`;
@@ -920,7 +929,7 @@ function cleanCard(c){
   const btn = (c.status==='assigned'||c.status==='enroute') ? `<button class="btn sm primary" data-action="clean-next" data-id="${c.id}">Начать ${ic('arrowR',14)}</button>`
     : c.status==='progress' ? `<button class="btn sm success" data-action="clean-next" data-id="${c.id}">${ic('check',14)} Завершить</button>`
     : `<span class="chip green">${ic('check',12,3)} Готово в ${c.doneAt}</span>`;
-  return `<div class="task"><div class="row" style="align-items:flex-start"><div class="grow"><h4 class="ellipsis" title="${esc(a.name)}">${esc(a.name)}</h4><div class="addr ellipsis">${esc(a.address)}</div></div>${urgent?`<span class="urgent">Заезд в ${c.nextCheckin}</span>`:''}</div>
+  return `<div class="task"><div class="row" style="align-items:flex-start"><div class="grow"><h4 class="ellipsis" title="${esc(a.name)}">${esc(a.name)}</h4><div class="addr ellipsis">${esc(a.address)}</div></div>${u?`<span class="urgent ${u.level}" data-urg="${u.level}" title="${esc(u.title)}">${u.text}${u.gapText?`<small>${u.gapText}</small>`:''}</span>`:''}</div>
     <div class="task-meta"><span>${ic('calendar',13)} ${relDay(c.date)}</span><span>${ic('clock',13)} ${c.from}–${c.to}</span><span>${ic('home',13)} ${a.rooms}</span></div>
     <div class="cleaner"><span class="avatar" style="background:linear-gradient(135deg,#34d399,#059669)">${c.cleaner[0]}</span><span><b>${c.cleaner}</b><span class="muted"> · клининг</span></span></div>
     ${body}
