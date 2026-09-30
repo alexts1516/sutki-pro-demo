@@ -100,6 +100,13 @@
 
 Название продукта для команды «Сутки·Pro» — в `team.html`, `login.html`, `app.html`, `cleaning.html`, `task.html`, `manifest.webmanifest`. Иконки приложения — в `icons/`.
 
+## Сервер (backend)
+
+В папке [`server/`](server/) — основа настоящего сервера: база данных (Prisma), вход по ролям, админка
+для квартир и фото, тексты сайта, бренд и логотип, уведомления в Telegram (бот выключен без токена),
+заготовка оплаты CloudPayments / PayLink. Запуск и настройка — [server/README_SERVER.md](server/README_SERVER.md).
+Демо-сайт на Pages к серверу пока не подключён (флаг `API_BASE_URL` в `assets/config.js`).
+
 ## Файлы
 
 - `index.html` + `assets/guest.js`, `assets/guest.css` — сайт для гостей.
