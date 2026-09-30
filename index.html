@@ -12,10 +12,10 @@
 <div class="demo-ribbon"><b>Демо-данные</b> · сайт-пример для презентации: квартиры, цены и отзывы вымышленные, оплата не проводится</div>
 <header class="site">
   <div class="wrap hdr">
-    <a class="logo" href="./"><span class="logo-mk" id="logoMk"></span><span><b>Astana Stay</b><small>квартиры посуточно</small></span></a>
+    <a class="logo" href="./"><span class="logo-mk" id="logoMk" data-brand="logo"></span><span><b data-brand="name">Astana Stay</b><small data-brand="tagline">квартиры посуточно</small></span></a>
     <nav class="hnav"><a href="#catalog">Квартиры</a><a href="#map">Карта</a><a href="#transfer">Трансфер</a><a href="#how">Как забронировать</a><a href="#contacts">Контакты</a></nav>
     <button type="button" class="sbar" id="sbar" hidden aria-label="Изменить поиск"></button>
-    <div class="hright"><span class="demo-badge"><i></i>Демо-данные</span><a class="btn brand sm" href="#catalog">Забронировать</a></div>
+    <div class="hright"><div class="lsw" id="lsw"></div><span class="demo-badge"><i></i>Демо-данные</span><a class="btn brand sm" href="#catalog">Забронировать</a></div>
   </div>
 </header>
 
@@ -24,7 +24,7 @@
   <div class="wrap hero-in">
     <span class="kicker" id="kicker"></span>
     <h1>Квартиры посуточно в&nbsp;Астане — как дома, только лучше</h1>
-    <p>Новые ЖК на левом и правом берегу, заселение 24/7 через кодовый замок, квартиры для гостей с питомцами и трансфер из аэропорта с табличкой.</p>
+    <p>Большинство квартир — в ЖК Хайвил в центре Астаны, рядом с посольством США. Заселение 24/7 через кодовый замок, можно с питомцами, трансфер из аэропорта с табличкой.</p>
   </div>
 </section>
 
@@ -77,11 +77,11 @@
 <footer class="site" id="contacts">
   <div class="wrap">
     <div class="fgrid">
-      <div><div class="logo" style="margin-bottom:10px"><span class="logo-mk" id="logoMk2"></span><span><b>Astana Stay</b></span></div>Квартиры посуточно в Астане. Работаем 24/7.</div>
-      <div><b>Контакты (демо)</b><br>+7 700 000 00 00<br>Telegram: @astanastay_demo<br>hello@astanastay.example</div>
+      <div><div class="logo" style="margin-bottom:10px"><span class="logo-mk" id="logoMk2" data-brand="logo"></span><span><b data-brand="name">Astana Stay</b></span></div>Квартиры посуточно в Астане. Работаем 24/7.</div>
+      <div><b>Контакты (демо)</b><br><span data-brand="phone">+7 700 000 00 00</span><br>Telegram: <span data-brand="telegram">@astanastay_demo</span><br><span data-brand="email">hello@astanastay.example</span></div>
       <div><b>Гостям</b><br><a href="#catalog">Квартиры посуточно</a><br><a href="#transfer">Трансфер из аэропорта</a><br><a href="#how">Как забронировать</a></div>
     </div>
-    <div class="fdemo"><span>Демо-данные: бренд «Astana Stay», квартиры, цены, отзывы и контакты вымышленные.</span><span>Работает на Сутки·Pro (прототип) · <a class="team-link" href="team.html">Вход для команды</a></span></div>
+    <div class="fdemo"><span>Демо-данные: бренд «<span data-brand="name">Astana Stay</span>», квартиры, цены, отзывы и контакты вымышленные.</span><span>Работает на Сутки·Pro (прототип) · <a class="team-link" href="team.html">Вход для команды</a></span></div>
   </div>
 </footer>
 
@@ -100,6 +100,9 @@
   <div class="dp-f"><div class="dp-sum" id="dpSum"></div><div class="dp-btns"><button type="button" class="btn" data-dpreset>Сбросить</button><button type="button" class="btn brand" id="dpDone">Готово</button></div></div>
 </div></div>
 
+<script src="assets/i18n.js"></script>
+<script src="assets/i18n-en.js"></script>
+<script src="assets/brand.js"></script>
 <script src="assets/data.js"></script>
 <script src="assets/store.js"></script>
 <script src="assets/guest.js"></script>

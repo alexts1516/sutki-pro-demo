@@ -1,20 +1,22 @@
-/* Сутки·Pro Клининг — мобильное приложение специалиста по клинингу (демо).
-   Показывает ТОЛЬКО задачи вошедшего специалиста; без цен, финансов и контактов гостей. */
+/* Сутки·Pro Команда — мобильное приложение команды (демо). Этот файл — роль «Клининг»:
+   показывает ТОЛЬКО задачи вошедшего специалиста; без цен, финансов и контактов гостей.
+   Роль «Мастер» (ремонты) — в assets/master.js, установка и уведомления — в assets/pwa.js. */
 (function(){
 'use strict';
 const app = document.getElementById('app');
 const MIN_PHOTOS = 3;
-const USER = Auth.check();
+const USER = Auth.check('team') || Auth.check('panel');
 
 /* ---------- доступ ---------- */
 function deny(title, text, buttons){
   document.body.innerHTML = `<div class="deny"><div class="deny-card"><div class="deny-ic">${ic('lock',30)}</div><h1 style="font-size:20px">${title}</h1>
     <p class="muted" style="margin:10px 0 18px;font-size:14px">${text}</p><div class="row" style="justify-content:center;flex-wrap:wrap">${buttons}</div>
     <div style="margin-top:18px"><span class="demo-badge"><i></i>Демо-данные</span></div></div></div>`;
-  const lo = document.getElementById('denyLogout'); if(lo) lo.onclick = ()=>{ Auth.logout(); location.href='login.html?role=cleaning'; };
+  const lo = document.getElementById('denyLogout'); if(lo) lo.onclick = ()=>{ Auth.logout('panel'); location.href='login.html?role=cleaning'; };
 }
-if(!USER){ deny('Сутки·Pro Клининг','Приложение показывает задачи конкретного специалиста по клинингу. Войдите под своим демо-аккаунтом.', `<a class="btn primary" href="login.html?role=cleaning">${ic('in',16)} Войти</a><a class="btn" href="team.html">Вход для команды</a>`); return; }
-if(USER.role!=='cleaner'){ deny('Раздел для клининга', `Вы вошли как <b>${esc(USER.short)}</b> (${ROLE_NAME[USER.role].toLowerCase()}). «Сутки·Pro Клининг» открывается только под аккаунтом специалиста по клинингу.`, `<a class="btn primary" href="app.html">В панель управления</a><button class="btn" id="denyLogout">${ic('logout',16)} Войти в клининг</button>`); return; }
+if(USER && USER.role==='master') return;   // приложение мастера — assets/master.js
+if(!USER){ deny('Сутки·Pro Команда','Приложение команды: специалисты по клинингу видят свои уборки, мастера — свои ремонты. Войдите под своим демо-аккаунтом.', `<a class="btn primary" href="login.html?role=cleaning">${ic('in',16)} Войти</a><a class="btn" href="team.html">Вход для команды</a>`); return; }
+if(USER.role!=='cleaner'){ deny('Раздел для команды', `Вы вошли как <b>${esc(USER.short)}</b> (${ROLE_NAME[USER.role].toLowerCase()}). «Сутки·Pro Команда» открывается под аккаунтом специалиста по клинингу или мастера.`, `<a class="btn primary" href="app.html">В панель управления</a><button class="btn" id="denyLogout">${ic('logout',16)} Войти в приложение команды</button>`); return; }
 
 const ME = staffById(USER.id);
 applyCleaningOverrides(Store.load());
@@ -48,18 +50,20 @@ function renderList(){
     <div class="day"><h1>${WDL[0].toUpperCase()+WDL.slice(1)}, ${dd(TODAY)} ${MON_G[mm(TODAY)]}</h1>
       <p>${today.length ? `${today.length} ${plural(today.length,'уборка','уборки','уборок')} сегодня · готово ${doneT}${urgentN?` · срочных ${urgentN}`:''}` : 'Сегодня уборок нет'}</p>
       <div class="bar"><i style="width:${today.length?Math.round(doneT/today.length*100):0}%"></i></div></div>
+    <div id="pwaSlot">${window.PWA?PWA.bannerHTML():''}</div>
     <div class="tabs"><button class="${V.tab==='today'?'active':''}" data-tab="today">Сегодня<span class="n">${today.length}</span></button><button class="${V.tab==='tomorrow'?'active':''}" data-tab="tomorrow">Завтра<span class="n">${tom.length}</span></button></div>
-    ${list.length ? list.map(c=>{ const a=aptById(c.aptId); return `<button class="task ${c.status==='done'?'done':''}" data-open="${c.id}">
+    ${list.length ? list.map(c=>{ const a=aptById(c.aptId); return `<button class="task ${c.status==='done'?'done':''} ${c.sim&&c.status==='assigned'?'fresh-t':''}" data-open="${c.id}">
       <div class="row" style="justify-content:space-between;flex-wrap:wrap;gap:6px"><span class="chip ${FLOW_C[c.status]}">${FLOW_L[c.status]}</span>${urgency(c)}</div>
       <h3>Кв. ${a.num} · ${esc(a.complex)}</h3><div class="addr">${esc(a.address)}</div>
       <div class="tmeta"><span>${ic('clock',14)} ${c.from}–${c.to}</span><span>${ic('home',14)} ${a.rooms}</span><span>${ic('list',14)} ${c.checked.filter(Boolean).length}/${CHECKLIST.length}</span>${c.photos&&c.photos.length?`<span>${ic('camera',14)} ${c.photos.length}</span>`:''}</div>
       ${stepsBar(c)}</button>`; }).join('') : `<div class="empty">${ic('sparkle',26)}<div style="margin-top:8px;font-weight:600;color:var(--text)">${V.tab==='today'?'На сегодня задач нет':'На завтра задач пока нет'}</div><div style="font-size:13px;margin-top:4px">Новые уборки появятся автоматически после выезда гостей</div></div>`}
+    <button class="btn block" data-pwa-sim style="margin-top:4px">${ic('plus',16)} Симулировать новую заявку</button>
     <div class="demo-foot" style="padding:12px 0 0">Демо-данные · видны только ваши задачи · сегодня в демо — 30 сентября 2026</div>
   </div>`;
 }
 function topbar(){
-  return `<header class="top"><span class="avatar">${initials(ME.name)}</span><div class="who"><b>${esc(ME.short)}</b><small><i></i>Сутки·Pro Клининг</small></div>
-    <div class="right"><span class="demo-badge sm"><i></i>Демо-данные</span><button class="icon-btn" data-logout title="Выйти" aria-label="Выйти">${ic('logout',18)}</button></div></header>`;
+  return `<header class="top"><span class="avatar">${initials(ME.name)}</span><div class="who"><b>${esc(ME.short)}</b><small><i></i>Команда · Клининг</small></div>
+    <div class="right"><span class="demo-badge sm"><i></i>Демо-данные</span><button class="icon-btn" data-pwa-open title="Приложение и уведомления" aria-label="Приложение и уведомления">${ic('bell',18)}</button><button class="icon-btn" data-logout title="Выйти" aria-label="Выйти">${ic('logout',18)}</button></div></header>`;
 }
 
 /* ---------- экран задачи ---------- */
@@ -135,7 +139,7 @@ function openProblem(){
   document.getElementById('sheet').classList.add('open'); document.getElementById('sheetBg').classList.add('open');
   setTimeout(()=>{ const i=document.getElementById('probText'); if(i) i.focus(); }, 250);
 }
-function closeSheet(){ document.getElementById('sheet').classList.remove('open'); document.getElementById('sheetBg').classList.remove('open'); }
+function closeSheet(){ const sh=document.getElementById('sheet'); sh.classList.remove('open'); delete sh.dataset.pwa; document.getElementById('sheetBg').classList.remove('open'); }
 function sendProblem(){
   const c=curTask(); const a=aptById(c.aptId); const txt=document.getElementById('probText').value.trim(); const urg=document.getElementById('probUrg').checked;
   if(txt.length<3 && V.probCat==='Другое'){ const e=document.getElementById('probErr'); e.textContent='Опишите проблему в паре слов'; e.classList.add('show'); return; }
@@ -172,10 +176,10 @@ function sendReport(){
 /* ---------- события ---------- */
 document.addEventListener('click', e=>{
   const t=e.target;
-  if(t.closest('[data-logout]')){ Auth.logout(); location.href='login.html?role=cleaning'; return; }
+  if(t.closest('[data-logout]')){ Auth.logout('team'); location.href='login.html?role=cleaning'; return; }
   const tb=t.closest('[data-tab]'); if(tb){ V.tab=tb.dataset.tab; renderList(); return; }
   const op=t.closest('[data-open]'); if(op){ V.open=+op.dataset.open; renderTask(); window.scrollTo(0,0); return; }
-  if(t.closest('[data-back]')){ const c=curTask(); if(c && c.status!=='done'){ saveComment(c); saveCleaning(c); } V.open=null; renderList(); window.scrollTo(0,0); return; }
+  if(t.closest('[data-back]')){ const c=curTask(); if(c && c.status!=='done'){ saveComment(c); saveCleaning(c); } V.open=null; if(location.hash) history.replaceState(null,'',location.pathname+location.search); renderList(); window.scrollTo(0,0); return; }
   const ck=t.closest('[data-check]'); if(ck){ const c=curTask(); const k=+ck.dataset.check; saveComment(c); c.checked[k]=!c.checked[k]; saveCleaning(c); renderTask(); return; }
   if(t.closest('[data-checkall]')){ const c=curTask(); saveComment(c); c.checked=c.checked.map(()=>true); saveCleaning(c); renderTask(); return; }
   if(t.closest('[data-demo-photos]')){ const c=curTask(); saveComment(c); c.photos=c.photos||[]; for(let i=0;i<3;i++){ const n=c.photos.length; c.photos.push({demo:true, label:PH_LABELS[n%PH_LABELS.length], hue:PH_HUES[n%PH_HUES.length]}); } saveCleaning(c); renderTask(); toast('Добавлено 3 демо-фото'); return; }
@@ -191,9 +195,23 @@ document.addEventListener('click', e=>{
 });
 document.addEventListener('change', e=>{ if(e.target.id==='camInput'){ addFiles(e.target.files); e.target.value=''; } if(e.target.id==='probUrg') V.probUrgent=e.target.checked; });
 window.addEventListener('storage', e=>{
-  if(e.key===USER_KEY){ const u=Auth.current(); if(!u||u.id!==USER.id) location.reload(); return; }
+  if(e.key===TEAM_KEY){ const u=Auth.current('team'); if(!u||u.id!==USER.id) location.reload(); return; }
   if(e.key===STORE_KEY){ const st=Store.load(); if(st.access && st.access[USER.id]===false){ location.reload(); return; } applyCleaningOverrides(st); if(!document.getElementById('comment') || document.activeElement!==document.getElementById('comment')) render(); }
 });
-render();
-window.__cleaner = {V, myTasks};
+/* новая уборка «от владельца» — для демонстрации уведомлений */
+function simulate(){
+  let made; const busy = new Set(myTasks().filter(c=>c.date===TODAY).map(c=>c.aptId));
+  Store.update(st=>{ const n = ++st.seq; let k = (n*5) % apartments.length; while(busy.has(apartments[k].id)) k = (k+1) % apartments.length; const a = apartments[k];
+    made = {id:30000+n, bookingId:null, aptId:a.id, date:TODAY, cleaner:ME.short, from:'15:30', to:'18:30', nextGuest:null, nextCheckin:'19:00', status:'assigned', checked:CHECKLIST.map(()=>false), sim:true};
+    st.cleanAdded.push(made);
+    pushNotify(st, ME.id, `Новая уборка · кв. ${a.num}`, `${a.complex}, сегодня 15:30–18:30 · заезд в 19:00`, 'cleaning.html#task=c'+made.id);
+    logActivity(st, 'Азамат', `Азамат назначил уборку кв. ${a.num} — ${ME.short} (демо)`, 'assign'); });
+  return made;
+}
+function openFromHash(){ const m = /task=c(\d+)/.exec(location.hash); if(m){ const id=+m[1]; if(myTasks().some(c=>c.id===id)){ V.open=id; V.tab='today'; renderTask(); window.scrollTo(0,0); } } }
+window.addEventListener('hashchange', openFromHash);
+render(); openFromHash();
+if(window.PWA) PWA.init({userId:ME.id, toast, simulate:()=>{ simulate(); applyCleaningOverrides(Store.load()); if(!V.open){ V.tab='today'; renderList(); } },
+  onNew:(n, silent)=>{ applyCleaningOverrides(Store.load()); if(!V.open) renderList(); if(!silent) toast(n.title+': '+n.body); }});
+window.__cleaner = {V, myTasks, simulate};
 })();

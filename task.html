@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="theme-color" content="#ffffff">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta property="og:title" content="Задача от Astana Stay (демо)">
+<meta property="og:description" content="Одна задача по ссылке: адрес, код двери, фото и отчёт — без регистрации. Демо-данные.">
+<title>Задача по ссылке — Сутки·Pro (демо)</title>
+<link rel="stylesheet" href="assets/ui.css">
+<style>
+body{background:#eef1f6}
+.shell{max-width:520px;margin:0 auto;min-height:100vh;background:var(--bg);position:relative;padding-bottom:20px}
+@media (min-width:600px){.shell{box-shadow:0 0 0 1px var(--border),0 20px 60px rgba(15,23,42,.08)}}
+.top{position:sticky;top:0;z-index:30;background:rgba(255,255,255,.95);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;padding:10px 14px}
+.top img{width:36px;height:36px;border-radius:10px}
+.top b{display:block;font-size:15px;line-height:1.2}
+.top small{display:block;color:var(--muted);font-size:12px}
+.top .right{margin-left:auto}
+.demo-badge.sm{font-size:11px;padding:4px 8px}
+.pad{padding:14px}
+.hero{border-radius:18px;padding:16px;color:#fff;background:linear-gradient(135deg,#c2410c,#ea580c 60%,#fb923c);box-shadow:0 10px 30px rgba(234,88,12,.22)}
+.hero.c{background:linear-gradient(135deg,#059669,#10b981 60%,#34d399);box-shadow:0 10px 30px rgba(5,150,105,.22)}
+.hero .chips{display:flex;gap:6px;flex-wrap:wrap}
+.hero .hc{font-size:11.5px;font-weight:700;padding:3px 9px;border-radius:999px;background:rgba(255,255,255,.22)}
+.hero .hc.red{background:#fee2e2;color:#b91c1c}
+.hero h1{font-size:21px;margin:10px 0 4px}
+.hero p{margin:0;font-size:14px;opacity:.95}
+.hero .meta{display:flex;gap:12px;flex-wrap:wrap;margin-top:10px;font-size:13px;opacity:.95}
+.hero .meta span{display:inline-flex;align-items:center;gap:5px}
+.sec{background:#fff;border:1px solid var(--border);border-radius:16px;padding:14px;margin-top:12px}
+.sec h4{font-size:14px;display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.door{background:#0f172a;color:#e2e8f0;border-radius:14px;padding:12px 14px;display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;font-size:13px}
+.door small{display:block;color:#94a3b8;font-size:11px}
+.door b{color:#fff;font-size:15px;font-family:ui-monospace,Menlo,Consolas,monospace;letter-spacing:.03em}
+.from{display:flex;align-items:center;gap:10px}
+.cl{list-style:none;margin:0;padding:0}
+.cl li{display:flex;align-items:center;gap:12px;padding:10px 2px;border-bottom:1px solid var(--border2);cursor:pointer;font-size:14.5px}
+.cl li:last-child{border-bottom:none}
+.cl .cb{width:24px;height:24px;border-radius:8px;border:2px solid #cbd5e1;display:grid;place-items:center;color:#fff;flex:none}
+.cl li.on .cb{background:var(--green);border-color:var(--green)}
+.cl li.on{color:var(--muted);text-decoration:line-through}
+.cl.ro li{cursor:default}
+.ph-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:10px}
+.ph{position:relative;border-radius:12px;overflow:hidden;aspect-ratio:1;background:#e2e8f0}
+.ph img,.ph svg{width:100%;height:100%;object-fit:cover;display:block}
+.ph span{position:absolute;left:0;right:0;bottom:0;font-size:10.5px;font-weight:600;color:#fff;background:linear-gradient(transparent,rgba(15,23,42,.65));padding:10px 4px 4px;text-align:center}
+.ph .rm{position:absolute;top:4px;right:4px;width:24px;height:24px;border-radius:50%;background:rgba(15,23,42,.6);color:#fff;display:grid;place-items:center}
+.cam{display:flex;gap:8px}
+.cam label{flex:1}
+.cam input{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
+.hint{font-size:12.5px;color:var(--muted);margin-top:8px}
+.cost-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.cost-sum{display:flex;justify-content:space-between;font-size:14px;padding:6px 0}
+.cost-sum.tot{border-top:1px dashed var(--border);margin-top:4px;padding-top:10px;font-weight:700;font-size:15px}
+.dnote{display:flex;gap:9px;align-items:flex-start;background:#fffbeb;border:1px solid #fde68a;color:#92400e;border-radius:14px;padding:11px 12px;font-size:12.5px;line-height:1.45;margin-top:12px}
+.dnote svg{flex:none;margin-top:1px}
+.errbox{background:var(--red-50);color:#991b1b;border-radius:12px;padding:10px 12px;font-size:13px;margin-top:12px;display:none}
+.errbox.show{display:block}
+.cta{position:sticky;bottom:0;z-index:25;background:linear-gradient(transparent,var(--bg) 30%);padding:18px 14px calc(14px + env(safe-area-inset-bottom))}
+.cta .btn{height:54px;font-size:16px;border-radius:14px;width:100%}
+.done-ov{position:fixed;inset:0;z-index:70;background:rgba(255,255,255,.97);display:none;align-items:center;justify-content:center;padding:24px;text-align:center}
+.done-ov.open{display:flex}
+.okc{width:84px;height:84px;border-radius:50%;background:var(--green-50);color:var(--green);display:grid;place-items:center;margin:0 auto 16px;animation:tin .3s}
+.sent{display:flex;gap:10px;align-items:center;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:14px;padding:12px;font-size:14px;margin-top:12px}
+.bad{min-height:80vh;display:grid;place-items:center;padding:24px;text-align:center}
+
+/* доступ в квартиру и смета (мастер и ссылка) */
+.acc-m{display:flex;gap:10px;align-items:flex-start;margin-top:10px;padding:10px 12px;border-radius:12px;background:#eff6ff;color:#1e3a8a;font-size:13px}
+.acc-m.pr{background:#fffbeb;color:#92400e}
+.acc-m b{display:block;font-size:14px;margin-bottom:2px}
+.q-st{display:flex;gap:10px;align-items:flex-start;padding:10px 12px;border-radius:12px;font-size:13px;margin-bottom:10px}
+.q-st b{display:block;font-size:14px;margin-bottom:2px}
+.q-st.pend{background:#fffbeb;color:#92400e}.q-st.ok{background:#dcfce7;color:#166534}.q-st.no{background:#fee2e2;color:#991b1b}
+.btn.block{width:100%;justify-content:center}
+</style>
+</head>
+<body>
+<div class="shell" id="app"></div>
+<div class="done-ov" id="doneOv"></div>
+<div class="toasts" id="toasts"></div>
+<script src="assets/data.js"></script>
+<script src="assets/store.js"></script>
+<script>
+/* Задача по ссылке (демо): для исполнителя без аккаунта. Данные задачи зашиты в ссылку (?t=base64url JSON),
+   поэтому страница открывается на любом телефоне без сервера. Отчёт сохраняется только в localStorage этого браузера. */
+(function(){
+'use strict';
+const app = document.getElementById('app');
+const T = TaskLink.dec(new URLSearchParams(location.search).get('t'));
+const top = sub => `<header class="top"><img src="icons/icon-192.png" alt=""><div><b>Задача по ссылке</b><small>${sub}</small></div><div class="right"><span class="demo-badge sm"><i></i>Демо-данные</span></div></header>`;
+if(!T){
+  document.title = 'Ссылка не открывается — Сутки·Pro (демо)';
+  app.innerHTML = top('Сутки·Pro') + `<div class="bad"><div><div class="deny-ic" style="width:64px;height:64px;border-radius:18px;background:var(--red-50);color:var(--red);display:grid;place-items:center;margin:0 auto 16px">${ic('link',28)}</div><h1 style="font-size:20px">Ссылка не открывается</h1><p class="muted" style="margin:10px 0 18px;font-size:14px">В ссылке нет данных задачи или она обрезалась при копировании. Попросите владельца отправить её ещё раз.</p><a class="btn" href="team.html">О демо Сутки·Pro</a></div></div>`;
+  return;
+}
+const KEY = TaskLink.key(T), isR = T.k==='r', DK = 'sutkipro.task.'+KEY;
+const PR = {high:['red','Срочно'], medium:['','Обычная срочность'], low:['','Не срочно']};
+const num = v => { const n = parseInt(String(v==null?'':v).replace(/\D/g,''),10); return isNaN(n) ? null : n; };
+let D = {}; try { D = JSON.parse(localStorage.getItem(DK)||'{}') || {}; } catch(e){ D = {}; }
+D.before = D.before||[]; D.after = D.after||[]; D.photos = D.photos||[]; D.checked = D.checked || CHECKLIST.map(()=>false);
+const saveD = () => { try { localStorage.setItem(DK, JSON.stringify(D)); } catch(e){ toast('Места в браузере мало — фото могут не сохраниться', true); } };
+const report = () => (Store.load().linkReports||{})[KEY];
+document.title = `${isR?'Ремонт':'Уборка'}: кв. ${T.a.n} — ${T.t} (демо)`;
+
+function toast(text, err){ const el=document.createElement('div'); el.className='toast'+(err?' err':''); el.innerHTML=`<span class="t-ic">${ic(err?'alert':'check',13,3)}</span><span>${esc(text)}</span>`; document.getElementById('toasts').appendChild(el); setTimeout(()=>{ el.classList.add('out'); setTimeout(()=>el.remove(),260); },3000); }
+function demoSVG(h, ok){ return `<svg viewBox="0 0 80 80" preserveAspectRatio="xMidYMid slice"><rect width="80" height="80" fill="hsl(${h} 45% 86%)"/><rect width="80" height="44" fill="hsl(${h} 25% 93%)"/><path d="M10 30h34v10H10z" fill="hsl(210 10% 70%)"/><path d="M44 26h8v34h-8z" fill="hsl(210 10% 62%)"/>${ok?'<circle cx="64" cy="18" r="10" fill="#16a34a"/><path d="m59 18 4 4 7-8" stroke="#fff" stroke-width="2.5" fill="none" stroke-linecap="round"/>':''}</svg>`; }
+const phHTML = (p, kind, i, rm) => `<div class="ph">${p.src?`<img src="${p.src}" alt="${esc(p.label||'Фото')}">`:demoSVG(p.hue||200, kind!=='before')}<span>${esc(p.label||'Фото')}${p.demo?' · демо':''}</span>${rm?`<button class="rm" data-rm="${kind}:${i}" aria-label="Удалить фото">${ic('x',13,2.5)}</button>`:''}</div>`;
+const note = `<div class="dnote">${ic('alert',15)}<div><b>Демо без сервера.</b> Данные задачи зашиты в саму ссылку, поэтому она открывается на любом телефоне без регистрации. Но отчёт сохраняется <b>только в браузере этого устройства</b>: владелец увидит его, если панель открыта в этом же браузере. В рабочей версии отчёт уйдёт на сервер и сразу появится у владельца.</div></div>`;
+
+/* доступ: код сейфа — только при доступе «по коду» и пока отчёт не отправлен */
+function accessHTML(){ const ac = T.ac || {m:'code'}; const closed = !!report() && !D.editing;
+  const base = `<div><small>Подъезд / этаж</small><b>${T.dr.e} / ${T.dr.f}</b></div><div><small>Домофон</small><b>${esc(T.dr.i)}</b></div>`;
+  if(ac.m==='keys') return `<div class="door">${base}</div><div class="acc-m">${ic('user',16)}<div><b>Ключи у администратора${ac.w?' ('+esc(ac.w)+')':''}</b><div>Позвоните перед выездом — договоритесь, где забрать ключи.</div></div></div>`;
+  if(ac.m==='presence') return `<div class="door">${base}</div><div class="acc-m pr">${ic('users',16)}<div><b>Вас встретит: ${esc(ac.w||'администратор')}${ac.tm?' в '+esc(ac.tm):''}</b><div>Сложная задача — в квартире будет наш человек.</div></div></div>`;
+  return `<div class="door">${base}<div style="grid-column:span 2"><small>Сейф для ключей</small><b>${closed||!T.dr.k?'<span class="muted" style="font-weight:500;font-size:12.5px">скрыт — задача закрыта</span>':esc(T.dr.k)}</b></div></div>`;
+}
+function quoteState(){ const o = (Store.load().repairOv||{})[T.id]; return (o && o.quote) || D.quote || null; }
+function quoteHTML(){ const q = quoteState();
+  if(q && q.status==='pending') return `<div class="q-st pend">${ic('clock',16)}<div><b>Смета ${money((q.work||0)+(q.parts||0))} отправлена · ${esc(q.at||'')}</b><div>Владелец согласует сумму — ответ придёт в мессенджер.</div></div></div>`;
+  if(q && q.status==='approved') return `<div class="q-st ok">${ic('check',16,2.6)}<div><b>Смета согласована: ${money((q.work||0)+(q.parts||0))}</b><div>Итог по факту укажите в отчёте ниже.</div></div></div>`;
+  return `${q&&q.status==='rejected'?`<div class="q-st no">${ic('alert',16)}<div><b>Смета отклонена${q.note?': '+esc(q.note):''}</b><div>Пришлите новую.</div></div></div>`:'<div class="hint" style="margin:0 0 10px">Оцените работу до начала — владелец согласует сумму.</div>'}
+    <div class="cost-grid"><div class="field"><label for="qWork">Стоимость работ, ₸</label><input class="input" id="qWork" inputmode="numeric" placeholder="0"></div><div class="field"><label for="qParts">Запчасти, ₸</label><input class="input" id="qParts" inputmode="numeric" placeholder="0"></div></div>
+    <div class="field"><label for="qList">Что понадобится</label><input class="input" id="qList" placeholder="Например: ролики для шкафа-купе"></div>
+    <button class="btn primary block" data-quote>${ic('send',16)} Отправить смету на согласование</button>`; }
+function sendQuote(){ readForm(); const g = id => document.getElementById(id); const work = num(g('qWork').value), parts = num(g('qParts').value);
+  if(work==null && parts==null){ toast('Укажите стоимость работ и/или запчастей', true); g('qWork').focus(); return; }
+  const name = (D.name || T.w || 'Исполнитель').trim(); const q = {work:work||0, parts:parts||0, list:g('qList').value.trim(), by:name, viaLink:true, at:'Сегодня, '+nowHM(), status:'pending'};
+  D.quote = q; saveD();
+  Store.update(st=>{ st.repairOv = st.repairOv || {}; st.repairOv[T.id] = Object.assign({}, st.repairOv[T.id]||{}, {quote:q}); logActivity(st, name, `${name} (по ссылке) — смета: кв. ${T.a.n}, ${T.t} — ${money(work+parts||0)}`, 'link'); });
+  toast('Смета отправлена владельцу'); renderForm(); }
+function head(){
+  return `<div class="hero ${isR?'':'c'}"><div class="chips"><span class="hc">${isR?'Ремонт':'Уборка'}</span>${T.p==='high'?`<span class="hc red">${PR.high[1]}</span>`:''}${T.w?`<span class="hc">Для: ${esc(T.w)}</span>`:''}</div>
+    <h1>${esc(T.t)}</h1>${T.d?`<p>${esc(T.d)}</p>`:''}
+    <div class="meta"><span>${ic('calendar',14)} ${esc(T.dt||'')}</span>${T.tm?`<span>${ic('clock',14)} ${esc(T.tm)}</span>`:''}<span>${ic('home',14)} Кв. ${T.a.n}</span></div></div>
+  <div class="sec"><h4>${ic('pin',16)} Адрес и доступ</h4>
+    <div style="font-weight:600">${esc(T.a.ad)}</div><div class="muted" style="font-size:13px;margin-bottom:10px">${esc(T.a.c)} · ${esc(T.a.di)} р-н · ${esc(T.a.r)}</div>
+    ${accessHTML()}
+    <button class="btn sm" style="margin-top:10px" data-maps>${ic('nav',14)} Маршрут (демо)</button></div>
+  <div class="sec"><div class="from"><span class="avatar" style="background:linear-gradient(135deg,#a78bfa,#6d28d9)">${esc((T.o&&T.o.n||'А')[0])}</span><div class="grow"><b>${esc(T.o&&T.o.n||'Владелец')}</b> <span class="muted" style="font-size:13px">· владелец, Astana Stay</span><div class="muted" style="font-size:12.5px">Вопросы по задаче — позвоните или напишите</div></div><button class="btn sm" data-call>${ic('phone',14)} Позвонить</button></div></div>`;
+}
+function renderForm(){
+  const pc = D.partsCost!=null?D.partsCost:'', wc = D.workCost!=null?D.workCost:'';
+  const cam = (kind, label, cls, hint) => `<div class="cam"><label class="btn ${cls}" for="cam-${kind}">${ic('camera',16)} ${label}<input type="file" id="cam-${kind}" data-cam="${kind}" accept="image/*" capture="environment" multiple></label><button class="btn" data-demo="${kind}">${ic('image',16)} +2 демо-фото</button></div><div class="hint">${hint}</div>`;
+  const grid = kind => D[kind].length ? `<div class="ph-grid">${D[kind].map((p,i)=>phHTML(p,kind,i,true)).join('')}</div>` : '';
+  app.innerHTML = top('от Astana Stay · без регистрации') + `<div class="pad">${head()}
+    ${isR ? `
+    <div class="sec"><h4>${ic('wallet',16)} Смета</h4>${quoteHTML()}</div>
+    <div class="sec"><h4>${ic('camera',16)} Фото до <span class="muted" style="margin-left:auto;font-weight:600">${D.before.length}</span></h4>${cam('before','Сфотографировать','primary','Снимите проблему до начала работы.')}${grid('before')}</div>
+    <div class="sec"><h4>${ic('camera',16)} Фото после <span class="muted" style="margin-left:auto;font-weight:600">${D.after.length}</span></h4>${cam('after','Сфотографировать','success','Результат работы и чеки на запчасти.')}${grid('after')}</div>
+    <div class="sec"><h4>${ic('wallet',16)} Запчасти и стоимость</h4>
+      <div class="field"><label for="parts">Что купили / заменили</label><input class="input" id="parts" value="${esc(D.parts||'')}" placeholder="Например: ролики для шкафа-купе"></div>
+      <div class="cost-grid"><div class="field"><label for="partsCost">Запчасти, ₸</label><input class="input" id="partsCost" inputmode="numeric" value="${pc}" placeholder="0"></div><div class="field"><label for="workCost">Работа, ₸</label><input class="input" id="workCost" inputmode="numeric" value="${wc}" placeholder="0"></div></div>
+      <div class="cost-sum tot"><span>Итого</span><b id="costTotal">${money((num(pc)||0)+(num(wc)||0))}</b></div></div>` : `
+    <div class="sec"><h4>${ic('list',16)} Чек-лист <span class="muted" style="margin-left:auto;font-weight:600">${D.checked.filter(Boolean).length}/${CHECKLIST.length}</span></h4>
+      <ul class="cl">${CHECKLIST.map((t,k)=>`<li class="${D.checked[k]?'on':''}" data-check="${k}"><span class="cb">${ic('check',14,3)}</span>${t}</li>`).join('')}</ul></div>
+    <div class="sec"><h4>${ic('camera',16)} Фотоотчёт <span class="muted" style="margin-left:auto;font-weight:600">${D.photos.length}</span></h4>${cam('photos','Сделать фото','primary','Минимум 3 фото: спальня, кухня, санузел.')}${grid('photos')}</div>`}
+    <div class="sec"><h4>${ic('msg',16)} Комментарий</h4><textarea class="input" id="comment" placeholder="${isR?'Например: смазал и отрегулировал ролики, дверь больше не скрипит':'Например: гости оставили зарядку, положила в прихожей'}">${esc(D.comment||'')}</textarea>
+      <div class="field" style="margin:12px 0 0"><label for="who">Ваше имя</label><input class="input" id="who" value="${esc(D.name||T.w||'')}" placeholder="Как подписать отчёт"></div></div>
+    ${note}
+    <div class="errbox" id="errbox"></div></div>
+  <div class="cta"><button class="btn success" data-send>${ic('send',18)} Отправить отчёт</button></div>`;
+}
+function renderSent(r){
+  const ph = kind => (r[kind]||[]).length ? `<div class="ph-grid">${r[kind].map((p,i)=>phHTML(p,kind,i,false)).join('')}</div>` : '<div class="hint">Фото не приложены</div>';
+  app.innerHTML = top('от Astana Stay · без регистрации') + `<div class="pad">${head()}
+    <div class="sent">${ic('check',20,2.6)}<div><b>Отчёт отправлен в ${esc(r.at)}</b><div style="font-size:12.5px">Подписан: ${esc(r.name)}${isR?` · итого ${money(r.cost||0)}`:''}</div></div></div>
+    ${isR?`<div class="sec"><h4>${ic('camera',16)} Фото до</h4>${ph('before')}</div><div class="sec"><h4>${ic('camera',16)} Фото после</h4>${ph('after')}</div>
+      <div class="sec"><h4>${ic('wallet',16)} Стоимость</h4><div style="font-size:14px">${r.parts?esc(r.parts):'<span class="muted">Без запчастей</span>'}</div><div class="cost-sum"><span>Запчасти</span><b>${money(r.partsCost||0)}</b></div><div class="cost-sum"><span>Работа</span><b>${money(r.workCost||0)}</b></div><div class="cost-sum tot"><span>Итого</span><b>${money(r.cost||0)}</b></div></div>`
+      :`<div class="sec"><h4>${ic('camera',16)} Фотоотчёт</h4>${ph('photos')}</div>`}
+    ${r.comment?`<div class="sec"><h4>${ic('msg',16)} Комментарий</h4><div style="font-size:14px">${esc(r.comment)}</div></div>`:''}
+    ${note}
+    <button class="btn block" style="margin-top:12px" data-edit>${ic('refresh',16)} Исправить и отправить ещё раз</button></div>`;
+}
+function render(){ const r = report(); if(r && !D.editing) renderSent(r); else renderForm(); }
+function readForm(){ const g = id => document.getElementById(id);
+  if(g('comment')) D.comment = g('comment').value.trim(); if(g('who')) D.name = g('who').value.trim();
+  if(g('parts')) D.parts = g('parts').value.trim(); if(g('partsCost')) D.partsCost = num(g('partsCost').value); if(g('workCost')) D.workCost = num(g('workCost').value); }
+function fileToThumb(file){
+  return new Promise(res=>{ const fr = new FileReader();
+    fr.onload = () => { const img = new Image(); img.onload = () => { const M=360; const k=Math.min(1, M/Math.max(img.width,img.height)); const cv=document.createElement('canvas'); cv.width=Math.round(img.width*k); cv.height=Math.round(img.height*k); cv.getContext('2d').drawImage(img,0,0,cv.width,cv.height); try{ res(cv.toDataURL('image/jpeg',.6)); }catch(e){ res(null); } }; img.onerror=()=>res(null); img.src=fr.result; };
+    fr.onerror = () => res(null); fr.readAsDataURL(file); });
+}
+const LBL = {before:'До', after:'После', photos:'Фото'};
+async function addFiles(kind, files){ readForm(); let n = 0;
+  for(const f of Array.from(files||[])){ if(!/^image\//.test(f.type)) continue; const src = await fileToThumb(f); if(src){ D[kind].push({src, label:LBL[kind]+' '+(D[kind].length+1)}); n++; } }
+  saveD(); renderForm(); toast(n ? `Добавлено фото: ${n}` : 'Не удалось прочитать изображение', !n); }
+function send(){
+  readForm(); saveD(); const miss = [];
+  if(isR){ if(!D.before.length) miss.push('добавьте фото «до»'); if(!D.after.length) miss.push('добавьте фото «после»'); if(D.partsCost==null && D.workCost==null) miss.push('укажите стоимость (можно 0)'); }
+  else { const left = D.checked.filter(x=>!x).length; if(left) miss.push(`отметьте ещё ${left} ${plural(left,'пункт','пункта','пунктов')} чек-листа`); if(D.photos.length<3) miss.push(`добавьте ещё ${3-D.photos.length} фото`); }
+  if(!D.name || D.name.length<2) miss.push('укажите ваше имя');
+  const eb = document.getElementById('errbox');
+  if(miss.length){ eb.innerHTML = `<b>Чтобы отправить отчёт:</b> ${miss.join('; ')}.`; eb.classList.add('show'); eb.scrollIntoView({behavior:'smooth',block:'center'}); return; }
+  const cost = isR ? (D.partsCost||0)+(D.workCost||0) : 0; const at = nowHM(); const by = D.name+' (по ссылке)';
+  const rep = {k:T.k, id:T.id, apt:T.a.n, title:T.t, name:D.name, at, ts:Date.now(), comment:D.comment||'', parts:D.parts||'', partsCost:D.partsCost, workCost:D.workCost, cost, before:D.before, after:D.after, photos:D.photos};
+  const res = Store.update(st=>{
+    st.linkReports = st.linkReports || {}; st.linkReports[KEY] = rep;
+    if(isR){ st.repairOv = st.repairOv || {}; st.repairOv[T.id] = Object.assign({}, st.repairOv[T.id]||{}, {stage:'done', status:'done', paid:false, cost, parts:rep.parts, partsCost:D.partsCost, workCost:D.workCost, comment:rep.comment, before:D.before, after:D.after, doneAt:at, reportAt:rep.ts, by, viaLink:true}); st.repairStatus[T.id] = 'done'; }
+    else { st.cleanings[T.id] = Object.assign({}, st.cleanings[T.id]||{}, {status:'done', checked:CHECKLIST.map(()=>true), photos:D.photos, comment:rep.comment, doneAt:at, reportAt:rep.ts, by, viaLink:true}); }
+    logActivity(st, D.name, `${D.name} (по ссылке) — отчёт: кв. ${T.a.n}, ${T.t}${isR?' — '+money(cost):''}, фото ${isR?D.before.length+'+'+D.after.length:D.photos.length}`, 'link');
+  });
+  D.editing = false; saveD();
+  const ov = document.getElementById('doneOv');
+  ov.innerHTML = `<div style="max-width:420px"><div class="okc">${ic('check',42,3)}</div><h2 style="font-size:22px">Отчёт отправлен!</h2><p class="muted" style="margin:8px 0 12px">Кв. ${T.a.n}: ${esc(T.t)}${isR?' · '+money(cost):''}. Спасибо, ${esc(D.name)}!</p>
+    ${res.ok==='trimmed'?'<p class="muted" style="font-size:12px">Фото сохранены без миниатюр — в браузере мало места (демо).</p>':''}
+    <div class="dnote" style="text-align:left;margin:0 0 16px">${ic('alert',15)}<div><b>Демо:</b> отчёт сохранён только в этом браузере. Если ссылка открыта на другом телефоне, владелец его не увидит — в рабочей версии отчёт уйдёт на сервер.</div></div>
+    <button class="btn primary lg" data-ov-close>Готово</button></div>`;
+  ov.classList.add('open');
+}
+document.addEventListener('click', e=>{
+  const t = e.target;
+  const ck = t.closest('[data-check]'); if(ck){ readForm(); const k=+ck.dataset.check; D.checked[k]=!D.checked[k]; saveD(); renderForm(); return; }
+  const dm = t.closest('[data-demo]'); if(dm){ readForm(); const k = dm.dataset.demo; for(let i=0;i<2;i++) D[k].push({demo:true, label:LBL[k]+' '+(D[k].length+1), hue:k==='before'?30+D[k].length*20:150+D[k].length*20}); saveD(); renderForm(); toast('Добавлено 2 демо-фото'); return; }
+  const rm = t.closest('[data-rm]'); if(rm){ readForm(); const [k,i] = rm.dataset.rm.split(':'); D[k].splice(+i,1); saveD(); renderForm(); return; }
+  if(t.closest('[data-maps]')){ toast('Демо: здесь откроется 2ГИС / Яндекс Карты с маршрутом'); return; }
+  if(t.closest('[data-call]')){ toast(`Демо: звонок владельцу ${T.o&&T.o.ph||''} не совершается`); return; }
+  if(t.closest('[data-send]')){ send(); return; }
+  if(t.closest('[data-quote]')){ sendQuote(); return; }
+  if(t.closest('[data-edit]')){ D.editing = true; renderForm(); window.scrollTo(0,0); return; }
+  if(t.closest('[data-ov-close]')){ document.getElementById('doneOv').classList.remove('open'); render(); window.scrollTo(0,0); return; }
+});
+document.addEventListener('change', e=>{ const k = e.target.dataset && e.target.dataset.cam; if(k){ addFiles(k, e.target.files); e.target.value=''; } else { readForm(); saveD(); } });
+document.addEventListener('input', e=>{ if(e.target.id==='partsCost'||e.target.id==='workCost'){ const el=document.getElementById('costTotal'); if(el) el.textContent = money((num(document.getElementById('partsCost').value)||0)+(num(document.getElementById('workCost').value)||0)); } });
+render();
+window.__task = {T, D, KEY};
+})();
+</script>
+</body>
+</html>

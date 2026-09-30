@@ -303,7 +303,7 @@ body.dp-lock{overflow:hidden}
 
 /* ===== животные ===== */
 .pawb{position:absolute;left:12px;bottom:12px;display:inline-flex;align-items:center;gap:5px;background:rgba(255,255,255,.95);color:#7c2d12;font-size:12px;font-weight:700;padding:4px 10px 4px 8px;border-radius:999px;box-shadow:0 2px 8px rgba(0,0,0,.14)}
-.pawb .ic{color:#c2410c}
+.pawb .ic{color:#c2410c;width:14px!important;height:14px!important;position:static!important}
 .fchip.pet{display:inline-flex;align-items:center;gap:6px}
 .fchip.pet .ic{color:#c2410c}
 .fchip.pet.on{background:#c2410c;border-color:#c2410c;color:#fff}
@@ -485,3 +485,19 @@ body.dp-lock{overflow:hidden}
   .fdemo{flex-direction:column}
 }
 .selinfo:empty{display:none}
+
+/* ===== язык и валюта в шапке ===== */
+.lsw{display:flex;align-items:center;gap:6px}
+.lang{display:inline-flex;background:#f1f4f6;border-radius:999px;padding:3px}
+.lang button{height:28px;min-width:34px;padding:0 8px;border-radius:999px;font-size:12.5px;font-weight:700;color:var(--muted)}
+.lang button.on{background:#fff;color:var(--ink);box-shadow:0 1px 3px rgba(16,33,43,.15)}
+.cursel select{height:34px;border:1px solid var(--line);background:#fff;border-radius:999px;padding:0 10px;font-size:13px;font-weight:650;cursor:pointer}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+.map-svg .hv text{pointer-events:none}
+@media (max-width:640px){
+  .hright .demo-badge{display:none}          /* на телефоне «Демо-данные» — в ленте над шапкой */
+  .logo b{font-size:15px}
+  .lang button{min-width:30px;padding:0 6px}
+  .cursel select{padding:0 6px;font-size:12.5px}
+  body.sb-on .lsw{display:none}
+}

@@ -267,7 +267,26 @@ details.cl summary::-webkit-details-marker{display:none}
 .user-chip b{display:block;font-size:13px;line-height:1.15}
 .user-chip small{display:block;font-size:11px;color:var(--muted);line-height:1.15}
 .role-chip{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
-.role-owner{background:#ede9fe;color:#6d28d9}.role-admin{background:var(--blue-50);color:#1d4ed8}.role-cleaner{background:#d1fae5;color:#047857}
+.role-owner{background:#ede9fe;color:#6d28d9}.role-admin{background:var(--blue-50);color:#1d4ed8}.role-cleaner{background:#d1fae5;color:#047857}.role-master{background:#ffedd5;color:#c2410c}
+.rep-title.linklike{background:none;border:0;padding:0;text-align:left;cursor:pointer;font:inherit;font-weight:600;font-size:14px;color:var(--text)}
+.rep-title.linklike:hover{color:var(--primary);text-decoration:underline}
+.rep-meta .m-rep{color:#15803d;font-weight:600}.rep-meta .m-link{color:#7c3aed;font-weight:600}.rep-meta .m-way{color:#0369a1;font-weight:600}.rep-meta .m-who{color:#c2410c;font-weight:600}
+.dr-sec{border:1px solid var(--border);border-radius:12px;padding:14px;margin-top:16px}
+.dr-sec h4{font-size:13.5px;margin:0 0 10px;display:flex;align-items:center;gap:7px}
+.dr-sec .photos{grid-template-columns:repeat(4,1fr)}
+.assign-row{display:flex;gap:8px;flex-wrap:wrap}.assign-row select{flex:1;min-width:180px;height:36px;border:1px solid var(--border);border-radius:9px;padding:0 10px;background:#fff;font:inherit;font-size:13.5px}
+.cost-l{display:flex;justify-content:space-between;font-size:13.5px;padding:4px 0}.cost-l.tot{border-top:1px dashed var(--border);margin-top:4px;padding-top:8px;font-weight:700}
+.dr-body .field{display:flex;flex-direction:column;gap:5px;margin-bottom:12px}.dr-body .field label{font-size:12.5px;font-weight:600;color:var(--text2)}.dr-body .input{height:40px;border:1px solid var(--border);border-radius:10px;padding:0 12px;background:#fff;outline:none;width:100%;font:inherit;font-size:14px}.dr-body .input:focus{border-color:var(--primary)}
+.lk-box{display:flex;gap:8px;margin-top:8px}.lk-box input{flex:1;min-width:0;height:38px;border:1px solid var(--border);border-radius:9px;padding:0 10px;font:12.5px ui-monospace,Menlo,Consolas,monospace;color:var(--text2);background:#f8fafc}
+.lk-tabs{display:inline-flex;background:#eef1f6;border-radius:10px;padding:3px;margin:16px 0 10px}.lk-tabs button{height:30px;padding:0 14px;border-radius:8px;font-weight:600;font-size:13px;color:var(--muted);border:0;background:none;cursor:pointer}.lk-tabs button.active{background:#fff;color:var(--text);box-shadow:0 1px 3px rgba(15,23,42,.1)}
+.chatp{border-radius:14px;overflow:hidden;border:1px solid var(--border)}
+.chatp .ch-h{display:flex;align-items:center;gap:10px;padding:10px 12px;color:#fff;font-size:13.5px}.chatp .ch-h small{display:block;opacity:.8;font-size:11.5px}
+.chatp.tg .ch-h{background:#2aabee}.chatp.wa .ch-h{background:#075e54}
+.chatp .ch-b{padding:14px 12px;min-height:120px}.chatp.tg .ch-b{background:#dfe9d6 linear-gradient(135deg,#d7e8c9,#e8f0dc)}.chatp.wa .ch-b{background:#ece5dd}
+.bub{margin-left:auto;max-width:88%;border-radius:12px 12px 4px 12px;padding:8px 10px 6px;font-size:13px;line-height:1.4;box-shadow:0 1px 1px rgba(0,0,0,.08)}.tg .bub{background:#effdde}.wa .bub{background:#dcf8c6}
+.bub .u{color:#2481cc;word-break:break-all}.bub .lp{border-left:3px solid #2aabee;padding:4px 8px;margin:6px 0 2px;background:rgba(255,255,255,.55);border-radius:4px}.wa .bub .lp{border-left-color:#25d366}
+.bub .lp b{display:block;font-size:12.5px}.bub .lp small{display:block;color:#475569;font-size:11.5px}.bub .lp .s{color:#2481cc;font-size:11.5px;font-weight:600}
+.bub .tm{display:block;text-align:right;font-size:10.5px;color:#64748b;margin-top:2px}
 .switch{position:relative;width:38px;height:22px;border-radius:999px;background:#cbd5e1;transition:background .15s;flex:none;display:inline-block;vertical-align:middle}
 .switch::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:transform .15s}
 .switch.on{background:var(--green)}.switch.on::after{transform:translateX(16px)}
@@ -308,6 +327,87 @@ table.staff-t th:first-child,table.staff-t td:first-child{padding-left:18px}
   .cal-scroll{max-height:70vh}
 }
 @media (max-width:520px){.kpi{padding:12px}.kpi .k-val{font-size:18px}.kpi .k-ic{display:none}.page-head h1{font-size:20px}.demo-badge span{display:none}.kv{grid-template-columns:100px 1fr}}
+
+/* настройки: валюты и цены */
+.set-tabs{display:flex;gap:6px;margin-bottom:12px}
+.set-tabs span{display:inline-flex;align-items:center;gap:6px;padding:7px 12px;border-radius:10px;background:#fff;border:1px solid var(--border);font-weight:600;font-size:13px}
+.set-tabs span.active{background:var(--primary-50,#eef2ff);border-color:var(--primary);color:var(--primary)}
+.fx-note{display:flex;gap:8px;align-items:flex-start;margin:12px 18px 4px;padding:10px 12px;background:var(--amber-50,#fffbeb);border-radius:10px;color:#92400e;font-size:12.5px}
+.fx-t td{vertical-align:middle}
+.fx-sym{display:inline-grid;place-items:center;width:26px;height:26px;border-radius:8px;background:#f1f5f9;font-weight:700;margin-right:8px}
+.fx-rate{display:flex;align-items:center;gap:6px;white-space:nowrap}
+.fx-rate .input{width:90px;height:36px;text-align:right}
+.fx-step{height:36px;width:auto;min-width:110px}
+.fx-sw{display:inline-flex;align-items:center;gap:6px;font-size:13px;cursor:pointer}
+.fx-sw input{width:16px;height:16px;accent-color:var(--primary)}
+.fx-ex{font-weight:600;font-variant-numeric:tabular-nums}
+.fx-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 18px 18px;border-top:1px solid var(--border2)}
+.fx-row label{font-weight:600;font-size:13px}
+.fx-row select{height:36px;border:1px solid var(--border);border-radius:10px;padding:0 10px;background:#fff;width:auto}
+.fx-over-wrap{max-height:460px;overflow:auto}
+.fx-ov{width:96px;height:34px;text-align:right}
+.fx-ov.set{border-color:#8b5cf6;background:#f5f3ff;font-weight:700}
+th.off{opacity:.45}
+.fx-bar{position:sticky;bottom:0;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:16px;padding:12px 16px;background:#fff;border:1px solid var(--border);border-radius:var(--radius);box-shadow:0 -4px 16px rgba(15,23,42,.06);z-index:3}
+.fx-seen b{color:var(--text)}
+@media (max-width:700px){.fx-bar{flex-direction:column;align-items:stretch}.fx-bar .row{justify-content:flex-end}}
+
+/* ремонты: форма задачи, исполнители, доступ, смета */
+.drawer.wide{width:580px}
+.rf-sec{margin-bottom:16px}
+.rf-l{display:block;font-size:12.5px;font-weight:700;color:var(--text2);margin-bottom:6px}
+.rf-desc{position:relative}
+.rf-desc textarea{min-height:78px;height:auto;padding:10px 12px;resize:vertical;padding-right:110px}
+.rf-desc .btn{position:absolute;right:8px;bottom:8px}
+.rf-desc .btn.rec{background:#fee2e2;border-color:#fecaca;color:#b91c1c;animation:pulse 1s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 6px rgba(239,68,68,.15)}}
+.rf-apt{position:relative}
+.rf-apt .rf-ic{position:absolute;left:11px;top:13px;color:var(--muted)}
+.rf-apt .input{padding-left:34px}
+.rf-list{position:absolute;left:0;right:0;top:46px;background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 12px 30px rgba(15,23,42,.14);z-index:5;max-height:300px;overflow:auto;padding:4px}
+.rf-list button{display:block;width:100%;text-align:left;padding:8px 10px;border-radius:8px}
+.rf-list button:hover{background:#f1f5f9}
+.rf-list b{display:block;font-size:13.5px}.rf-list small{color:var(--muted);font-size:12px}
+.rf-picked{margin-top:6px;font-size:12.5px;color:#15803d;font-weight:600;display:flex;gap:5px;align-items:center}
+.rf-chips{display:flex;flex-wrap:wrap;gap:6px}
+.rf-chips button{display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border-radius:999px;border:1px solid var(--border);background:#fff;font-size:13px;font-weight:600;color:var(--text2)}
+.rf-chips button.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.rf-chips button.high.on{background:#dc2626;border-color:#dc2626}
+.rf-chips button.low.on{background:#64748b;border-color:#64748b}
+.rf-ph{display:flex;flex-wrap:wrap;gap:8px}
+.rf-t{position:relative;width:84px;height:64px}
+.rf-t .photo{width:84px;height:64px;margin:0}
+.rf-t .photo img{width:100%;height:100%;object-fit:cover;border-radius:8px}
+.rf-x{position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:#0f172a;color:#fff;display:grid;place-items:center}
+.rf-add{width:84px;height:64px;border:1.5px dashed #cbd5e1;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;font-size:11.5px;color:var(--muted);cursor:pointer;background:#fafbfd}
+.rf-add:hover{border-color:var(--primary);color:var(--primary)}
+.rf-2{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:end}
+.wk-list{display:flex;flex-direction:column;gap:6px}
+.wk-h{font-size:11.5px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin:4px 0 0}
+.wk{display:flex;gap:10px;align-items:flex-start;padding:9px 11px;border:1px solid var(--border);border-radius:12px;cursor:pointer;background:#fff}
+.wk:hover{border-color:#c7d2fe}
+.wk.on{border-color:var(--primary);background:#f5f7ff;box-shadow:0 0 0 2px var(--primary-100,#e0e7ff)}
+.wk.dis{opacity:.5;cursor:not-allowed}
+.wk input{margin-top:10px;accent-color:var(--primary)}
+.wk-av{width:32px;height:32px;border-radius:10px;color:#fff;display:grid;place-items:center;flex:none}
+.wk b{font-size:13.5px}.wk small{display:block;font-size:12px;color:var(--muted);margin-top:1px}
+.wk-more{padding:8px;border:1px dashed var(--border);border-radius:10px;font-size:12.5px;font-weight:600;color:var(--primary)}
+.wk-new{padding:10px;border:1px solid #ddd6fe;background:#faf5ff;border-radius:12px}
+.acc{display:flex;flex-direction:column;gap:6px}
+.acc-o{display:flex;gap:10px;align-items:flex-start;padding:9px 11px;border:1px solid var(--border);border-radius:12px;cursor:pointer}
+.acc-o.on{border-color:var(--primary);background:#f5f7ff}
+.acc-o input{margin-top:9px;accent-color:var(--primary)}
+.acc-ic{width:30px;height:30px;border-radius:9px;background:#f1f5f9;display:grid;place-items:center;flex:none;color:#475569}
+.acc-o b{font-size:13.5px}.acc-o small{display:block;font-size:12px;color:var(--muted)}
+.acc-c{color:#475569}.acc-c.pr{color:#b45309;font-weight:600}
+.rep-meta .unas{color:#b45309;font-weight:600}
+.btn.danger{background:#fff;border-color:#fecaca;color:#b91c1c}
+.mc-t td{vertical-align:top}
+.linklike{background:none;border:0;padding:0;cursor:pointer;text-align:left;color:inherit;font:inherit}
+.linklike:hover{color:var(--primary);text-decoration:underline}
+.mc-hist{background:#fafbfd}
+.mc-hist td{white-space:normal}
+@media (max-width:640px){.rf-2{grid-template-columns:1fr}.drawer.wide{width:100%}}
 </style>
 </head>
 <body>
@@ -341,16 +441,16 @@ table.staff-t th:first-child,table.staff-t td:first-child{padding-left:18px}
 (function(){
 'use strict';
 /* =================== Демо-авторизация и права =================== */
-const USER = Auth.check();
+const USER = Auth.check('panel') || Auth.check('team');
 if(!USER){ location.replace('login.html?role=owner&next=app'); return; }
-if(USER.role==='cleaner'){
+if(isTeamRole(USER.role)){
   document.title = 'Нет доступа — Сутки·Pro (демо)';
   document.body.innerHTML = `<div class="deny"><div class="deny-card"><div class="deny-ic">${ic('lock',30)}</div>
     <h1 style="font-size:21px">Нет доступа к панели владельца</h1>
-    <p class="sub" style="margin:10px 0 18px;font-size:14px">Вы вошли как <b>${esc(USER.short)}</b> (специалист по клинингу). Для клининга доступно только приложение «Сутки·Pro Клининг» — без финансов, контактов гостей и задач других сотрудников.</p>
-    <div class="row" style="justify-content:center;flex-wrap:wrap"><a class="btn primary" href="cleaning.html" style="text-decoration:none">${ic('sparkle',16)} Мои задачи</a><button class="btn" id="denyLogout">${ic('logout',16)} Войти другим пользователем</button></div>
+    <p class="sub" style="margin:10px 0 18px;font-size:14px">Вы вошли как <b>${esc(USER.short)}</b> (${ROLE_NAME[USER.role].toLowerCase()}). Для команды доступно только приложение «Сутки·Pro Команда» — свои задачи, без финансов, контактов гостей и задач других сотрудников.</p>
+    <div class="row" style="justify-content:center;flex-wrap:wrap"><a class="btn primary" href="cleaning.html" style="text-decoration:none">${ic(USER.role==='master'?'wrench':'sparkle',16)} Мои задачи</a><button class="btn" id="denyLogout">${ic('logout',16)} Войти другим пользователем</button></div>
     <div style="margin-top:20px"><span class="demo-badge"><i></i>Демо-данные · пример</span></div></div></div>`;
-  document.getElementById('denyLogout').onclick = ()=>{ Auth.logout(); location.href='login.html'; };
+  document.getElementById('denyLogout').onclick = ()=>{ Auth.logout('team'); location.href='login.html'; };
   return;
 }
 const IS_OWNER = USER.role==='owner';
@@ -369,9 +469,9 @@ const S = {
 };
 const VIEWS = [
   ['calendar','Календарь','calendar'],['requests','Заявки','inbox'],['cleaning','Уборки','sparkle'],
-  ['repairs','Ремонты и задачи','wrench'],['finance','Финансы','chart'],['transfers','Трансферы','car'],['staff','Сотрудники','users']
-].filter(v=> IS_OWNER || v[0]!=='finance');   // администратор не видит «Финансы»
-const ALL_VIEWS = ['calendar','requests','cleaning','repairs','finance','transfers','staff'];
+  ['repairs','Ремонты и задачи','wrench'],['finance','Финансы','chart'],['transfers','Трансферы','car'],['staff','Сотрудники','users'],['settings','Настройки','sliders']
+].filter(v=> IS_OWNER || (v[0]!=='finance' && v[0]!=='settings'));   // администратор не видит «Финансы» и «Настройки»
+const ALL_VIEWS = ['calendar','requests','cleaning','repairs','finance','transfers','staff','settings'];
 
 /* =================== Расчёты =================== */
 function monthStats(month){
@@ -387,13 +487,13 @@ function monthStats(month){
     if(b.co>=from && b.co<to){ clean++; per[b.aptId].cleanings++; }
     if(b.ci>=from && b.ci<to) stays++;
   });
-  let rep=0; repairs.forEach(r=>{ if(r.date>=from && r.date<to){ rep+=r.cost; per[r.aptId].repairs+=r.cost; } });
+  let rep=0, repPaid=0, repN=0; repairs.forEach(r=>{ if(r.date>=from && r.date<to){ const c=repCost(r); if(!c) return; rep+=c; repN++; if(r.status==='done'&&r.paid) repPaid+=c; per[r.aptId].repairs+=c; } });
   const UTIL=32000, CLEAN=8000, STAFF=1450000, TAX=.04;
   const util = UTIL*apartments.length, cleanCost = clean*CLEAN, staff = STAFF, tax = revenue*TAX;
   const expenses = comm+util+cleanCost+rep+staff+tax;
   const staffPer = STAFF/apartments.length;
   const rows = Object.values(per).map(p=>{ const exp=p.comm+UTIL+p.cleanings*CLEAN+p.repairs+staffPer+p.revenue*TAX; return {...p, occ:p.nights/days, expenses:exp, profit:p.revenue-exp}; });
-  return {from,to,days,revenue,nights,occ:nights/(days*apartments.length),byCh,daily:daily.map(v=>v/apartments.length),comm,util,cleanCost,rep,staff,tax,expenses,profit:revenue-expenses,rows,adr:nights?revenue/nights:0,stays,cleanCount:clean};
+  return {from,to,days,revenue,nights,occ:nights/(days*apartments.length),byCh,daily:daily.map(v=>v/apartments.length),comm,util,cleanCost,rep,staff,tax,expenses,profit:revenue-expenses,rows,adr:nights?revenue/nights:0,stays,cleanCount:clean,repPaid,repN};
 }
 /* =================== Навигация =================== */
 function renderNav(){
@@ -414,7 +514,7 @@ function go(view){
 function render(){
   const m = document.getElementById('main');
   if(!VIEWS.some(v=>v[0]===S.view)){ m.innerHTML = `<div class="card empty" style="padding:48px 20px"><div class="deny-ic" style="margin-bottom:12px">${ic('lock',28)}</div><h2 style="font-size:18px;color:var(--text)">Раздел недоступен</h2><p style="margin:8px 0 16px">Роль «${ROLE_NAME[USER.role]}» не имеет доступа к этому разделу.</p><button class="btn primary" data-action="nav" data-view="calendar">К календарю</button></div>`; return; }
-  ({calendar:renderCalendar,requests:renderRequests,cleaning:renderCleaning,repairs:renderRepairs,finance:renderFinance,transfers:renderTransfers,staff:renderStaff})[S.view](m);
+  ({calendar:renderCalendar,requests:renderRequests,cleaning:renderCleaning,repairs:renderRepairs,finance:renderFinance,transfers:renderTransfers,staff:renderStaff,settings:renderSettings})[S.view](m);
 }
 function kpiCard(icon, bg, fg, label, val, sub){
   return `<div class="card kpi"><div class="k-ic" style="background:${bg};color:${fg}">${ic(icon,19)}</div><div class="grow"><div class="k-lbl">${label}</div><div class="k-val">${val}</div><div class="k-sub">${sub}</div></div></div>`;
@@ -499,7 +599,7 @@ function renderGrid(){
 const PAY = {paid:['green','Оплачено'],prepaid:['amber','Предоплата 30%'],unpaid:['red','Не оплачено']};
 const payChip = p => `<span class="chip ${PAY[p][0]}"><i></i>${PAY[p][1]}</span>`;
 const CL_ST = {assigned:['#6366f1','Назначена'],enroute:['#0ea5e9','В пути'],progress:['#f59e0b','В процессе'],done:['#16a34a','Готово']};
-function openDrawer(html){ const d=document.getElementById('drawer'); d.innerHTML=html; d.classList.add('open'); document.getElementById('backdrop').classList.add('open'); }
+function openDrawer(html){ const d=document.getElementById('drawer'); d.classList.remove('wide'); d.innerHTML=html; d.classList.add('open'); document.getElementById('backdrop').classList.add('open'); }
 function closeDrawer(){ document.getElementById('drawer').classList.remove('open'); document.getElementById('backdrop').classList.remove('open'); }
 function openBooking(id){
   const b=bById(id); if(!b) return; const a=aptById(b.aptId);
@@ -586,7 +686,7 @@ function reqTrRow(r){
   return `<div class="req ${r.status==='new'?'new':''}" id="req-${r.id}"><span class="tr-badge">${ic('car',20)}</span>
     <div class="grow"><div class="req-top"><b>${esc(r.name)}</b><span class="chip ${s[0]}"><i></i>${s[1]}</span><span class="chip blue">${ic('car',12)} Заказ трансфера</span><span class="muted" style="font-size:12px">с сайта Astana Stay</span><span class="req-time">${r.time}</span></div>
       <div class="req-msg">${esc(trSummary(tr))}</div>
-      <div class="req-meta"><span>${ic('plane',14)} ${esc(trLegsText(tr))}</span><span>${ic('wallet',14)} ${money(r.sum)}</span></div>
+      <div class="req-meta"><span>${ic('plane',14)} ${esc(trLegsText(tr))}</span>${sumCell(r)}</div>
       <div class="req-meta" style="margin-top:8px"><span class="chip grey">${ic('home',12)} Жильё: ${esc(REF_NAME[r.refSource]||'—')} · ${esc(r.ref||'—')}</span>${a?`<span>${ic('home',14)} ${esc(a.name)}</span>`:r.address?`<span>${ic('pin',14)} ${esc(r.address)}</span>`:''}<span class="chip ${pm.color}">${ic(r.payment==='card'?'card':'cash',12)} Оплата: ${esc(pm.short)}</span><span>${ic('phone',14)} ${esc(r.phone||'')}</span>${r.text&&r.custom?`<span>«${esc(r.text)}»</span>`:''}</div></div>
     <div class="req-actions">
       ${r.status==='new'?`<button class="btn sm" data-action="req-take" data-id="${r.id}">Взять в работу</button>`:''}
@@ -594,13 +694,19 @@ function reqTrRow(r){
       <button class="btn sm ghost" data-action="req-reply" data-id="${r.id}">${ic('msg',14)} Ответить</button>
     </div></div>`;
 }
+/* сумма заявки: в какой валюте её видел гость на сайте + эквивалент в тенге */
+function sumCell(r){
+  const c = r.cur; const lang = c && c.lang==='en' ? ' <span class="chip grey" style="font-size:10.5px;padding:1px 6px">EN</span>' : '';
+  if(c && c.code && c.code!=='KZT' && FX_CUR[c.code]) return `<span class="fx-seen" title="Курс на момент заявки: 1 ${c.code} = ${c.rate} ₸">${ic('wallet',14)} Гость видел: <b>${fxFmt(c.total, c.code)}</b> · ≈ ${money(r.sum)}${lang}</span>`;
+  return `<span>${ic('wallet',14)} ${money(r.sum)}${c?' <span class="muted">(гость видел в ₸)</span>':''}${lang}</span>`;
+}
 function reqRow(r){
   if(r.kind==='transfer') return reqTrRow(r);
   const a=aptById(r.aptId); const s=REQ_S[r.status]; const n=r.co-r.ci;
   return `<div class="req ${r.status==='new'?'new':''}" id="req-${r.id}">${chb(r.channel,40)}
     <div class="grow"><div class="req-top"><b>${esc(r.name)}</b><span class="chip ${s[0]}"><i></i>${s[1]}</span><span class="muted" style="font-size:12px">через ${CH[r.channel].name}</span><span class="req-time">${r.time}</span></div>
       <div class="req-msg">«${esc(r.text)}»</div>
-      <div class="req-meta"><span>${ic('home',14)} ${esc(a.name)}</span><span>${ic('calendar',14)} ${fD(r.ci)} – ${fD(r.co)} · ${n} ${plural(n,'ночь','ночи','ночей')}</span><span>${ic('users',14)} ${r.guests}</span><span>${ic('wallet',14)} ${money(r.sum)}</span></div>
+      <div class="req-meta"><span>${ic('home',14)} ${esc(a.name)}</span><span>${ic('calendar',14)} ${fD(r.ci)} – ${fD(r.co)} · ${n} ${plural(n,'ночь','ночи','ночей')}</span><span>${ic('users',14)} ${r.guests}</span>${sumCell(r)}</div>
       ${r.site?`<div class="req-meta" style="margin-top:8px"><span class="chip ${(PAY_METHODS[r.payment]||{}).color||'grey'}">${ic(r.payment==='card'?'card':r.payment==='cash'?'cash':r.payment==='telegram'?'send':'msg',12)} Оплата: ${esc((PAY_METHODS[r.payment]||{}).short||'—')}</span><span>${ic('phone',14)} ${esc(r.phone||'')}</span>${r.tr?`<span class="chip blue" title="${esc(trLegsText(r.tr))}">${ic('car',12)} Трансфер: ${esc(trSummary(r.tr))} · ${money(r.tr.price)}</span>`:r.transfer?`<span class="chip blue">${ic('car',12)} Нужен трансфер</span>`:''}${r.pet?`<span class="chip amber">${ic('paw',12)} С животным${r.petFee?' +'+money(r.petFee):''}</span>`:''}<span class="chip violet">${ic('globe',12)} Сайт Astana Stay</span></div>`:''}</div>
     <div class="req-actions">
       ${r.status==='new'?`<button class="btn sm" data-action="req-take" data-id="${r.id}">Взять в работу</button>`:''}
@@ -627,7 +733,7 @@ function cleanCard(c){
     body = `<div class="row" style="margin-top:10px;font-size:12px;justify-content:space-between"><span class="muted">Чек-лист</span><b>${done}/${CHECKLIST.length}</b></div><div class="prog" style="margin-top:5px"><i style="width:${pct}%"></i></div><ul class="checklist">${CHECKLIST.map((t,k)=>`<li class="${c.checked[k]?'on':''}" data-action="clean-check" data-id="${c.id}" data-k="${k}"><span class="cb">${ic('check',11,3)}</span>${t}</li>`).join('')}</ul>`;
   } else if(c.status==='done'){
     const ph = c.photos && c.photos.length ? c.photos : ROOMS_PH.map(([l,h])=>({demo:true,label:l,hue:h}));
-    body = `<div class="row" style="margin-top:10px;font-size:12.5px;font-weight:600;color:var(--text2)">${ic('camera',14)} Фотоотчёт · ${ph.length} фото${c.by?` <span class="muted" style="font-weight:500">· из приложения клининга</span>`:''}</div><div class="photos">${ph.map(p=>p.src?`<div class="photo" title="${esc(p.label||'Фото')}"><img src="${p.src}" alt="${esc(p.label||'Фото')}"><span>${esc(p.label||'Фото')}</span></div>`:photoTile(esc(p.label||'Фото'),p.hue||200)).join('')}</div>
+    body = `<div class="row" style="margin-top:10px;font-size:12.5px;font-weight:600;color:var(--text2)">${ic('camera',14)} Фотоотчёт · ${ph.length} фото${c.by?` <span class="muted" style="font-weight:500">· ${c.viaLink?'по ссылке: '+esc(c.by):'из приложения клининга'}</span>`:''}</div><div class="photos">${ph.map(p=>p.src?`<div class="photo" title="${esc(p.label||'Фото')}"><img src="${p.src}" alt="${esc(p.label||'Фото')}"><span>${esc(p.label||'Фото')}</span></div>`:photoTile(esc(p.label||'Фото'),p.hue||200)).join('')}</div>
       ${c.comment?`<div class="note" style="margin-top:10px;font-size:12.5px"><b>Комментарий специалиста:</b> ${esc(c.comment)}</div>`:''}
       <details class="cl"><summary><span style="color:var(--green)">${ic('check',14,2.5)}</span> Чек-лист: ${done}/${CHECKLIST.length} <span class="muted" style="font-weight:500">— показать</span></summary><ul class="checklist ro">${CHECKLIST.map((t,k)=>`<li class="${c.checked[k]?'on':''}"><span class="cb">${ic('check',11,3)}</span>${t}</li>`).join('')}</ul></details>`;
   } else {
@@ -641,7 +747,8 @@ function cleanCard(c){
     <div class="task-meta"><span>${ic('calendar',13)} ${relDay(c.date)}</span><span>${ic('clock',13)} ${c.from}–${c.to}</span><span>${ic('home',13)} ${a.rooms}</span></div>
     <div class="cleaner"><span class="avatar" style="background:linear-gradient(135deg,#34d399,#059669)">${c.cleaner[0]}</span><span><b>${c.cleaner}</b><span class="muted"> · клининг</span></span></div>
     ${body}
-    <div class="task-foot"><span class="muted" style="font-size:12px">${c.nextGuest?`Далее: ${esc(c.nextGuest.split(' ')[0])}`:'Новых заездов нет'}</span>${btn}</div></div>`;
+    ${c.link&&c.status!=='done'?`<div class="row" style="margin-top:8px;font-size:12px;color:#7c3aed;font-weight:600">${ic('link',13)} Ссылка отправлена: ${esc(c.link.who||'')} · ${c.link.at}</div>`:''}
+    <div class="task-foot"><span class="muted" style="font-size:12px">${c.nextGuest?`Далее: ${esc(c.nextGuest.split(' ')[0])}`:c.sim?'Новая задача (демо)':'Новых заездов нет'}</span><span class="row" style="gap:6px">${c.status!=='done'?`<button class="btn sm ghost" data-action="clean-link" data-id="${c.id}" title="Отправить ссылку исполнителю" aria-label="Отправить ссылку исполнителю">${ic('link',14)}</button>`:''}${btn}</span></div></div>`;
 }
 
 /* =================== Ремонты и задачи =================== */
@@ -649,34 +756,293 @@ const PRIO = {high:['#dc2626','Высокий','red'],medium:['#f59e0b','Сре�
 const REP_S = {open:['blue','Открыта'],progress:['amber','В работе'],done:['green','Выполнена']};
 const repStatusChip = s => `<span class="chip ${REP_S[s][0]}"><i></i>${REP_S[s][1]}</span>`;
 const VOICE_PHRASES = [
-  {text:'Кв. 12: течёт кран в ванной', num:12, title:'Течёт кран в ванной', prio:'high', who:'Сантехник Марат'},
-  {text:'Кв. 45: не работает телевизор, гости жалуются', num:45, title:'Не работает телевизор, гости жалуются', prio:'high', who:'Мастер Ерлан'},
+  {text:'Кв. 12: течёт кран в ванной', num:12, title:'Течёт кран в ванной', prio:'high', who:'Сантехник Марат', master:'marat'},
+  {text:'Кв. 45: не работает телевизор, гости жалуются', num:45, title:'Не работает телевизор, гости жалуются', prio:'high', who:'Электрик Ерлан', master:'erlan'},
   {text:'Кв. 7: перегорела лампа в прихожей, купить две лампочки', num:7, title:'Перегорела лампа в прихожей, купить две лампочки', prio:'low', who:'Администратор'},
-  {text:'Кв. 88: заменить замок на входной двери', num:88, title:'Заменить замок на входной двери', prio:'medium', who:'Мастер Ерлан'}
+  {text:'Кв. 88: заменить замок на входной двери', num:88, title:'Заменить замок на входной двери', prio:'medium', who:'Не назначен'}
 ];
+/* =================== Ремонты: форма задачи с явным выбором исполнителя =================== */
+const workerKey = r => r.masterId ? 's:'+r.masterId : r.contractorId ? 'k:'+r.contractorId : null;
+function workers(){
+  const ms = allStaff().filter(s=>s.role==='master').map(s=>({key:'s:'+s.id, id:s.id, kind:'staff', name:s.name, short:s.short, type:SPEC_TYPE[s.spec]||'other', spec:s.spec||'Мастер', phone:s.phone, rating:s.rating||4.8, regular:true, acct:true, ok:s.access!==false}));
+  const ks = allContractors().map(c=>({key:'k:'+c.id, id:c.id, kind:'contr', name:c.name, short:c.name, type:c.type||'other', spec:(WORK_TYPES[c.type]||WORK_TYPES.other).l+(c.note?' · '+c.note:''), phone:c.phone, rating:c.rating, regular:c.regular!==false, acct:false, ok:true}));
+  return ms.concat(ks).map(w=>{ const jobs = repairs.filter(r=>workerKey(r)===w.key); return Object.assign(w, {jobs, load:jobs.filter(r=>r.status!=='done').length, spend:jobs.reduce((s,r)=>s+repCost(r),0), done:jobs.filter(r=>r.status==='done').length}); });
+}
+const workerByKey = k => workers().find(w=>w.key===k);
+const REP_WIN = ['Любое время','09:00–12:00','12:00–15:00','15:00–18:00','18:00–21:00'];
+const RF_PRIO = [['high','Срочно — сегодня'],['medium','В ближайшие 1–2 дня'],['low','Не срочно']];
+const RF_TIMES = Array.from({length:27},(_,i)=>{ const m=480+i*30; return String(Math.floor(m/60)).padStart(2,'0')+':'+(m%60?'30':'00'); });
+const RF_VOICE = [
+  {text:'Кв. 12: течёт кран в ванной, гости жалуются', num:12},
+  {text:'Кв. 45: не работает телевизор, гости жалуются', num:45},
+  {text:'Хайвил, кв. 77: сломалась ручка у шкафа-купе в спальне', num:77},
+  {text:'Кв. 88: выбивает автомат, когда включают чайник', num:88}
+];
+function rfAttendees(){ return allStaff().filter(s=>['admin','owner','cleaner'].includes(s.role) && s.access!==false).map(s=>({id:s.id, name:s.short, role:ROLE_NAME[s.role]})); }
+function aptSearch(q){ const toks = String(q||'').toLowerCase().replace(/[«»,.]/g,' ').replace(/жк|кв/g,' ').split(/\s+/).filter(Boolean);
+  const hay = a => `${a.name} ${a.complex} ${a.address} ${a.num} ${a.district}`.toLowerCase();
+  return apartments.filter(a => toks.every(t => hay(a).includes(t) || String(a.num)===t)).slice(0,8); }
+function openRepForm(id, pre){
+  const r = id ? repairs.find(x=>x.id===id) : null;
+  S.rf = r ? {id:r.id, title0:r.title, desc0:r.desc||r.title, desc:r.desc||r.title, aptId:r.aptId, type:r.type||guessWorkType(r.title), typeAuto:false, prio:r.priority, photos:(r.ownerPhotos||[]).slice(), date:r.date, win:r.window||REP_WIN[0],
+      who:workerKey(r)||'none', nw:{name:'',phone:'',type:r.type||'other',regular:true}, access:Object.assign({mode:'code', who:'admin', time:'10:00'}, r.access||{}), showAll:false, voice:false}
+    : Object.assign({id:null, desc:'', aptId:null, type:'other', typeAuto:true, prio:'medium', photos:[], date:TODAY, win:REP_WIN[0], who:'none', nw:{name:'',phone:'',type:'other',regular:true}, access:{mode:'code', who:'admin', time:'10:00'}, showAll:false, voice:false}, pre||{});
+  S.rfAptQ = S.rf.aptId ? aptById(S.rf.aptId).name : '';
+  renderRepForm();
+  document.getElementById('drawer').classList.add('wide');
+}
+function rfRead(){ const g = id => document.getElementById(id); if(!g('rfDesc')) return;
+  S.rf.desc = g('rfDesc').value; S.rfAptQ = g('rfAptQ').value; S.rf.date = +g('rfDate').value; S.rf.win = g('rfWin').value;
+  if(g('nwName')){ S.rf.nw.name = g('nwName').value; S.rf.nw.phone = g('nwPhone').value; S.rf.nw.type = g('nwType').value; S.rf.nw.regular = g('nwRegular').checked; }
+  if(g('rfWho')){ S.rf.access.who = g('rfWho').value; S.rf.access.time = g('rfTime').value; } }
+function rfWorkerRow(w, sug){
+  const on = S.rf.who===w.key;
+  return `<label class="wk ${on?'on':''} ${w.ok?'':'dis'}"><input type="radio" name="rfWho" value="${w.key}" ${on?'checked':''} ${w.ok?'':'disabled'} data-rf-who="${w.key}">
+    <span class="wk-av" style="background:${w.acct?'linear-gradient(135deg,#fb923c,#c2410c)':'linear-gradient(135deg,#94a3b8,#475569)'}">${ic(w.acct?'wrench':(WORK_TYPES[w.type]||WORK_TYPES.other).ic,15)}</span>
+    <span class="grow" style="min-width:0"><b>${esc(w.name)}</b>${sug?' <span class="chip green" style="font-size:10.5px;padding:1px 7px">подходит</span>':''}${w.regular?'':' <span class="chip grey" style="font-size:10.5px;padding:1px 7px">разовый</span>'}
+      <small>${esc(w.spec)} · ${esc(w.phone||'—')}</small>
+      <small>${w.rating?`★ ${String(w.rating).replace('.',',')} · `:''}${w.load?`в работе: ${w.load} ${plural(w.load,'задача','задачи','задач')}`:'свободен'} · ${w.acct?'<span style="color:#c2410c;font-weight:600">в приложении</span>':'по ссылке'}${w.ok?'':' · доступ отключён'}</small></span></label>`;
+}
+function renderRepForm(){
+  const f = S.rf; const a = f.aptId ? aptById(f.aptId) : null; const ws = workers();
+  const sug = ws.filter(w=>w.type===f.type), rest = ws.filter(w=>w.type!==f.type);
+  const res = aptSearch(S.rfAptQ); const showList = S.rfAptOpen && (!a || S.rfAptQ!==a.name);
+  const dates = Array.from({length:14},(_,i)=>TODAY+i);
+  const att = rfAttendees();
+  openDrawer(`<div class="dr-head"><div style="width:32px;height:32px;border-radius:9px;background:#ffedd5;color:#c2410c;display:grid;place-items:center">${ic('wrench',16)}</div><div class="grow"><div style="font-weight:700">${f.id?'Изменить задачу':'Новая задача'}</div><div class="muted" style="font-size:12.5px">Ремонты и задачи · исполнителя выбираете вы</div></div><button class="icon-btn" data-action="close-drawer" aria-label="Закрыть">${ic('x',16)}</button></div>
+  <div class="dr-body rf">
+    <div class="rf-sec"><label class="rf-l" for="rfDesc">Что случилось</label>
+      <div class="rf-desc"><textarea class="input" id="rfDesc" rows="3" placeholder="Например: течёт бачок унитаза, гости жалуются на шум">${esc(f.desc)}</textarea>
+      <button type="button" class="btn sm ${S.rfListen?'rec':''}" data-action="rf-voice" id="rfMic">${ic('mic',14)} ${S.rfListen?'Слушаю…':'Голосом'}</button></div>
+      ${f.voice?`<div class="muted" style="font-size:12px;margin-top:4px">${ic('mic',12)} Распознано голосом (демо) — проверьте и выберите исполнителя</div>`:''}</div>
+    <div class="rf-sec"><label class="rf-l" for="rfAptQ">Квартира</label>
+      <div class="rf-apt"><span class="rf-ic">${ic('search',15)}</span><input class="input" id="rfAptQ" autocomplete="off" value="${esc(S.rfAptQ||'')}" placeholder="Поиск: «Хайвил 77», «Нурсая», номер квартиры">
+      ${showList?`<div class="rf-list" id="rfAptList">${res.length?res.map(x=>`<button type="button" data-action="rf-apt" data-id="${x.id}"><b>${esc(x.name)}</b><small>${esc(x.address)} · ${x.rooms}${x.embassy?' · у посольства США':''}</small></button>`).join(''):'<div class="muted" style="padding:10px 12px;font-size:13px">Ничего не найдено</div>'}</div>`:''}</div>
+      ${a?`<div class="rf-picked">${ic('home',13)} ${esc(a.name)} · ${esc(a.address)}</div>`:''}</div>
+    <div class="rf-sec"><span class="rf-l">Тип работ ${f.typeAuto&&f.desc?'<span class="muted" style="font-weight:500">· определён по описанию</span>':''}</span>
+      <div class="rf-chips">${WT_KEYS.map(k=>`<button type="button" class="${f.type===k?'on':''}" data-action="rf-type" data-v="${k}">${ic(WORK_TYPES[k].ic,14)} ${WORK_TYPES[k].l}</button>`).join('')}</div></div>
+    <div class="rf-sec"><span class="rf-l">Срочность</span>
+      <div class="rf-chips">${RF_PRIO.map(([k,l])=>`<button type="button" class="${f.prio===k?'on':''} ${k}" data-action="rf-prio" data-v="${k}">${l}</button>`).join('')}</div></div>
+    <div class="rf-sec"><span class="rf-l">Фото проблемы <span class="muted" style="font-weight:500">· ${f.photos.length}</span></span>
+      <div class="rf-ph">${f.photos.map((p,i)=>`<div class="rf-t">${p.src?`<div class="photo"><img src="${p.src}" alt="${esc(p.label||'Фото')}"></div>`:photoTile(esc(p.label||'Фото'),p.hue||200)}<button type="button" class="rf-x" data-action="rf-photo-del" data-i="${i}" aria-label="Удалить фото">${ic('x',12)}</button></div>`).join('')}
+        <label class="rf-add" for="rfFile">${ic('camera',18)}<span>Добавить</span><input type="file" id="rfFile" accept="image/*" multiple hidden></label>
+        <button type="button" class="rf-add" data-action="rf-demo-photo">${ic('image',18)}<span>Демо-фото</span></button></div></div>
+    <div class="rf-sec rf-2"><div><label class="rf-l" for="rfDate">Желаемая дата</label><select class="input" id="rfDate">${dates.map(d=>`<option value="${d}" ${f.date===d?'selected':''}>${relDay(d)}${d-TODAY>1?'':' · '+fD(d)}</option>`).join('')}</select></div>
+      <div><label class="rf-l" for="rfWin">Время</label><select class="input" id="rfWin">${REP_WIN.map(w=>`<option ${f.win===w?'selected':''}>${w}</option>`).join('')}</select></div></div>
+    <div class="rf-sec"><span class="rf-l">Исполнитель</span>
+      <div class="wk-list">
+        ${sug.length?`<div class="wk-h">Подходят для «${WORK_TYPES[f.type].l}»</div>${sug.map(w=>rfWorkerRow(w,true)).join('')}`:`<div class="wk-h">Для «${WORK_TYPES[f.type].l}» постоянных исполнителей нет</div>`}
+        ${rest.length?(f.showAll||rest.some(w=>w.key===f.who)?`<div class="wk-h">Другие исполнители</div>${rest.map(w=>rfWorkerRow(w,false)).join('')}`:`<button type="button" class="wk-more" data-action="rf-all">Показать всех исполнителей (${rest.length})</button>`):''}
+        <label class="wk ${f.who==='new'?'on':''}"><input type="radio" name="rfWho" value="new" ${f.who==='new'?'checked':''} data-rf-who="new"><span class="wk-av" style="background:#ede9fe;color:#7c3aed">${ic('plus',15)}</span><span class="grow"><b>+ Новый исполнитель</b><small>Мастер со стороны — получит задачу по ссылке</small></span></label>
+        ${f.who==='new'?`<div class="wk-new"><div class="rf-2"><input class="input" id="nwName" value="${esc(f.nw.name)}" placeholder="Имя, например: Бауыржан"><input class="input" id="nwPhone" value="${esc(f.nw.phone)}" inputmode="tel" placeholder="+7 7__ ___ __ __"></div>
+          <div class="rf-2" style="margin-top:8px"><select class="input" id="nwType" aria-label="Специализация">${WT_KEYS.map(k=>`<option value="${k}" ${(f.nw.type||f.type)===k?'selected':''}>${WORK_TYPES[k].l}</option>`).join('')}</select>
+          <label class="fx-sw" style="padding-left:4px"><input type="checkbox" id="nwRegular" ${f.nw.regular?'checked':''}> Добавить в постоянные</label></div>
+          <div class="muted" style="font-size:12px;margin-top:6px">Без галочки — разовый исполнитель: задача и история сохранятся, но в списке постоянных его не будет.</div></div>`:''}
+        <label class="wk ${f.who==='none'?'on':''}"><input type="radio" name="rfWho" value="none" ${f.who==='none'?'checked':''} data-rf-who="none"><span class="wk-av" style="background:#f1f5f9;color:#64748b">${ic('user',15)}</span><span class="grow"><b>Не назначено</b><small>Выберете позже — задача будет в «Открытых»</small></span></label>
+      </div></div>
+    <div class="rf-sec"><span class="rf-l">Доступ в квартиру</span>
+      <div class="acc">${Object.entries(ACCESS_L).map(([k,l])=>`<label class="acc-o ${f.access.mode===k?'on':''}"><input type="radio" name="rfAcc" value="${k}" ${f.access.mode===k?'checked':''} data-rf-acc="${k}"><span class="acc-ic">${ic(k==='code'?'key':k==='keys'?'user':'users',16)}</span><span class="grow"><b>${l}</b><small>${k==='code'?'Код сейфа с ключами виден исполнителю только пока задача активна':k==='keys'?'Исполнитель заберёт ключи у администратора (Алина)':'Для сложных задач: в квартире будет ваш человек'}</small></span></label>`).join('')}</div>
+      ${f.access.mode==='presence'?`<div class="rf-2" style="margin-top:8px"><div><label class="rf-l" for="rfWho">Кто будет на месте</label><select class="input" id="rfWho">${att.map(p=>`<option value="${p.id}" ${f.access.who===p.id?'selected':''}>${esc(p.name)} · ${esc(p.role)}</option>`).join('')}</select></div>
+        <div><label class="rf-l" for="rfTime">Во сколько</label><select class="input" id="rfTime">${RF_TIMES.map(t=>`<option ${f.access.time===t?'selected':''}>${t}</option>`).join('')}</select></div></div>
+        <div class="chip red" style="margin-top:8px">${ic('alert',12)} Задача будет отмечена как сложная</div>`:''}</div>
+    <div class="errbox" id="rfErr"></div>
+  </div>
+  <div class="dr-foot"><button class="btn primary" data-action="rf-save">${ic('check',16)} ${f.id?'Сохранить изменения':'Сохранить задачу'}</button><button class="btn ghost" data-action="close-drawer">Отмена</button></div>`);
+}
+function rfVoice(){
+  if(S.rfListen) return; rfRead(); S.rfListen = true; renderRepForm();
+  const ph = RF_VOICE[S.voiceIdx % RF_VOICE.length]; S.voiceIdx++;
+  setTimeout(()=>{ const el = document.getElementById('rfDesc'); if(!el){ S.rfListen=false; return; } let i=0;
+    const t = setInterval(()=>{ i+=2; el.value = ph.text.slice(0,i); if(i>=ph.text.length){ clearInterval(t); S.rfListen=false; rfRead();
+      const a = apartments.find(x=>x.num===ph.num); if(a){ S.rf.aptId=a.id; S.rfAptQ=a.name; } S.rf.type = guessWorkType(ph.text); S.rf.typeAuto = true; S.rf.voice = true;
+      if(/гост[ьи] жалуются|течёт|выбивает/.test(ph.text)) S.rf.prio='high'; renderRepForm(); } }, 24); }, 1100);
+}
+function rfThumb(file){ return new Promise(res=>{ const fr = new FileReader(); fr.onload = () => { const img = new Image(); img.onload = () => { const k = Math.min(1, 480/Math.max(img.width, img.height)); const c = document.createElement('canvas'); c.width = Math.round(img.width*k); c.height = Math.round(img.height*k); c.getContext('2d').drawImage(img,0,0,c.width,c.height); res(c.toDataURL('image/jpeg',.6)); }; img.onerror = () => res(null); img.src = fr.result; }; fr.onerror = () => res(null); fr.readAsDataURL(file); }); }
+async function rfFiles(files){ rfRead(); for(const f of [...files].slice(0,6)){ const src = await rfThumb(f); if(src) S.rf.photos.push({src, label:'Фото '+(S.rf.photos.length+1)}); } renderRepForm(); }
+function rfSave(){
+  rfRead(); const f = S.rf; const err = document.getElementById('rfErr'); const bad = (m, el) => { err.innerHTML = m; err.classList.add('show'); err.scrollIntoView({behavior:'smooth', block:'center'}); if(el) document.getElementById(el)?.focus(); };
+  const desc = f.desc.trim(); if(desc.length<4) return bad('Опишите проблему — хотя бы пару слов', 'rfDesc');
+  if(!f.aptId) return bad('Выберите квартиру из списка', 'rfAptQ');
+  if(f.who==='new'){ if(f.nw.name.trim().length<2) return bad('Укажите имя нового исполнителя', 'nwName'); if(f.nw.phone.replace(/\D/g,'').length<10) return bad('Укажите телефон нового исполнителя', 'nwPhone'); }
+  const title = (desc.split(/[\n.!?]/)[0] || desc).replace(/^(хайвил,?\s*)?кв\.?\s*\d+\s*[:,-]\s*/i,'').trim().replace(/^./, c=>c.toUpperCase()).slice(0,80);
+  const ttl = f.id && desc===String(f.desc0||'').trim() ? f.title0 : title;
+  let who = f.who, newC = null;
+  if(who==='new'){ Store.update(st=>{ const id = 'k'+(++st.seq); newC = {id, name:f.nw.name.trim(), phone:f.nw.phone.trim(), type:f.nw.type||f.type, rating:null, regular:!!f.nw.regular, addedAt:Date.now()}; st.contractors = st.contractors||[]; st.contractors.push(newC);
+      logActivity(st, ME.short, `${ME.short} ${verb(ME,'добавил','добавила')} исполнителя: ${newC.name} (${WORK_TYPES[newC.type].l}${newC.regular?', в постоянные':', разовый'})`, 'info'); }); who = 'k:'+newC.id; }
+  const w = who!=='none' ? workerByKey(who) : null;
+  const att = rfAttendees().find(p=>p.id===f.access.who);
+  const access = f.access.mode==='presence' ? {mode:'presence', who:f.access.who, whoName:att?att.name:'', time:f.access.time} : f.access.mode==='keys' ? {mode:'keys', who:'admin', whoName:(staffById('admin')||{}).short||'Алина'} : {mode:'code'};
+  const fields = {aptId:f.aptId, title:ttl, desc, type:f.type, priority:f.prio, date:f.date, window:f.win==='Любое время'?'':f.win, access, complex:access.mode==='presence', ownerPhotos:f.photos,
+    masterId: w&&w.kind==='staff' ? w.id : null, contractorId: w&&w.kind==='contr' ? w.id : null, assignee: w ? (w.kind==='staff' ? masterLabel(staffById(w.id)) : w.name) : 'Не назначен'};
+  repairs.forEach(x=>x.fresh=false);
+  let r, changedMaster = false;
+  if(f.id){ r = repairs.find(x=>x.id===f.id); const prev = workerKey(r); changedMaster = prev!==who && who!=='none';
+    if(changedMaster) Object.assign(fields, {stage:'assigned', assignedAt:Date.now()});
+    const res = saveRepair(r, fields); r.fresh = true; if(!res.ok) toast('Не удалось сохранить фото — мало места в браузере (демо)');
+    if(changedMaster) Store.update(st=>logActivity(st, ME.short, `${ME.short} ${verb(ME,'переназначил','переназначила')} задачу «${ttl}» (кв. ${aptById(f.aptId).num}): ${fields.assignee}`, 'assign'));
+  } else { r = addRepair(Object.assign(fields, {source:f.voice?'Голос':'Вручную', assignedAt:w?Date.now():null})); changedMaster = !!w;
+    Store.update(st=>logActivity(st, ME.short, `${ME.short} ${verb(ME,'создал','создала')} задачу: кв. ${aptById(f.aptId).num} — ${title}${w?' → '+fields.assignee:' (не назначено)'}`, w?'assign':'info')); }
+  if(changedMaster && r.masterId) notifyMaster(r);
+  S.view='repairs'; if(S.repTab==='done') S.repTab='all'; renderNav(); render();
+  rfDone(r, w, !!newC, changedMaster);
+}
+function rfDone(r, w, isNew, notified){
+  const a = aptById(r.aptId);
+  openDrawer(`<div class="dr-head"><div style="width:32px;height:32px;border-radius:9px;background:#dcfce7;color:#15803d;display:grid;place-items:center">${ic('check',16,2.6)}</div><div class="grow"><div style="font-weight:700">Задача сохранена</div><div class="muted" style="font-size:12.5px">Кв. ${a.num} · ${esc(r.title)}</div></div><button class="icon-btn" data-action="close-drawer" aria-label="Закрыть">${ic('x',16)}</button></div>
+  <div class="dr-body">
+    <dl class="kv"><dt>Квартира</dt><dd>${esc(a.name)}</dd><dt>Тип работ</dt><dd>${WORK_TYPES[r.type].l}</dd><dt>Когда</dt><dd>${relDay(r.date)}${r.window?', '+r.window:''}</dd><dt>Доступ</dt><dd>${esc(accessText(r))}</dd><dt>Исполнитель</dt><dd>${w?`<b>${esc(w.name)}</b>${isNew?' <span class="chip violet" style="font-size:11px">новый</span>':''}`:'<span class="muted">Не назначено</span>'}</dd></dl>
+    ${w&&w.acct?`<div class="note" style="margin-top:12px;font-size:13px">${ic('bell',14)} ${notified?`Задача появилась в приложении мастера <b>${esc(w.short)}</b> — отправлено уведомление (демо).`:`Задача есть в приложении мастера <b>${esc(w.short)}</b>.`} Ссылку можно отправить дополнительно.</div>`:''}
+    ${w&&!w.acct?`<div class="note" style="margin-top:12px;font-size:13px">${ic('link',14)} У исполнителя нет аккаунта — отправьте ему ссылку на задачу: адрес, доступ, фото, смета и отчёт без регистрации.</div>`:''}
+    ${!w?`<div class="muted" style="margin-top:12px;font-size:13px">Исполнителя можно выбрать позже — кнопка «Изменить» у задачи.</div>`:''}
+  </div>
+  <div class="dr-foot">${w?`<button class="btn ${w.acct?'':'primary'}" data-action="rep-link" data-id="${r.id}">${ic('link',16)} Отправить ссылку исполнителю</button>`:`<button class="btn primary" data-action="rep-edit" data-id="${r.id}">${ic('user',16)} Выбрать исполнителя</button>`}<button class="btn ${w&&w.acct?'primary':''}" data-action="open-repair" data-id="${r.id}">Открыть задачу</button><button class="btn ghost" data-action="close-drawer">Готово</button></div>`);
+  document.getElementById('drawer').classList.remove('wide');
+}
+/* смета: согласовать / отклонить; оплата */
+function quoteDecide(id, ok){
+  const r = repairs.find(x=>x.id===id); if(!r || !r.quote) return; const a = aptById(r.aptId); const note = ok ? '' : ((document.getElementById('qNote')||{}).value||'').trim();
+  const q = Object.assign({}, r.quote, {status: ok?'approved':'rejected', decidedAt:'Сегодня, '+nowHM(), note});
+  saveRepair(r, {quote:q});
+  Store.update(st=>{ if(r.masterId) pushNotify(st, r.masterId, ok?`Смета согласована · кв. ${a.num}`:`Смета отклонена · кв. ${a.num}`, `${r.title} — ${money(quoteTotal(q))}${note?' · '+note:''}`, 'cleaning.html#task=r'+r.id);
+    logActivity(st, ME.short, `${ME.short} ${verb(ME, ok?'согласовал':'отклонил', ok?'согласовала':'отклонила')} смету: кв. ${a.num} — ${r.title}, ${money(quoteTotal(q))}${note?' ('+note+')':''}`, ok?'done':'problem'); });
+  render(); if(document.getElementById('drawer').classList.contains('open')) openRepair(id);
+  toast(ok ? `Смета согласована: ${money(quoteTotal(q))} — учтена в «Финансах»` : 'Смета отклонена — исполнитель пришлёт новую');
+}
+function repPaid(id){ const r = repairs.find(x=>x.id===id); if(!r) return; const a = aptById(r.aptId);
+  saveRepair(r, {paid:true, paidAt:'Сегодня, '+nowHM()}); Store.update(st=>logActivity(st, ME.short, `${ME.short} ${verb(ME,'отметил','отметила')} оплату ремонта: кв. ${a.num} — ${money(r.cost)} (${r.assignee})`, 'done'));
+  render(); if(document.getElementById('drawer').classList.contains('open')) openRepair(id); toast(`Оплата исполнителю отмечена: ${money(r.cost)}`); }
+function costChip(r){ const s = repCostState(r), q = r.quote;
+  if(s==='pending') return `<span class="chip amber">${ic('clock',12)} Смета ${money(quoteTotal(q))} · Ожидает согласования</span>`;
+  if(s==='approved') return `<span class="chip green">${ic('check',12)} Смета согласована: ${money(quoteTotal(q))}</span>`;
+  if(s==='rejected') return `<span class="chip red">Смета отклонена</span>`;
+  if(s==='final') return `<span class="chip blue">${ic('wallet',12)} Итог ${money(r.cost||0)} · не оплачено</span>`;
+  if(s==='paid') return `<span class="chip green">${ic('check',12)} Оплачено ${money(r.cost||0)}</span>`;
+  if(s==='plan') return `<span>${ic('wallet',13)} План: ${money(r.cost)}</span>`;
+  return ''; }
+function accChip(r){ const x = r.access||{mode:'code'};
+  return x.mode==='presence' ? `<span class="acc-c pr">${ic('users',13)} Присутствие: ${esc(x.whoName||'')}${x.time?' · '+x.time:''}</span>` : x.mode==='keys' ? `<span class="acc-c">${ic('user',13)} Ключи у администратора</span>` : `<span class="acc-c">${ic('key',13)} Код замка</span>`; }
 function renderRepairs(m){
   const cnt = k => k==='all'?repairs.length:repairs.filter(r=>r.status===k).length;
   const list = repairs.filter(r=>S.repTab==='all'||r.status===S.repTab).sort((a,b)=>(a.status==='done')-(b.status==='done') || b.id-a.id);
   const openCost = repairs.filter(r=>r.status!=='done').reduce((s,r)=>s+r.cost,0);
   m.innerHTML = `<div class="page-head"><div><h1>Ремонты и задачи</h1><p class="sub">Поломки, закупки и хозяйственные задачи по квартирам · смета открытых: ${money(openCost)}</p></div>
-    <div class="row" style="flex-wrap:wrap"><button class="btn" data-action="rep-form">${ic('plus',16)} Добавить задачу</button><button class="btn primary" data-action="voice-start">${ic('mic',16)} Добавить голосом</button></div></div>
+    <div class="row" style="flex-wrap:wrap"><button class="btn" data-action="voice-start">${ic('mic',16)} Голосом</button><button class="btn primary" data-action="rep-new">${ic('plus',16)} Добавить задачу</button></div></div>
   <div class="card">
     <div class="card-h" style="padding-bottom:14px;border-bottom:1px solid var(--border)"><div class="tabs">${[['all','Все'],['open','Открытые'],['progress','В работе'],['done','Выполненные']].map(([k,l])=>`<button class="${S.repTab===k?'active':''}" data-action="rep-tab" data-tab="${k}">${l}<span class="n">${cnt(k)}</span></button>`).join('')}</div>
-    <span class="muted" style="font-size:12.5px">${ic('mic',14)} Например: «Кв. 12: течёт кран в ванной»</span></div>
-    <form class="add-form" id="repForm"><input id="repTitle" class="grow" placeholder="Что нужно сделать?" style="min-width:200px">
-      <select id="repApt">${apartments.map(a=>`<option value="${a.id}">${esc(a.name)}</option>`).join('')}</select>
-      <select id="repPrio"><option value="high">Высокий</option><option value="medium" selected>Средний</option><option value="low">Низкий</option></select>
-      <button class="btn primary" type="submit">Добавить</button></form>
+    <span class="muted" style="font-size:12.5px">${(()=>{ const pq=repairs.filter(r=>repCostState(r)==='pending'), up=repairs.filter(r=>repCostState(r)==='final'); return `${pq.length?`<span class="chip amber">${ic('clock',12)} Сметы на согласовании: ${pq.length}</span> `:''}${up.length?`<span class="chip blue">${ic('wallet',12)} Не оплачено: ${up.length} · ${money(up.reduce((s,r)=>s+(r.cost||0),0))}</span>`:''}`; })()}</span></div>
+    
     <div id="repList">${list.length?list.map(repRow).join(''):'<div class="empty">Задач нет</div>'}</div>
   </div>`;
 }
 function repRow(r){
-  const a=aptById(r.aptId); const p=PRIO[r.priority];
+  const a=aptById(r.aptId); const p=PRIO[r.priority]; const m = r.masterId ? staffById(r.masterId) : null; const done = r.status==='done';
   const next = r.status==='open'?`<button class="btn sm" data-action="rep-next" data-id="${r.id}">В работу ${ic('arrowR',14)}</button>`:r.status==='progress'?`<button class="btn sm success" data-action="rep-next" data-id="${r.id}">${ic('check',14)} Выполнено</button>`:'';
+  const nb=(r.before||[]).length, na=(r.after||[]).length;
+  const kc = r.contractorId ? contractorById(r.contractorId) : null;
+  const who = m ? `<span class="m-who">${ic('wrench',13)} ${esc(masterLabel(m))} · в приложении</span>` : kc ? `<span>${ic('user',13)} ${esc(kc.name)}${kc.regular===false?' · разовый':''}</span>` : r.assignee==='Не назначен'||!r.assignee ? `<span class="unas">${ic('user',13)} Не назначено</span>` : `<span>${ic('user',13)} ${esc(r.assignee)}</span>`;
   return `<div class="rep ${r.fresh?'fresh':''}" id="rep-${r.id}"><span class="prio" style="background:${p[0]}"></span>
-    <div class="grow" style="min-width:220px"><div class="rep-title ${r.status==='done'?'done':''}">${esc(r.title)}</div>
-    <div class="rep-meta"><span>${ic('home',13)} ${esc(a.name)}</span><span>${ic('user',13)} ${esc(r.assignee)}</span><span>${ic('calendar',13)} ${relDay(r.date)}</span>${r.cost?`<span>${ic('wallet',13)} ${money(r.cost)}</span>`:''}${r.blockDays?`<span>${ic('alert',13)} Блокировка ${r.blockDays} ${plural(r.blockDays,'день','дня','дней')}</span>`:''}${r.source==='Голос'?`<span style="color:var(--primary)">${ic('mic',13)} Добавлено голосом</span>`:''}${r.source==='Клининг'?`<span style="color:#b91c1c;font-weight:600">${ic('flag',13)} От клининга: ${esc(r.reporter||'')}${r.photos?` · ${r.photos} фото`:''}</span>`:''}</div></div>
-    <span class="chip ${p[2]}">${p[1]}</span>${repStatusChip(r.status)}${next}</div>`;
+    <div class="grow" style="min-width:220px"><button class="rep-title linklike ${done?'done':''}" data-action="open-repair" data-id="${r.id}">${esc(r.title)}</button>
+    <div class="rep-meta"><span>${ic('home',13)} ${esc(a.name)}</span><span class="wt">${ic((WORK_TYPES[r.type]||WORK_TYPES.other).ic,13)} ${(WORK_TYPES[r.type]||WORK_TYPES.other).l}</span>${who}<span>${ic('calendar',13)} ${relDay(r.date)}${r.window?', '+r.window:''}</span>${done?'':accChip(r)}${r.complex&&!done?`<span class="chip red" style="font-size:11px;padding:1px 7px">сложная</span>`:''}${costChip(r)}${(r.ownerPhotos||[]).length?`<span>${ic('camera',13)} ${(r.ownerPhotos||[]).length} фото</span>`:''}${r.blockDays?`<span>${ic('alert',13)} Блокировка ${r.blockDays} ${plural(r.blockDays,'день','дня','дней')}</span>`:''}${r.source==='Голос'?`<span style="color:var(--primary)">${ic('mic',13)} Добавлено голосом</span>`:''}${r.source==='Клининг'?`<span style="color:#b91c1c;font-weight:600">${ic('flag',13)} От клининга: ${esc(r.reporter||'')}${r.photos?` · ${r.photos} фото`:''}</span>`:''}
+      ${!done&&m&&r.stage==='enroute'?`<span class="m-way">${ic('nav',13)} Мастер в пути${r.enrouteAt?' с '+r.enrouteAt:''}</span>`:''}${!done&&m&&r.stage==='progress'&&r.startedAt?`<span class="m-way">${ic('play',13)} Мастер работает с ${r.startedAt}</span>`:''}
+      ${done&&r.by?`<span class="m-rep">${ic('check',13,2.6)} Отчёт ${r.viaLink?'по ссылке':'мастера'}: ${esc(r.by)} · фото ${nb}+${na}${r.doneAt?' · '+r.doneAt:''}</span>`:''}${!done&&r.link?`<span class="m-link">${ic('link',13)} Ссылка отправлена: ${esc(r.link.who||'исполнителю')} · ${r.link.at}</span>`:''}</div></div>
+    <span class="chip ${p[2]}">${p[1]}</span>${repStatusChip(r.status)}
+    ${repCostState(r)==='pending'?`<button class="btn sm success" data-action="q-approve" data-id="${r.id}">${ic('check',14)} Согласовать</button><button class="btn sm" data-action="open-repair" data-id="${r.id}" data-focus="qNote">Отклонить</button>`:''}${repCostState(r)==='final'?`<button class="btn sm" data-action="rep-paid" data-id="${r.id}">${ic('wallet',14)} Оплачено</button>`:''}
+    ${done?(r.by?`<button class="btn sm" data-action="open-repair" data-id="${r.id}">${ic('eye',14)} Отчёт</button>`:''):`<button class="btn sm" data-action="rep-edit" data-id="${r.id}">${ic(workerKey(r)?'sliders':'user',14)} ${workerKey(r)?'Изменить':'Назначить'}</button><button class="btn sm ghost" data-action="rep-link" data-id="${r.id}" title="Отправить ссылку исполнителю" aria-label="Отправить ссылку исполнителю">${ic('link',14)}</button>`}${next}</div>`;
+}
+/* задачи, добавленные владельцем, сохраняются в localStorage — их видят мастера и ссылки */
+function addRepair(f){
+  let r; Store.update(st=>{ const n=++st.seq; r = Object.assign({id:20000+n, status:'open', stage:'assigned', date:TODAY, cost:0, desc:'', seed:true}, f); st.repairsAdded.push(r); });
+  r = Object.assign({}, r, {fresh:true}); repairs.push(r); return r;
+}
+function notifyMaster(r){
+  const m = staffById(r.masterId); const a = aptById(r.aptId); if(!m) return;
+  Store.update(st=>{ pushNotify(st, m.id, `Новый ремонт · кв. ${a.num}`, `${r.title} — ${a.complex}, ${fD(r.date)}`, 'cleaning.html#task=r'+r.id);
+    logActivity(st, ME.short, `${ME.short} ${verb(ME,'назначил','назначила')} ремонт кв. ${a.num} мастеру ${m.short}: ${r.title}`, 'assign'); });
+}
+function repPhotos(list){ return `<div class="photos">${list.map(p=>p.src?`<div class="photo" title="${esc(p.label||'Фото')}"><img src="${p.src}" alt="${esc(p.label||'Фото')}"><span>${esc(p.label||'Фото')}</span></div>`:photoTile(esc(p.label||'Фото'),p.hue||200)).join('')}</div>`; }
+function openRepair(id){
+  const r = repairs.find(x=>x.id===id); if(!r) return; const a = aptById(r.aptId); const p = PRIO[r.priority]; const done = r.status==='done';
+  const masters = allStaff().filter(s=>s.role==='master'); const m = r.masterId ? staffById(r.masterId) : null;
+  const hasRep = done && (r.by || (r.before||[]).length || (r.after||[]).length);
+  openDrawer(`<div class="dr-head"><div style="width:32px;height:32px;border-radius:9px;background:#ffedd5;color:#c2410c;display:grid;place-items:center">${ic('wrench',16)}</div><div class="grow"><div style="font-weight:700">Ремонт · кв. ${a.num}</div><div class="muted" style="font-size:12.5px">${esc(a.complex)} · ${relDay(r.date)}</div></div><button class="icon-btn" data-action="close-drawer" aria-label="Закрыть">${ic('x',16)}</button></div>
+  <div class="dr-body"><div class="guest-big">${esc(r.title)}</div>${r.desc?`<p class="muted" style="margin:6px 0 0;font-size:13.5px">${esc(r.desc)}</p>`:''}
+    <dl class="kv"><dt>Квартира</dt><dd>${esc(a.name)}</dd><dt>Приоритет</dt><dd><span class="chip ${p[2]}">${p[1]}</span></dd><dt>Статус</dt><dd>${repStatusChip(r.status)}${m&&!done?` <span class="muted" style="font-size:12.5px">· у мастера: ${REP_STAGE_L[r.stage]||''}</span>`:''}</dd><dt>Тип работ</dt><dd>${ic((WORK_TYPES[r.type]||WORK_TYPES.other).ic,13)} ${(WORK_TYPES[r.type]||WORK_TYPES.other).l}</dd><dt>Когда</dt><dd>${relDay(r.date)}${r.window?', '+r.window:''}</dd><dt>Доступ</dt><dd>${esc(accessText(r))}${r.complex?' <span class="chip red" style="font-size:11px">сложная</span>':''}</dd><dt>Источник</dt><dd>${r.source==='Клининг'?'От клининга: '+esc(r.reporter||''):esc(r.source||'Вручную')}</dd>${costChip(r)?`<dt>Стоимость</dt><dd>${costChip(r)}</dd>`:''}</dl>
+    ${(r.ownerPhotos||[]).length?`<div class="dr-sec"><h4>${ic('camera',15)} Фото проблемы · ${(r.ownerPhotos||[]).length}</h4>${repPhotos(r.ownerPhotos)}</div>`:''}
+    ${(()=>{ const w = workerKey(r) ? workerByKey(workerKey(r)) : null; return `<div class="dr-sec"><h4>${ic('user',15)} Исполнитель</h4>${w?`<div class="wk on" style="cursor:default"><span class="wk-av" style="background:${w.acct?'linear-gradient(135deg,#fb923c,#c2410c)':'linear-gradient(135deg,#94a3b8,#475569)'}">${ic(w.acct?'wrench':(WORK_TYPES[w.type]||WORK_TYPES.other).ic,15)}</span><span class="grow"><b>${esc(w.name)}</b><small>${esc(w.spec)} · ${esc(w.phone||'—')}</small><small>${w.rating?'★ '+String(w.rating).replace('.',',')+' · ':''}${w.acct?'в приложении «Сутки·Pro Команда»':'по ссылке, без аккаунта'}${w.regular?'':' · разовый'}</small></span></div>`:`<div class="muted" style="font-size:13px">Не назначено</div>`}
+      ${done?'':`<button class="btn sm" style="margin-top:10px" data-action="rep-edit" data-id="${r.id}">${ic('sliders',14)} ${w?'Изменить / переназначить':'Выбрать исполнителя'}</button>`}</div>`; })()}
+    ${r.quote?`<div class="dr-sec"><h4>${ic('wallet',15)} Смета исполнителя</h4>
+      <div class="muted" style="font-size:12.5px;margin-bottom:6px">${esc(r.quote.by||'')}${r.quote.viaLink?' (по ссылке)':''} · ${esc(r.quote.at||'')}</div>
+      ${r.quote.list?`<div style="font-size:13px;margin-bottom:6px">${esc(r.quote.list)}</div>`:''}
+      <div class="cost-l"><span>Стоимость работ</span><span>${money(r.quote.work||0)}</span></div><div class="cost-l"><span>Запчасти</span><span>${money(r.quote.parts||0)}</span></div><div class="cost-l tot"><span>Итого по смете</span><span>${money(quoteTotal(r.quote))}</span></div>
+      ${r.quote.status==='pending'?`<div class="chip amber" style="margin:10px 0 8px">${ic('clock',12)} Ожидает согласования</div>
+        <input class="input" id="qNote" placeholder="Причина, если отклоняете (необязательно)" style="margin-bottom:8px">
+        <div class="row" style="gap:8px"><button class="btn sm success" data-action="q-approve" data-id="${r.id}">${ic('check',14)} Согласовать</button><button class="btn sm danger" data-action="q-reject" data-id="${r.id}">Отклонить</button></div>`
+      : r.quote.status==='approved'?`<div class="chip green" style="margin-top:10px">${ic('check',12)} Согласовано${r.quote.decidedAt?' · '+esc(r.quote.decidedAt):''} — учтено в «Финансах»</div>`
+      : `<div class="chip red" style="margin-top:10px">Отклонено${r.quote.note?': '+esc(r.quote.note):''}</div><div class="muted" style="font-size:12px;margin-top:6px">Исполнитель может прислать новую смету.</div>`}
+      ${done?`<div class="cost-l tot" style="margin-top:8px"><span>Итог по факту</span><span>${money(r.cost||0)}</span></div>${r.paid?`<div class="chip green" style="margin-top:8px">${ic('check',12)} Оплачено${r.paidAt?' · '+esc(r.paidAt):''}</div>`:`<button class="btn sm" style="margin-top:8px" data-action="rep-paid" data-id="${r.id}">${ic('wallet',14)} Отметить оплату исполнителю</button>`}`:''}</div>`
+    : (done&&r.cost?`<div class="dr-sec"><h4>${ic('wallet',15)} Оплата</h4>${r.paid?`<div class="chip green">${ic('check',12)} Оплачено ${money(r.cost)}</div>`:`<button class="btn sm" data-action="rep-paid" data-id="${r.id}">${ic('wallet',14)} Отметить оплату: ${money(r.cost)}</button>`}</div>`:'')}
+    ${done?'':`<div class="dr-sec"><h4>${ic('link',15)} Ссылка на задачу</h4><div class="muted" style="font-size:12.5px;margin-bottom:10px">Одна задача по ссылке: адрес, доступ, фото до/после, смета и отчёт — без приложения и регистрации.</div><button class="btn sm" data-action="rep-link" data-id="${r.id}">${ic('link',14)} Отправить ссылку исполнителю</button>${r.link?`<div class="muted" style="font-size:12px;margin-top:8px">${ic('check',12)} Ссылка отправлена: ${esc(r.link.who||'')} · ${r.link.at}</div>`:''}</div>`}
+    ${hasRep?`<div class="dr-sec"><h4 style="color:#15803d">${ic('check',15,2.6)} Отчёт ${r.viaLink?'по ссылке':'мастера'} · ${esc(r.by||'')}${r.doneAt?' · '+r.doneAt:''}</h4>
+      <div style="font-size:12.5px;font-weight:600;color:var(--text2)">Фото до · ${(r.before||[]).length}</div>${(r.before||[]).length?repPhotos(r.before):'<div class="muted" style="font-size:12.5px">нет</div>'}
+      <div style="font-size:12.5px;font-weight:600;color:var(--text2);margin-top:10px">Фото после · ${(r.after||[]).length}</div>${(r.after||[]).length?repPhotos(r.after):'<div class="muted" style="font-size:12.5px">нет</div>'}
+      <div style="margin-top:12px;font-size:13px">${r.parts?`<b>Запчасти:</b> ${esc(r.parts)}`:'<span class="muted">Без запчастей</span>'}</div>
+      <div class="cost-l"><span>Запчасти</span><span>${money(r.partsCost||0)}</span></div><div class="cost-l"><span>Работа</span><span>${money(r.workCost||0)}</span></div><div class="cost-l tot"><span>Итого</span><span>${money(r.cost||0)}</span></div>
+      ${r.comment?`<div class="note" style="margin-top:10px;font-size:12.5px"><b>Комментарий:</b> ${esc(r.comment)}</div>`:''}</div>`:''}
+  </div>
+  <div class="dr-foot">${r.status==='open'?`<button class="btn" data-action="rep-next" data-id="${r.id}">В работу ${ic('arrowR',14)}</button>`:r.status==='progress'?`<button class="btn success" data-action="rep-next" data-id="${r.id}">${ic('check',16)} Отметить выполненной</button>`:''}${done?'':`<button class="btn" data-action="rep-link" data-id="${r.id}">${ic('link',16)} Ссылка исполнителю</button>`}<button class="btn ghost" data-action="close-drawer">Закрыть</button></div>`);
+}
+function assignRepair(id){
+  const r = repairs.find(x=>x.id===id); const sel = document.getElementById('repMaster'); if(!r || !sel) return; const mid = sel.value || null;
+  if(mid===(r.masterId||null)){ toast(mid?'Уже назначено этому мастеру':'Мастер не выбран'); return; }
+  if(!mid){ saveRepair(r, {masterId:null, assignee:'Не назначен'}); render(); openRepair(id); toast('Мастер снят с задачи'); return; }
+  const m = staffById(mid); saveRepair(r, {masterId:mid, assignee:masterLabel(m), stage:'assigned', status:'open', assignedAt:Date.now()}); notifyMaster(r);
+  render(); openRepair(id); toast(`Назначено: ${masterLabel(m)} — уведомление отправлено в приложение (демо)`);
+}
+/* ---------- ссылка на одну задачу для исполнителя без аккаунта ---------- */
+function linkPayload(){ const L = S.lk; const who = (document.getElementById('lkWho')||{}).value; L.who = (who==null?L.who:who).trim();
+  if(L.kind==='r'){ const r = repairs.find(x=>x.id===L.id); return TaskLink.forRepair(r, L.who); } const c = cleanings.find(x=>x.id===L.id); return TaskLink.forCleaning(c, L.who); }
+function openLink(kind, id){
+  const item = kind==='r' ? repairs.find(x=>x.id===id) : cleanings.find(x=>x.id===id); if(!item) return; const a = aptById(item.aptId);
+  S.lk = {kind, id, who: kind==='r' ? (item.link&&item.link.who || 'Мастер по вызову') : (item.link&&item.link.who || 'Клининг по вызову')}; S.lkTab = S.lkTab || 'tg';
+  const title = kind==='r' ? item.title : 'Уборка после выезда гостей';
+  openDrawer(`<div class="dr-head"><div style="width:32px;height:32px;border-radius:9px;background:#ede9fe;color:#7c3aed;display:grid;place-items:center">${ic('link',16)}</div><div class="grow"><div style="font-weight:700">Отправить ссылку исполнителю</div><div class="muted" style="font-size:12.5px">${kind==='r'?'Ремонт':'Уборка'} · кв. ${a.num} — ${esc(title)}</div></div><button class="icon-btn" data-action="close-drawer" aria-label="Закрыть">${ic('x',16)}</button></div>
+  <div class="dr-body"><p class="muted" style="margin:0 0 12px;font-size:13.5px">Исполнитель без аккаунта откроет эту задачу на любом телефоне — без приложения и регистрации: адрес, код двери, ${kind==='r'?'фото до/после, стоимость':'чек-лист, фото'} и кнопка «Отправить отчёт».</p>
+    <div class="field"><label for="lkWho">Кому (как подписать задачу)</label><input class="input" id="lkWho" value="${esc(S.lk.who)}" placeholder="Например: сантехник Бауыржан"></div>
+    <label style="font-size:12.5px;font-weight:600;color:var(--text2)">Ссылка на задачу</label>
+    <div class="lk-box"><input id="lkUrl" readonly aria-label="Ссылка на задачу"><button class="btn sm primary" data-action="link-copy">${ic('copy',14)} Копировать</button></div>
+    <div class="row" style="margin-top:8px;gap:8px;flex-wrap:wrap"><a class="btn sm" id="lkOpen" target="_blank" rel="noopener">${ic('eye',14)} Открыть как исполнитель</a><span class="muted" style="font-size:12px" id="lkLen"></span></div>
+    <div class="lk-tabs"><button class="${S.lkTab==='tg'?'active':''}" data-action="link-tab" data-tab="tg">Telegram</button><button class="${S.lkTab==='wa'?'active':''}" data-action="link-tab" data-tab="wa">WhatsApp</button></div>
+    <div id="lkPrev"></div>
+    <button class="btn block" style="margin-top:10px" data-action="link-share" id="lkShare"></button>
+    <div class="note" style="margin-top:14px;font-size:12.5px"><b>Демо без сервера:</b> данные задачи зашиты прямо в ссылку (base64), поэтому она открывается на любом телефоне. Отчёт, отправленный с другого устройства, сохранится только на нём — владелец увидит его, если ссылка открыта в этом же браузере. В рабочей версии — короткая ссылка с токеном и сроком действия, отчёт приходит на сервер.</div>
+  </div>
+  <div class="dr-foot"><button class="btn ghost" data-action="close-drawer">Закрыть</button></div>`);
+  renderLinkPreview();
+}
+function renderLinkPreview(){
+  if(!S.lk || !document.getElementById('lkUrl')) return; const o = linkPayload(); const url = TaskLink.url(o); S.lk.url = url;
+  document.getElementById('lkUrl').value = url; document.getElementById('lkOpen').href = url; document.getElementById('lkLen').textContent = `${url.length} символов · данные задачи внутри ссылки`;
+  const tg = S.lkTab!=='wa'; const kind = o.k==='r'?'ремонт':'уборка';
+  const text = `Здравствуйте${o.w?', '+esc(o.w):''}! Задача от Astana Stay — ${kind}, кв. ${o.a.n}: ${esc(o.t)}. ${esc(o.dt)}${o.tm?', '+esc(o.tm):''}. Адрес, код двери и отчёт — по ссылке, без регистрации:`;
+  document.getElementById('lkPrev').innerHTML = `<div class="chatp ${tg?'tg':'wa'}"><div class="ch-h"><span class="avatar" style="width:30px;height:30px;font-size:12px;background:rgba(255,255,255,.25)">${esc((o.w||'И')[0].toUpperCase())}</span><div><b>${esc(o.w||'Исполнитель')}</b><small>${tg?'был(а) недавно':'в сети'}</small></div><span style="margin-left:auto;font-size:11px;opacity:.85">предпросмотр · демо</span></div>
+    <div class="ch-b"><div class="bub">${text} <span class="u">${esc(url.slice(0,58))}…</span>
+      <div class="lp"><span class="s">Сутки·Pro · Astana Stay</span><b>${o.k==='r'?'Ремонт':'Уборка'}: кв. ${o.a.n} — ${esc(o.t)}</b><small>${esc(o.a.ad)} · фото и отчёт без регистрации (демо)</small></div>
+      <span class="tm">${nowHM()} ${tg?'✓✓':'✓✓'}</span></div></div></div>`;
+  document.getElementById('lkShare').innerHTML = `${ic('send',16)} Отправить в ${tg?'Telegram':'WhatsApp'} (демо — ничего не отправляется)`;
+}
+function linkMark(){
+  const L = S.lk; if(!L) return; const at = nowHM(); const item = L.kind==='r' ? repairs.find(x=>x.id===L.id) : cleanings.find(x=>x.id===L.id); const a = aptById(item.aptId);
+  const first = !item.link || item.link.who!==L.who;
+  if(L.kind==='r'){ saveRepair(item, Object.assign({link:{who:L.who, at}}, item.masterId?{}:{assignee:(L.who||'Исполнитель')+' (по ссылке)'})); }
+  else { item.link = {who:L.who, at}; saveCleaning(item, {link:item.link}); }
+  if(first) Store.update(st=>logActivity(st, ME.short, `${ME.short} ${verb(ME,'отправил','отправила')} ссылку на задачу: кв. ${a.num} — ${L.kind==='r'?item.title:'уборка'} (${L.who||'исполнитель'})`, 'link'));
+  render();
+}
+function linkCopy(){
+  const inp = document.getElementById('lkUrl'); if(!inp) return; renderLinkPreview(); const url = inp.value;
+  const ok = () => { linkMark(); toast('Ссылка скопирована — отправьте её исполнителю'); };
+  const fallback = () => { try { inp.focus(); inp.select(); document.execCommand('copy'); } catch(e){} ok(); };
+  if(navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(url).then(ok, fallback); else fallback();
 }
 function voiceStart(){
   const v=document.getElementById('voice'); const ph = VOICE_PHRASES[S.voiceIdx % VOICE_PHRASES.length]; S.voiceIdx++;
@@ -688,17 +1054,18 @@ function voiceStart(){
     <button class="btn" data-action="voice-cancel">Отмена</button></div>`;
   clearTimeout(S.vt1); clearInterval(S.vt2); clearTimeout(S.vt3);
   S.vt1 = setTimeout(()=>{
-    v.classList.add('done'); document.getElementById('vTitle').textContent='Распознано'; document.getElementById('vSub').textContent='Создаю задачу…';
+    v.classList.add('done'); document.getElementById('vTitle').textContent='Распознано'; document.getElementById('vSub').textContent='Открываю форму задачи…';
     let i=0; const el=document.getElementById('vText');
     S.vt2 = setInterval(()=>{ i+=2; el.innerHTML = esc(ph.text.slice(0,i))+'<span class="caret"></span>';
       if(i>=ph.text.length){ clearInterval(S.vt2); el.innerHTML='«'+esc(ph.text)+'»';
-        S.vt3 = setTimeout(()=>{ addVoiceTask(ph); v.className='voice'; },700); } },28);
+        S.vt3 = setTimeout(()=>{ v.className='voice'; const a=apartments.find(x=>x.num===ph.num)||apartments[0]; S.view='repairs'; renderNav(); render(); openRepForm(null, {desc:ph.text, aptId:a.id, type:guessWorkType(ph.text), typeAuto:true, prio:ph.prio||'medium', voice:true}); },700); } },28);
   },2000);
 }
 function addVoiceTask(ph){
   const a = apartments.find(x=>x.num===ph.num) || apartments[0];
   repairs.forEach(r=>r.fresh=false);
-  repairs.push({id:repId++, aptId:a.id, title:ph.title, assignee:ph.who, priority:ph.prio, status:'open', date:TODAY, cost:0, source:'Голос', fresh:true});
+  const r = addRepair({aptId:a.id, title:ph.title, assignee:ph.who, masterId:ph.master||null, priority:ph.prio, source:'Голос'});
+  if(r.masterId) notifyMaster(r);
   S.view='repairs';
   if(S.repTab==='done'||S.repTab==='progress') S.repTab='all';
   renderNav(); render();
@@ -740,7 +1107,7 @@ function renderFinance(m){
     <div class="card"><div class="card-h"><h3>Загрузка по дням</h3><span class="muted" style="font-size:12.5px">в среднем ${Math.round(st.occ*100)}% · <span style="color:#818cf8">■</span> выходные${st.from<=TODAY&&TODAY<st.to?' · <span style="color:#f59e0b">■</span> сегодня':''}</span></div><div class="card-b">${occSvg}</div></div>
   </div>
   <div class="fin-grid2">
-    <div class="card"><div class="card-h"><h3>Структура расходов</h3><b>${money(st.expenses)}</b></div><div class="card-b">${exps.map(e=>`<div class="exp-row"><div class="row"><span>${e[0]}</span><b>${money(e[1])}</b></div><div class="exp-bar"><i style="width:${(e[1]/maxE*100).toFixed(1)}%;background:${e[2]}"></i></div></div>`).join('')}
+    <div class="card"><div class="card-h"><h3>Структура расходов</h3><b>${money(st.expenses)}</b></div><div class="card-b">${exps.map(e=>`<div class="exp-row"><div class="row"><span>${e[0]}</span><b>${money(e[1])}</b></div><div class="exp-bar"><i style="width:${(e[1]/maxE*100).toFixed(1)}%;background:${e[2]}"></i></div>${e[0]==='Ремонт и закупки'?`<div class="muted" style="font-size:11.5px;margin-top:4px">${st.repN} ${plural(st.repN,'задача','задачи','задач')} · согласованные сметы и итоговые суммы · оплачено ${money(st.repPaid)}, к оплате ${money(st.rep-st.repPaid)} · <a href="#repairs" data-action="nav" data-view="repairs">Ремонты →</a></div>`:''}</div>`).join('')}
       <div style="margin-top:16px;padding-top:14px;border-top:1px dashed var(--border);display:flex;justify-content:space-between;align-items:center"><span class="muted">Чистая прибыль</span><b class="pos" style="font-size:16px">${money(st.profit)}</b></div>
       <div class="muted" style="font-size:12px;margin-top:10px">Условно: уборка — 8 000 ₸ за выезд, коммуналка — 32 000 ₸ на квартиру, персонал — 1,45 млн ₸ в месяц.</div></div></div>
     <div class="card"><div class="card-h" style="padding-bottom:12px"><h3>По квартирам</h3><span class="muted" style="font-size:12.5px">сортировка — клик по заголовку</span></div>
@@ -826,8 +1193,29 @@ document.addEventListener('click', e=>{
       else if(c.status==='progress'){ c.status='done'; c.checked=c.checked.map(()=>true); c.doneAt=nowHM(); saveCleaning(c); Store.update(st=>logActivity(st, ME.short, `${ME.short} ${verb(ME,'закрыл','закрыла')} уборку кв. ${ap.num} вручную (${c.cleaner})`, 'done')); toast(`Уборка завершена — ${ap.name}`); }
       renderNav(); render(); break; }
     case 'rep-tab': S.repTab=t.dataset.tab; render(); break;
-    case 'rep-form': { const f=document.getElementById('repForm'); f.classList.toggle('open'); if(f.classList.contains('open')) document.getElementById('repTitle').focus(); break; }
-    case 'rep-next': { const r=repairs.find(x=>x.id===+id); r.fresh=false; r.status = r.status==='open'?'progress':'done'; if(r.persist) Store.update(st=>{ st.repairStatus[r.id]=r.status; }); renderNav(); render(); toast(r.status==='done'?`Задача выполнена: ${r.title}`:`Задача передана в работу: ${r.assignee}`); break; }
+    case 'rep-new': openRepForm(null); setTimeout(()=>{ const d=document.getElementById('rfDesc'); if(d) d.focus(); }, 260); break;
+    case 'rep-edit': openRepForm(+id); break;
+    case 'rf-voice': rfVoice(); break;
+    case 'rf-apt': { rfRead(); const a=aptById(+id); S.rf.aptId=a.id; S.rfAptQ=a.name; S.rfAptOpen=false; renderRepForm(); break; }
+    case 'rf-type': rfRead(); S.rf.type=t.dataset.v; S.rf.typeAuto=false; renderRepForm(); break;
+    case 'rf-prio': rfRead(); S.rf.prio=t.dataset.v; renderRepForm(); break;
+    case 'rf-all': rfRead(); S.rf.showAll=true; renderRepForm(); break;
+    case 'rf-demo-photo': rfRead(); S.rf.photos.push({demo:true, label:'Фото '+(S.rf.photos.length+1), hue:(20+S.rf.photos.length*47)%360}); renderRepForm(); break;
+    case 'rf-photo-del': rfRead(); S.rf.photos.splice(+t.dataset.i,1); renderRepForm(); break;
+    case 'rf-save': rfSave(); break;
+    case 'q-approve': quoteDecide(+id, true); break;
+    case 'q-reject': quoteDecide(+id, false); break;
+    case 'rep-paid': repPaid(+id); break;
+    case 'mc-hist': S.mcOpen = S.mcOpen===t.dataset.k ? null : t.dataset.k; render(); break;
+    case 'mc-regular': { const cid=t.dataset.k; Store.update(st=>{ st.contractorOv=st.contractorOv||{}; st.contractorOv[cid]=Object.assign({}, st.contractorOv[cid]||{}, {regular:true}); const c=(st.contractors||[]).find(x=>x.id===cid); if(c) c.regular=true; logActivity(st, ME.short, `${ME.short} ${verb(ME,'добавил','добавила')} в постоянные: ${(contractorById(cid)||{}).name||''}`, 'info'); }); render(); toast('Исполнитель добавлен в постоянные'); break; }
+    case 'rep-next': { const r=repairs.find(x=>x.id===+id); r.fresh=false; const ns = r.status==='open'?'progress':'done'; saveRepair(r, ns==='done'?Object.assign({status:'done', stage:'done', doneAt:r.doneAt||nowHM()}, !r.cost&&r.quote&&r.quote.status==='approved'?{cost:quoteTotal(r.quote), workCost:+r.quote.work||0, partsCost:+r.quote.parts||0, paid:false}:{}, r.cost&&r.paid===undefined?{paid:false}:{}):{status:'progress', stage:'progress'}); renderNav(); render(); if(document.getElementById('drawer').classList.contains('open')) openRepair(r.id); toast(r.status==='done'?`Задача выполнена: ${r.title}`:`Задача передана в работу: ${r.assignee}`); break; }
+    case 'open-repair': openRepair(+id); if(t.dataset.focus) setTimeout(()=>{ const el=document.getElementById(t.dataset.focus); if(el){ el.focus(); el.scrollIntoView({block:'center'}); } }, 260); break;
+    case 'rep-assign': assignRepair(+id); break;
+    case 'rep-link': openLink('r', +id); break;
+    case 'clean-link': openLink('c', +id); break;
+    case 'link-copy': linkCopy(); break;
+    case 'link-tab': S.lkTab=t.dataset.tab; renderLinkPreview(); document.querySelectorAll('.lk-tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===S.lkTab)); break;
+    case 'link-share': linkMark(); toast(`Демо: сообщение в ${S.lkTab==='wa'?'WhatsApp':'Telegram'} не отправляется — скопируйте ссылку и перешлите сами`); break;
     case 'voice-start': voiceStart(); break;
     case 'voice-cancel': clearTimeout(S.vt1); clearInterval(S.vt2); clearTimeout(S.vt3); document.getElementById('voice').className='voice'; break;
     case 'fin-month': S.finMonth=+t.dataset.m; render(); break;
@@ -835,7 +1223,9 @@ document.addEventListener('click', e=>{
     case 'tr-driver': { e.stopPropagation(); const tr=transfers.find(x=>x.id===+id); tr.status='driver'; tr.driver=tr.cls==='minivan'?'Ерболат · Hyundai Staria':DRIVERS[tr.id%DRIVERS.length]; persistTr(tr); if(document.getElementById('drawer').classList.contains('open') && tr.ext) openTransfer(tr.id); render(); toast(`Водитель назначен: ${tr.driver}`); break; }
     case 'open-transfer': openTransfer(+id); break;
     case 'tr-cancel': { const tr=transfers.find(x=>x.id===+id); tr.status='cancelled'; persistTr(tr); transfers.splice(transfers.indexOf(tr),1); closeDrawer(); render(); toast('Поездка отменена'); break; }
-    case 'logout': Auth.logout(); location.href='login.html'; break;
+    case 'fx-save': fxSave(); break;
+    case 'fx-reset': fxReset(); break;
+    case 'logout': Auth.logout('panel'); location.href='login.html'; break;
     case 'staff-form': { const f=document.getElementById('staffForm'); f.classList.toggle('open'); if(f.classList.contains('open')) document.getElementById('stName').focus(); break; }
     case 'staff-access': { const sid=t.dataset.sid; const s=staffById(sid); if(!s || s.role==='owner' || sid===USER.id) break;
       if(!IS_OWNER && s.role==='admin') { toast('Изменять доступ администратора может только владелец'); break; }
@@ -847,18 +1237,25 @@ document.addEventListener('click', e=>{
 document.addEventListener('submit', e=>{
   if(e.target.id==='staffForm'){ e.preventDefault(); const name=document.getElementById('stName').value.trim(); const phone=document.getElementById('stPhone').value.trim(); const role=document.getElementById('stRole').value;
     if(name.length<2){ document.getElementById('stName').focus(); return; }
-    let added; Store.update(st=>{ const n=++st.seq; const short=name.split(' ')[0]; added={id:'u'+n, name, short, role, login:'user'+n, pass:'demo', phone:phone||'+7 700 000 00 00', g:/[ая]$/i.test(short)?'f':'m', online:false, lastLogin:'ещё не входил(а)', rating:role==='cleaner'?5.0:undefined, monthDone:role==='cleaner'?0:undefined}; st.staffAdded.push(added); logActivity(st, ME.short, `${ME.short} ${verb(ME,'добавил','добавила')} сотрудника: ${name} (${ROLE_NAME[role].toLowerCase()})`, 'access'); });
+    let added; Store.update(st=>{ const n=++st.seq; const short=name.split(' ')[0]; added={id:'u'+n, name, short, role, login:'user'+n, pass:'demo', phone:phone||'+7 700 000 00 00', g:/[ая]$/i.test(short)?'f':'m', online:false, lastLogin:'ещё не входил(а)', rating:isTeamRole(role)?5.0:undefined, monthDone:isTeamRole(role)?0:undefined, spec:role==='master'?'Мастер':undefined}; st.staffAdded.push(added); logActivity(st, ME.short, `${ME.short} ${verb(ME,'добавил','добавила')} сотрудника: ${name} (${ROLE_NAME[role].toLowerCase()})`, 'access'); });
     render(); toast(`Сотрудник добавлен. Логин: ${added.login}, пароль: demo`); return; }
-  if(e.target.id==='repForm'){ e.preventDefault(); const title=document.getElementById('repTitle').value.trim(); if(!title){ document.getElementById('repTitle').focus(); return; }
-    repairs.forEach(r=>r.fresh=false);
-    repairs.push({id:repId++, aptId:+document.getElementById('repApt').value, title, assignee:'Мастер Ерлан', priority:document.getElementById('repPrio').value, status:'open', date:TODAY, cost:0, source:'Вручную', fresh:true});
-    if(S.repTab!=='all'&&S.repTab!=='open') S.repTab='all'; renderNav(); render(); toast('Задача добавлена: '+title); }
 });
+document.addEventListener('input', e=>{ if(e.target.id==='lkWho') renderLinkPreview(); if(S.view==='settings' && e.target.closest('.fx-card')) fxPreview(); });
+document.addEventListener('change', e=>{ if(S.view==='settings' && e.target.closest('.fx-card')) fxPreview();
+  const t=e.target; if(!S.rf || !t.closest || !t.closest('.rf')) return;
+  if(t.dataset.rfWho){ rfRead(); S.rf.who=t.dataset.rfWho; if(t.dataset.rfWho==='new' && !S.rf.nw.type) S.rf.nw.type=S.rf.type; renderRepForm(); if(S.rf.who==='new') setTimeout(()=>document.getElementById('nwName')?.focus(),50); }
+  else if(t.dataset.rfAcc){ rfRead(); S.rf.access.mode=t.dataset.rfAcc; renderRepForm(); }
+  else if(t.id==='rfFile'){ rfFiles(t.files); t.value=''; } });
+document.addEventListener('input', e=>{ const t=e.target; if(!S.rf) return;
+  if(t.id==='rfAptQ'){ S.rfAptQ=t.value; S.rfAptOpen=true; const pos=t.selectionStart; rfRead(); if(S.rf.aptId && t.value!==aptById(S.rf.aptId).name) S.rf.aptId=null; renderRepForm(); const n=document.getElementById('rfAptQ'); n.focus(); n.setSelectionRange(pos,pos); }
+  else if(t.id==='rfDesc' && S.rf.typeAuto){ const g=guessWorkType(t.value); if(g!==S.rf.type){ const pos=t.selectionStart; rfRead(); S.rf.type=g; renderRepForm(); const n=document.getElementById('rfDesc'); n.focus(); n.setSelectionRange(pos,pos); } } });
+document.addEventListener('focusin', e=>{ if(e.target.id==='rfAptQ' && S.rf && !S.rfAptOpen){ rfRead(); S.rfAptOpen=true; renderRepForm(); const n=document.getElementById('rfAptQ'); n.focus(); const L=n.value.length; n.setSelectionRange(L,L); } });
 document.addEventListener('keydown', e=>{ if(e.key==='Escape'){ closeDrawer(); document.getElementById('voice').className='voice'; } });
 let rsz; window.addEventListener('resize', ()=>{ clearTimeout(rsz); rsz=setTimeout(()=>{ if(S.view==='calendar') renderGrid(); },120); });
 
 /* =================== Общее состояние (localStorage) =================== */
 const SEED_CLEAN = {}; cleanings.forEach(c=>SEED_CLEAN[c.id]={status:c.status, doneAt:c.doneAt, cleaner:c.cleaner});
+const SEED_REP = {}; repairs.forEach(r=>SEED_REP[r.id]=r.status);
 function persistReq(r){ if(!r.site) return; Store.update(st=>{ const x=st.requests.find(q=>q.id===r.id); if(x){ x.status=r.status; } }); }
 function bookingFromSiteReq(r){
   if(r.bookingId || !isFree(r.aptId,r.ci,r.co)) return null; const ap=aptById(r.aptId); const n=r.co-r.ci;
@@ -886,57 +1283,131 @@ function syncFromStore(){
   st.requests.slice().sort((a,b)=>a.id-b.id).forEach(q=>{
     let r = requests.find(x=>x.id===q.id);
     if(!r){ r = q.type==='transfer'
-        ? {id:q.id, kind:'transfer', channel:'site', site:true, name:q.name, phone:q.phone, text:q.comment||'', custom:!!q.comment, aptId:q.aptId||null, ref:q.ref, refSource:q.refSource, address:q.address, tr:q.tr, sum:q.total, time:(q.day||'Сегодня')+', '+q.time, status:q.status||'new', payment:q.payment, paid:!!q.paid}
-        : {id:q.id, channel:'site', site:true, name:q.name, phone:q.phone, text:q.comment||('Бронь с сайта Astana Stay'+(q.tr?' + трансфер':q.transfer?' + трансфер из аэропорта':'')+(q.pet?' · с животным':'')), custom:!!q.comment, aptId:q.aptId, ci:q.ci, co:q.co, guests:q.guests, sum:q.total, time:(q.day||'Сегодня')+', '+q.time, status:q.status||'new', bookingId:null, payment:q.payment, paid:!!q.paid, transfer:!!q.transfer, tr:q.tr||null, pet:!!q.pet, petFee:q.petFee||0};
+        ? {id:q.id, kind:'transfer', channel:'site', site:true, name:q.name, phone:q.phone, text:q.comment||'', custom:!!q.comment, aptId:q.aptId||null, ref:q.ref, refSource:q.refSource, address:q.address, tr:q.tr, sum:q.total, cur:q.cur, time:(q.day||'Сегодня')+', '+q.time, status:q.status||'new', payment:q.payment, paid:!!q.paid}
+        : {id:q.id, channel:'site', site:true, name:q.name, phone:q.phone, text:q.comment||('Бронь с сайта Astana Stay'+(q.tr?' + трансфер':q.transfer?' + трансфер из аэропорта':'')+(q.pet?' · с животным':'')), custom:!!q.comment, aptId:q.aptId, ci:q.ci, co:q.co, guests:q.guests, sum:q.total, cur:q.cur, time:(q.day||'Сегодня')+', '+q.time, status:q.status||'new', bookingId:null, payment:q.payment, paid:!!q.paid, transfer:!!q.transfer, tr:q.tr||null, pet:!!q.pet, petFee:q.petFee||0};
       requests.unshift(r); added++; }
     else r.status = q.status||r.status;
     if(r.tr) syncExtTransfers(r, st);
     if(r.status==='confirmed' && r.kind!=='transfer') bookingFromSiteReq(r);
   });
-  st.problems.forEach(p=>{ if(repairs.some(r=>r.id===p.id)) return;
-    repairs.push({id:p.id, aptId:p.aptId, title:p.title, assignee:'Не назначен', priority:p.priority||'high', status:'open', date:TODAY, cost:0, source:'Клининг', reporter:p.by, persist:true, photos:p.photos||0}); });
-  repairs.forEach(r=>{ if(r.id<12) r.persist=true; const s2=st.repairStatus[r.id]; if(s2 && r.persist) r.status=s2; });
+  syncRepairs(st);   // проблемы от клининга, назначения мастерам, отчёты мастеров и исполнителей по ссылке
   applyCleaningOverrides(st);
   return added;
 }
 /* =================== Сотрудники =================== */
-const ACT_IC = {login:['in','#e0e7ff','#4f46e5'],logout:['out','#f1f5f9','#64748b'],enroute:['nav','#e0f2fe','#0284c7'],start:['sparkle','#fef3c7','#d97706'],done:['check','#dcfce7','#16a34a'],problem:['alert','#fee2e2','#dc2626'],access:['key','#ede9fe','#7c3aed'],booking:['globe','#ede9fe','#7c3aed'],info:['clock','#f1f5f9','#64748b']};
+const ACT_IC = {login:['in','#e0e7ff','#4f46e5'],logout:['out','#f1f5f9','#64748b'],enroute:['nav','#e0f2fe','#0284c7'],start:['sparkle','#fef3c7','#d97706'],done:['check','#dcfce7','#16a34a'],problem:['alert','#fee2e2','#dc2626'],access:['key','#ede9fe','#7c3aed'],assign:['user','#ffedd5','#c2410c'],link:['link','#ede9fe','#7c3aed'],booking:['globe','#ede9fe','#7c3aed'],info:['clock','#f1f5f9','#64748b']};
 function seededActivity(){
-  const L=[['08:15','Азамат','Азамат вошёл в 08:15','login'],['08:47','Алина','Алина вошла в 08:47','login'],['09:12','Гульнара','Гульнара вошла в 09:12','login'],['09:30','Айгерим','Айгерим вошла в 09:30','login'],['10:05','Динара','Динара вошла в 10:05','login'],['10:20','Светлана','Светлана вошла в 10:20','login']];
-  cleanings.forEach(c=>{ const s0=SEED_CLEAN[c.id]; if(c.date!==TODAY) return; const a=aptById(c.aptId);
+  const L=[['08:15','Азамат','Азамат вошёл в 08:15','login'],['08:47','Алина','Алина вошла в 08:47','login'],['09:12','Гульнара','Гульнара вошла в 09:12','login'],['09:30','Айгерим','Айгерим вошла в 09:30','login'],['10:05','Динара','Динара вошла в 10:05','login'],['10:20','Светлана','Светлана вошла в 10:20','login'],['09:05','Марат','Марат вошёл в 09:05','login'],['09:22','Ерлан','Ерлан вошёл в 09:22','login']];
+  { const rb = repairs.find(r=>r.seed && r.masterId==='erlan' && SEED_REP[r.id]==='progress'); if(rb) L.push(['10:40','Ерлан',`Ерлан начал ремонт кв. ${aptById(rb.aptId).num}: ${rb.title}`,'start']); }
+  cleanings.forEach(c=>{ const s0=SEED_CLEAN[c.id]; if(!s0 || c.date!==TODAY) return; const a=aptById(c.aptId);
     if(s0.status==='progress'||s0.status==='done') L.push([s0.status==='done'?'11:20':'12:10', s0.cleaner, `${s0.cleaner} начала уборку кв. ${a.num}`, 'start']);
     if(s0.status==='done') L.push([s0.doneAt, s0.cleaner, `${s0.cleaner} завершила уборку кв. ${a.num} — ${ROOMS_PH.length} фото`, 'done']); });
   L.push(['13:58','Светлана','Светлана вышла в 13:58','logout']);
   return L.sort((a,b)=>a[0].localeCompare(b[0])).map(x=>({t:x[0],who:x[1],text:x[2],type:x[3],seed:true}));
+}
+/* =================== Настройки → Валюты и цены (только владелец) =================== */
+const FX_ROUND_L = {nearest:'До ближайшего', up:'Всегда вверх', down:'Всегда вниз'};
+const FX_STEPS = {RUB:[1,10,50,100], USD:[1,5,10], EUR:[1,5,10]};
+function fxFromForm(){
+  const f = fxGet(); const q = s => document.querySelector(s);
+  FX_CODES.filter(c=>c!=='KZT').forEach(c=>{ const v = parseFloat(String(q(`[data-fx-rate="${c}"]`).value).replace(',','.')); if(v>0) f.rates[c]=v;
+    f.show[c] = q(`[data-fx-show="${c}"]`).checked; f.round.step[c] = +q(`[data-fx-step="${c}"]`).value || 1; });
+  f.show.KZT = true; f.round.mode = q('#fxMode').value;
+  f.over = {}; document.querySelectorAll('[data-fx-over]').forEach(i=>{ const v=Math.round(+String(i.value).replace(/\s/g,'').replace(',','.')); if(v>0){ const [id,c]=i.dataset.fxOver.split(':'); (f.over[id]=f.over[id]||{})[c]=v; } });
+  return f;
+}
+function fxPreview(){
+  const f = fxFromForm();
+  FX_CODES.filter(c=>c!=='KZT').forEach(c=>{ const el=document.querySelector(`[data-fx-ex="${c}"]`); if(el) el.textContent = `25 000 ₸ → ${fxFmt(fxConv(25000,c,f),c)}`; });
+  document.querySelectorAll('[data-fx-over]').forEach(i=>{ const [id,c]=i.dataset.fxOver.split(':'); i.placeholder = String(fxConv(aptById(+id).price, c, f)); i.classList.toggle('set', +i.value>0); });
+  document.querySelectorAll('[data-fx-col]').forEach(th=>th.classList.toggle('off', !f.show[th.dataset.fxCol]));
+}
+function renderSettings(m){
+  const f = fxGet(); const cur = FX_CODES.filter(c=>c!=='KZT');
+  const nOver = Object.values(f.over).reduce((s,o)=>s+Object.values(o).filter(v=>v>0).length,0);
+  const upd = f.updated ? new Date(f.updated) : null;
+  m.innerHTML = `<div class="page-head"><div><h1>Настройки</h1><p class="sub">Валюты и цены на сайте для гостей</p></div>
+    <div class="row" style="gap:8px"><a class="btn" href="index.html" target="_blank" rel="noopener">${ic('globe',15)} Открыть сайт</a></div></div>
+  <div class="set-tabs"><span class="active">${ic('wallet',15)} Валюты и цены</span></div>
+  <div class="card fx-card">
+    <div class="card-h"><div><h3 style="margin:0;font-size:16px">Настройки → Валюты и цены</h3><div class="muted" style="font-size:12.5px;margin-top:3px">Цены квартир задаются в тенге. Гость на сайте может переключить валюту — цены пересчитываются по этим курсам.</div></div>
+      <span class="chip amber">${ic('alert',12)} Демо-курсы — не реальные</span></div>
+    <div class="fx-note">${ic('alert',15)}<span>Курсы в демо заданы вручную и не обновляются. В рабочей версии можно подтягивать курс Нацбанка РК раз в день и оставлять ручную правку.</span></div>
+    <div class="table-wrap"><table class="t fx-t"><thead><tr><th>Валюта</th><th>Курс</th><th>На сайте</th><th>Округление</th><th>Пример</th></tr></thead><tbody>
+      <tr><td><span class="fx-sym">₸</span><b>KZT</b> <span class="muted">· Тенге</span></td><td class="muted">Базовая валюта</td><td><label class="fx-sw"><input type="checkbox" checked disabled> всегда</label></td><td class="muted">до 1 ₸</td><td class="muted">25 000 ₸</td></tr>
+      ${cur.map(c=>`<tr><td><span class="fx-sym">${FX_CUR[c].sym}</span><b>${c}</b> <span class="muted">· ${FX_CUR[c].name}</span></td>
+        <td><div class="fx-rate">1 ${c} = <input class="input" data-fx-rate="${c}" inputmode="decimal" value="${String(f.rates[c]).replace('.',',')}" aria-label="Курс ${c} в тенге"> ₸</div></td>
+        <td><label class="fx-sw"><input type="checkbox" data-fx-show="${c}" ${f.show[c]?'checked':''}> показывать</label></td>
+        <td><select class="input fx-step" data-fx-step="${c}" aria-label="Шаг округления ${c}">${FX_STEPS[c].map(s=>`<option value="${s}" ${+f.round.step[c]===s?'selected':''}>до ${s} ${FX_CUR[c].sym}</option>`).join('')}</select></td>
+        <td class="fx-ex" data-fx-ex="${c}"></td></tr>`).join('')}
+    </tbody></table></div>
+    <div class="fx-row"><label for="fxMode">Правило округления</label><select class="input" id="fxMode" style="max-width:220px">${Object.entries(FX_ROUND_L).map(([k,l])=>`<option value="${k}" ${f.round.mode===k?'selected':''}>${l}</option>`).join('')}</select>
+      <span class="muted" style="font-size:12.5px">Например, 49,4 $ → ${f.round.mode==='up'?'50':'49'} $ при шаге 1 $</span></div>
+  </div>
+  <div class="card fx-card" style="margin-top:16px">
+    <div class="card-h"><div><h3 style="margin:0;font-size:16px">Ручные цены за ночь по квартирам</h3><div class="muted" style="font-size:12.5px;margin-top:3px">Если цена в валюте задана вручную — на сайте показывается она, а не пересчёт по курсу. Пустое поле — считается по курсу (серым — что получится).</div></div>
+      <span class="chip ${nOver?'violet':'grey'}">Задано вручную: ${nOver}</span></div>
+    <div class="table-wrap fx-over-wrap"><table class="t fx-t"><thead><tr><th>Квартира</th><th class="num">Цена, ₸</th>${cur.map(c=>`<th data-fx-col="${c}">${FX_CUR[c].sym} ${c}</th>`).join('')}</tr></thead><tbody>
+      ${apartments.map(a=>`<tr><td><b>${esc(a.name)}</b>${a.embassy?' <span class="chip grey" style="font-size:11px">у посольства США</span>':''}</td><td class="num">${money(a.price)}</td>
+        ${cur.map(c=>{ const v=(f.over[a.id]||{})[c]; return `<td><input class="input fx-ov" data-fx-over="${a.id}:${c}" inputmode="numeric" value="${v>0?v:''}" aria-label="Ручная цена ${c} для ${esc(a.name)}"></td>`; }).join('')}</tr>`).join('')}
+    </tbody></table></div>
+  </div>
+  <div class="fx-bar"><span class="muted" style="font-size:12.5px">${upd?`Сохранено: ${String(upd.getHours()).padStart(2,'0')}:${String(upd.getMinutes()).padStart(2,'0')} · сайт обновится сразу`:'Сейчас действуют демо-курсы по умолчанию'}</span>
+    <div class="row" style="gap:8px"><button class="btn" data-action="fx-reset">${ic('refresh',15)} Вернуть демо-курсы</button><button class="btn primary" data-action="fx-save">${ic('check',15)} Сохранить</button></div></div>`;
+  fxPreview();
+}
+function fxSave(){
+  const f = fxFromForm(); f.updated = Date.now();
+  const res = Store.update(st=>{ st.fx = f; logActivity(st, ME.short, `${ME.short} ${verb(ME,'обновил','обновила')} курсы валют сайта: 1 USD = ${f.rates.USD} ₸, 1 EUR = ${f.rates.EUR} ₸, 1 RUB = ${f.rates.RUB} ₸`, 'info'); });
+  render(); toast(!res.ok ? 'Не удалось сохранить (localStorage недоступен)' : 'Курсы и цены сохранены — сайт для гостей уже показывает новые цены');
+}
+function fxReset(){ Store.update(st=>{ delete st.fx; }); render(); toast('Вернули демо-курсы по умолчанию, ручные цены очищены'); }
+/* «Мастера и подрядчики»: постоянные и разовые исполнители, история работ и расходы */
+function mastersCard(){
+  const ws = workers().sort((a,b)=>(b.acct-a.acct) || (b.regular-a.regular) || b.spend-a.spend);
+  const tot = ws.reduce((s,w)=>s+w.spend,0);
+  const kind = w => w.acct ? '<span class="chip violet">Мастер · аккаунт</span>' : w.regular ? '<span class="chip blue">Постоянный подрядчик</span>' : '<span class="chip grey">Разовый</span>';
+  return `<div class="card" id="mastersCard" style="margin-top:16px"><div class="card-h" style="padding-bottom:12px;border-bottom:1px solid var(--border)"><div><h3>Мастера и подрядчики</h3><div class="muted" style="font-size:12.5px;margin-top:2px">Кого можно назначать на ремонты · всего расходов по согласованным сметам и итогам: <b>${money(tot)}</b></div></div>
+    <button class="btn sm primary" data-action="rep-new">${ic('plus',14)} Новая задача</button></div>
+    <div class="table-wrap"><table class="t mc-t"><thead><tr><th>Исполнитель</th><th>Специализация</th><th>Телефон</th><th class="num">Рейтинг</th><th class="num">В работе</th><th class="num">Выполнено</th><th class="num">Расходы</th><th></th></tr></thead><tbody>
+    ${ws.map(w=>{ const open = S.mcOpen===w.key; const last = w.jobs.slice().sort((a,b)=>b.date-a.date)[0];
+      const wt = WORK_TYPES[w.type]||WORK_TYPES.other; const note = w.acct ? '' : (contractorById(w.id)||{}).note;
+      return `<tr><td><b>${esc(w.name)}</b><div style="margin-top:3px">${kind(w)}</div>${last?`<div class="muted" style="font-size:11.5px;margin-top:2px">последняя работа: ${relDay(last.date)}</div>`:''}</td><td style="white-space:normal;min-width:150px">${ic(wt.ic,13)} ${w.acct?esc(w.spec):wt.l}${note?`<div class="muted" style="font-size:11.5px">${esc(note)}</div>`:''}</td><td>${esc(w.phone||'—')}</td>
+        <td class="num">${w.rating?'★ '+String(w.rating).replace('.',','):'—'}</td><td class="num">${w.load||'—'}</td><td class="num">${w.done}</td><td class="num"><b>${money(w.spend)}</b></td>
+        <td>${w.jobs.length?`<button class="btn sm ghost" data-action="mc-hist" data-k="${w.key}">${open?'Скрыть':'История'} (${w.jobs.length})</button>`:''}${!w.acct&&!w.regular?`<button class="btn sm ghost" data-action="mc-regular" data-k="${w.id}" title="Добавить в постоянные">${ic('plus',13)} В постоянные</button>`:''}</td></tr>
+        ${open?`<tr class="mc-hist"><td colspan="8"><div style="display:flex;flex-direction:column;gap:6px">${w.jobs.slice().sort((a,b)=>b.date-a.date).map(r=>{ const a=aptById(r.aptId); return `<div class="row" style="gap:10px;flex-wrap:wrap;font-size:13px"><span class="muted" style="width:92px">${relDay(r.date)}</span><button class="linklike" data-action="open-repair" data-id="${r.id}"><b>${esc(r.title)}</b></button><span class="muted">кв. ${a.num} · ${esc(a.complex)}</span>${repStatusChip(r.status)}${costChip(r)}</div>`; }).join('')}</div></td></tr>`:''}`; }).join('')}
+    </tbody></table></div></div>`;
 }
 function renderStaff(m){
   const st = Store.load(); const staff = allStaff(st);
   const acts = seededActivity().concat(st.activity).reverse();
   const todayCl = cleanings.filter(c=>c.date===TODAY);
   const probs = repairs.filter(r=>r.source==='Клининг' && r.status!=='done').length;
-  const monthDone = s => (s.monthDone||0) + cleanings.filter(c=>c.status==='done' && SEED_CLEAN[c.id] && SEED_CLEAN[c.id].status!=='done' && c.cleaner===s.short).length;
+  const monthDone = s => s.role==='master' ? (s.monthDone||0) + repairs.filter(r=>r.masterId===s.id && r.reportAt && !r.viaLink).length : (s.monthDone||0) + cleanings.filter(c=>c.status==='done' && SEED_CLEAN[c.id] && SEED_CLEAN[c.id].status!=='done' && c.cleaner===s.short).length;
+  const repToday = s => { const l = repairs.filter(r=>r.masterId===s.id && (r.date===TODAY || r.reportAt)); return [l.filter(r=>r.status==='done').length, l.length]; };
   m.innerHTML = `<div class="page-head"><div><h1>Сотрудники</h1><p class="sub">Роли, доступы, смены и журнал действий команды · демо-аккаунты, пароль у всех <b>demo</b></p></div>
     <button class="btn primary" data-action="staff-form">${ic('plus',16)} Добавить сотрудника</button></div>
   <div class="kpis" style="grid-template-columns:repeat(4,minmax(0,1fr))">
-    ${kpiCard('users','#e0e7ff','#4f46e5','Сотрудников',staff.length, `${staff.filter(s=>s.role==='cleaner').length} в клининге · ${staff.filter(s=>s.role==='admin').length} админ.`)}
+    ${kpiCard('users','#e0e7ff','#4f46e5','Сотрудников',staff.length, `${staff.filter(s=>s.role==='cleaner').length} в клининге · ${staff.filter(s=>s.role==='master').length} мастера · ${staff.filter(s=>s.role==='admin').length} админ.`)}
     ${kpiCard('in','#dcfce7','#16a34a','Сейчас на смене',staff.filter(s=>s.online&&s.access).length, 'онлайн в приложении')}
     ${kpiCard('sparkle','#fef3c7','#d97706','Уборки сегодня',`${todayCl.filter(c=>c.status==='done').length} / ${todayCl.length}`, `${todayCl.filter(c=>c.status==='progress'||c.status==='enroute').length} в работе сейчас`)}
     ${kpiCard('alert','#fee2e2','#dc2626','Проблемы от клининга',probs, 'открыты в «Ремонтах»')}
   </div>
   <div class="card">
-    <form class="add-form" id="staffForm" style="border-radius:var(--radius) var(--radius) 0 0"><input id="stName" placeholder="Имя и фамилия" style="min-width:200px" class="grow"><input id="stPhone" placeholder="+7 7__ ___ __ __" style="width:170px"><select id="stRole"><option value="cleaner">Специалист по клинингу</option>${IS_OWNER?'<option value="admin">Администратор</option>':''}</select><button class="btn primary" type="submit">Добавить</button><span class="muted" style="font-size:12px;align-self:center">Логин выдаётся автоматически, пароль — demo</span></form>
+    <form class="add-form" id="staffForm" style="border-radius:var(--radius) var(--radius) 0 0"><input id="stName" placeholder="Имя и фамилия" style="min-width:200px" class="grow"><input id="stPhone" placeholder="+7 7__ ___ __ __" style="width:170px"><select id="stRole"><option value="cleaner">Специалист по клинингу</option><option value="master">Мастер</option>${IS_OWNER?'<option value="admin">Администратор</option>':''}</select><button class="btn primary" type="submit">Добавить</button><span class="muted" style="font-size:12px;align-self:center">Логин выдаётся автоматически, пароль — demo</span></form>
     <div class="table-wrap"><table class="t staff-t"><thead><tr><th>Сотрудник</th><th>Роль</th><th>Статус</th><th>Последний вход</th><th class="num" title="Выполнено из назначенных на сегодня">Сегодня</th><th class="num" title="Завершённых уборок за сентябрь">За месяц</th><th>Рейтинг</th><th>Доступ</th></tr></thead><tbody>
     ${staff.map(s=>{ const my=todayCl.filter(c=>c.cleaner===s.short); const isMe=s.id===USER.id; const lock = s.role==='owner'||isMe||(!IS_OWNER&&s.role==='admin');
-      return `<tr style="${s.access?'':'opacity:.55'}"><td><div class="row"><span class="avatar" style="width:32px;height:32px;font-size:12px;background:${s.role==='cleaner'?'linear-gradient(135deg,#34d399,#059669)':s.role==='admin'?'linear-gradient(135deg,#60a5fa,#2563eb)':'linear-gradient(135deg,#a78bfa,#6d28d9)'}">${initials(s.name)}</span><div><b style="font-weight:600">${esc(s.name)}${isMe?' <span class="muted" style="font-weight:500">(вы)</span>':''}</b><div class="muted" style="font-size:12px">${esc(s.phone)} · логин: ${esc(s.login)}</div></div></div></td>
-        <td><span class="role-chip role-${s.role}">${ROLE_NAME[s.role]}</span></td>
+      return `<tr style="${s.access?'':'opacity:.55'}"><td><div class="row"><span class="avatar" style="width:32px;height:32px;font-size:12px;background:${s.role==='cleaner'?'linear-gradient(135deg,#34d399,#059669)':s.role==='master'?'linear-gradient(135deg,#fb923c,#c2410c)':s.role==='admin'?'linear-gradient(135deg,#60a5fa,#2563eb)':'linear-gradient(135deg,#a78bfa,#6d28d9)'}">${initials(s.name)}</span><div><b style="font-weight:600">${esc(s.name)}${isMe?' <span class="muted" style="font-weight:500">(вы)</span>':''}</b><div class="muted" style="font-size:12px">${esc(s.phone)} · логин: ${esc(s.login)}</div></div></div></td>
+        <td><span class="role-chip role-${s.role}">${ROLE_NAME[s.role]}${s.spec?' · '+esc(s.spec.toLowerCase()):''}</span></td>
         <td>${!s.access?'<span class="st-dot" style="color:#b91c1c"><i style="background:#dc2626"></i>Доступ отключён</span>':s.online?'<span class="st-dot" style="color:#15803d"><i style="background:#22c55e;box-shadow:0 0 0 3px #dcfce7"></i>На смене</span>':'<span class="st-dot" style="color:#64748b"><i style="background:#cbd5e1"></i>Не в сети</span>'}</td>
         <td class="muted">${esc(s.lastLogin)}</td>
-        <td class="num">${s.role==='cleaner'?`<b>${my.filter(c=>c.status==='done').length}</b> из ${my.length}`:'<span class="muted">—</span>'}</td>
-        <td class="num">${s.role==='cleaner'?monthDone(s):'<span class="muted">—</span>'}</td>
+        <td class="num">${s.role==='cleaner'?`<b>${my.filter(c=>c.status==='done').length}</b> из ${my.length}`:s.role==='master'?(()=>{ const [d,n]=repToday(s); return `<b>${d}</b> из ${n} <span class="muted" style="font-size:11px">рем.</span>`; })():'<span class="muted">—</span>'}</td>
+        <td class="num">${isTeamRole(s.role)?monthDone(s):'<span class="muted">—</span>'}</td>
         <td>${s.rating?`<span class="row" style="gap:4px;color:#b45309;font-weight:600">${ic('star',14)} ${String(s.rating.toFixed(1)).replace('.',',')}</span>`:'<span class="muted">—</span>'}</td>
         <td><button class="switch ${s.access?'on':''}" data-action="staff-access" data-sid="${s.id}" ${lock?'disabled title="Нельзя изменить"':'title="Включить/отключить доступ"'} aria-label="Доступ"></button></td></tr>`; }).join('')}
     </tbody></table></div>
   </div>
+  ${mastersCard()}
   <div class="staff-grid">
     <div class="card"><div class="card-h" style="padding-bottom:12px;border-bottom:1px solid var(--border)"><h3>Журнал действий · сегодня</h3><span class="muted" style="font-size:12.5px">${acts.length} ${plural(acts.length,'событие','события','событий')}</span></div>
       <div class="act-list">${acts.map(a=>{ const k=ACT_IC[a.type]||ACT_IC.info; return `<div class="act ${a.seed?'':'fresh'}"><span class="a-ic" style="background:${k[1]};color:${k[2]}">${ic(k[0],15)}</span><div class="grow">${esc(a.text)}${a.seed?'':' <span class="chip violet" style="font-size:10.5px;padding:1px 7px">новое</span>'}</div><span class="a-t">${a.t||''}</span></div>`; }).join('')}</div></div>
@@ -944,6 +1415,8 @@ function renderStaff(m){
       <div style="margin-bottom:10px"><span class="role-chip role-owner">Владелец</span> — все разделы, включая «Финансы» и управление доступами.</div>
       <div style="margin-bottom:10px"><span class="role-chip role-admin">Администратор</span> — всё, кроме «Финансов»; не может менять доступ других администраторов.</div>
       <div style="margin-bottom:10px"><span class="role-chip role-cleaner">Специалист по клинингу</span> — только свои уборки на сегодня и завтра: адрес, код двери, чек-лист, фотоотчёт, сообщение о проблеме. Без цен, финансов и контактов гостей.</div>
+      <div style="margin-bottom:10px"><span class="role-chip role-master">Мастер</span> — сантехник, электрик: только назначенные ему ремонты — описание, адрес и код двери, фото до/после, запчасти и стоимость, отчёт. Тоже в приложении «Сутки·Pro Команда».</div>
+      <div style="margin-bottom:10px"><span class="role-chip" style="background:#ede9fe;color:#7c3aed">По ссылке</span> — исполнитель без аккаунта: видит одну задачу из ссылки, прикладывает фото, стоимость и отправляет отчёт.</div>
       <div class="note" style="margin-top:14px">Отключённый сотрудник не сможет войти. Всё хранится в localStorage этого браузера (демо, без сервера).</div></div></div>
   </div>`;
 }
@@ -960,10 +1433,10 @@ const hash = location.hash.replace('#','');
 if(ALL_VIEWS.includes(hash)) S.view=hash;
 renderNav(); render();
 (()=>{ const seen=+(sessionStorage.getItem('sutkipro.seenReq')||0); const fresh=requests.filter(r=>r.site && r.status==='new' && r.id>seen); if(fresh.length){ setTimeout(()=>toast(`Новых заявок с сайта: ${fresh.length} — раздел «Заявки»`),400); sessionStorage.setItem('sutkipro.seenReq', String(Math.max(...fresh.map(r=>r.id)))); } })();
-window.addEventListener('hashchange', ()=>{ const h=location.hash.replace('#',''); if(ALL_VIEWS.includes(h) && h!==S.view) go(h); });
+window.addEventListener('hashchange', ()=>{ const h=location.hash.replace('#',''); if(ALL_VIEWS.includes(h) && h!==S.view){ closeDrawer(); go(h); } });
 /* изменения из другой вкладки (гость/клининг) подтягиваются без перезагрузки */
-window.addEventListener('storage', e=>{ if(e.key===USER_KEY){ const u=Auth.current(); if(!u||u.id!==USER.id) location.reload(); return; } if(e.key!==STORE_KEY) return; const n=syncFromStore(); renderNav(); if(S.view!=='calendar') render(); else renderGrid(); if(n) toast(`Новая заявка с сайта (${n})`); });
-window.__demo = {S, bookings, requests, cleanings, repairs, transfers, go, USER};
+window.addEventListener('storage', e=>{ if(e.key===USER_KEY){ const u=Auth.current('panel'); if(!u||u.id!==USER.id) location.reload(); return; } if(e.key!==STORE_KEY) return; const n=syncFromStore(); renderNav(); if(S.view!=='calendar') render(); else renderGrid(); if(n) toast(`Новая заявка с сайта (${n})`); });
+window.__demo = {S, bookings, requests, cleanings, repairs, transfers, go, USER, monthStats, workers};
 })();
 </script>
 </body>

@@ -13,7 +13,7 @@ body{background:radial-gradient(900px 420px at 90% -10%,#e0e7ff 0,transparent 60
 .layout{max-width:1040px;margin:12px auto 0;padding:0 20px;display:grid;grid-template-columns:minmax(0,400px) minmax(0,1fr);gap:22px;align-items:start}
 .box{padding:26px}
 .box h1{font-size:23px;margin-bottom:4px}
-.seg{display:grid;grid-template-columns:1fr 1fr;background:#eef1f6;border-radius:11px;padding:3px;margin:18px 0}
+.seg{display:grid;grid-template-columns:1.3fr 1fr 1fr;background:#eef1f6;border-radius:11px;padding:3px;margin:18px 0}
 .seg button{height:36px;border-radius:9px;font-weight:600;color:var(--muted)}
 .seg button.active{background:#fff;color:var(--text);box-shadow:0 1px 3px rgba(15,23,42,.1)}
 .err{background:var(--red-50);color:#991b1b;border-radius:10px;padding:9px 12px;font-size:13px;margin-bottom:12px;display:none}
@@ -25,7 +25,7 @@ body{background:radial-gradient(900px 420px at 90% -10%,#e0e7ff 0,transparent 60
 .acc .cred{font-size:12px;color:var(--muted);font-family:ui-monospace,Menlo,Consolas,monospace}
 .acc.off{opacity:.5}
 .role-chip{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
-.role-owner{background:#ede9fe;color:#6d28d9}.role-admin{background:var(--blue-50);color:#1d4ed8}.role-cleaner{background:#d1fae5;color:#047857}
+.role-owner{background:#ede9fe;color:#6d28d9}.role-admin{background:var(--blue-50);color:#1d4ed8}.role-cleaner{background:#d1fae5;color:#047857}.role-master{background:#ffedd5;color:#c2410c}
 .grp{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2);font-weight:700;padding:14px 20px 4px}
 .cur{display:none;background:#eef2ff;border:1px solid #c7d2fe;border-radius:12px;padding:12px 14px;margin-bottom:14px;font-size:13.5px}
 .cur.show{display:block}
@@ -43,7 +43,7 @@ body{background:radial-gradient(900px 420px at 90% -10%,#e0e7ff 0,transparent 60
     <div class="cur" id="cur"></div>
     <h1>Вход в систему</h1>
     <p class="muted" style="margin:0">Демо без настоящей авторизации — пароль у всех аккаунтов <b>demo</b>.</p>
-    <div class="seg" role="tablist"><button data-tab="staff" id="tabStaff">Владелец / админ</button><button data-tab="cleaner" id="tabCleaner">Клининг</button></div>
+    <div class="seg" role="tablist"><button data-tab="staff" id="tabStaff">Владелец / админ</button><button data-tab="cleaner" id="tabCleaner">Клининг</button><button data-tab="master" id="tabMaster">Мастер</button></div>
     <form id="loginForm" autocomplete="off">
       <div class="err" id="err"></div>
       <div class="field"><label for="login">Логин</label><input class="input" id="login" placeholder="например, azamat"></div>
@@ -61,9 +61,9 @@ body{background:radial-gradient(900px 420px at 90% -10%,#e0e7ff 0,transparent 60
 <script>
 (function(){
   const qs = new URLSearchParams(location.search);
-  let tab = (qs.get('role')==='cleaner'||qs.get('role')==='cleaning') ? 'cleaner' : 'staff';
+  const qr = qs.get('role'); let tab = (qr==='cleaner'||qr==='cleaning') ? 'cleaner' : qr==='master' ? 'master' : 'staff';
   document.getElementById('backBtn').innerHTML = ic('chevL',15)+'<span>Вход для команды</span>';
-  const dest = s => s.role==='cleaner' ? 'cleaning.html' : 'app.html';
+  const dest = s => isTeamRole(s.role) ? 'cleaning.html' : 'app.html';
   function doLogin(id){
     const r = Auth.login(id);
     if(!r.ok){ showErr(r.msg); return; }
@@ -73,20 +73,21 @@ body{background:radial-gradient(900px 420px at 90% -10%,#e0e7ff 0,transparent 60
   function renderAccounts(){
     const staff = allStaff();
     const group = (title, list) => `<div class="grp">${title}</div>` + list.map(s=>`<div class="acc ${s.access?'':'off'}">
-      <span class="avatar" style="background:${s.role==='cleaner'?'linear-gradient(135deg,#34d399,#059669)':s.role==='admin'?'linear-gradient(135deg,#60a5fa,#2563eb)':'linear-gradient(135deg,#a78bfa,#6d28d9)'}">${initials(s.name)}</span>
-      <div class="grow"><div class="row" style="gap:6px;flex-wrap:wrap"><b>${esc(s.name)}</b><span class="role-chip role-${s.role}">${ROLE_NAME[s.role]}</span></div>
+      <span class="avatar" style="background:${s.role==='cleaner'?'linear-gradient(135deg,#34d399,#059669)':s.role==='master'?'linear-gradient(135deg,#fb923c,#c2410c)':s.role==='admin'?'linear-gradient(135deg,#60a5fa,#2563eb)':'linear-gradient(135deg,#a78bfa,#6d28d9)'}">${initials(s.name)}</span>
+      <div class="grow"><div class="row" style="gap:6px;flex-wrap:wrap"><b>${esc(s.name)}</b><span class="role-chip role-${s.role}">${ROLE_NAME[s.role]}${s.spec?' · '+esc(s.spec.toLowerCase()):''}</span></div>
       <div class="cred">логин: ${esc(s.login)} · пароль: ${esc(s.pass)}${s.access?'':' · <span style="color:#b91c1c;font-family:inherit">доступ отключён</span>'}</div></div>
-      <button class="btn sm ${s.role===(tab==='cleaner'?'cleaner':'owner')?'primary':''}" data-login="${s.id}" ${s.access?'':'disabled'}>Войти как ${esc(s.short)}</button></div>`).join('');
-    const own = staff.filter(s=>s.role!=='cleaner'), cl = staff.filter(s=>s.role==='cleaner');
-    document.getElementById('accounts').innerHTML = `<div class="acc-h"><h2>Демо-аккаунты</h2><span class="muted" style="font-size:12.5px">${staff.length} сотрудников</span></div>`
-      + (tab==='cleaner' ? group('Клининг', cl) + group('Владелец и администратор', own) : group('Владелец и администратор', own) + group('Клининг', cl));
+      <button class="btn sm ${s.role===(tab==='staff'?'owner':tab)?'primary':''}" data-login="${s.id}" ${s.access?'':'disabled'}>Войти как ${esc(s.short)}</button></div>`).join('');
+    const own = staff.filter(s=>!isTeamRole(s.role)), cl = staff.filter(s=>s.role==='cleaner'), ms = staff.filter(s=>s.role==='master');
+    const G = {staff:group('Владелец и администратор', own), cleaner:group('Клининг · приложение «Сутки·Pro Команда»', cl), master:group('Мастера · ремонты в приложении «Сутки·Pro Команда»', ms)};
+    const order = tab==='cleaner' ? ['cleaner','master','staff'] : tab==='master' ? ['master','cleaner','staff'] : ['staff','cleaner','master'];
+    document.getElementById('accounts').innerHTML = `<div class="acc-h"><h2>Демо-аккаунты</h2><span class="muted" style="font-size:12.5px">${staff.length} сотрудников</span></div>` + order.map(k=>G[k]).join('');
   }
-  function setTab(t){ tab=t; document.getElementById('tabStaff').classList.toggle('active', t==='staff'); document.getElementById('tabCleaner').classList.toggle('active', t==='cleaner');
-    document.getElementById('login').placeholder = t==='cleaner' ? 'например, gulnara' : 'например, azamat'; document.getElementById('err').classList.remove('show'); renderAccounts(); }
+  function setTab(t){ tab=t; document.getElementById('tabStaff').classList.toggle('active', t==='staff'); document.getElementById('tabCleaner').classList.toggle('active', t==='cleaner'); document.getElementById('tabMaster').classList.toggle('active', t==='master');
+    document.getElementById('login').placeholder = t==='cleaner' ? 'например, gulnara' : t==='master' ? 'например, marat' : 'например, azamat'; document.getElementById('err').classList.remove('show'); renderAccounts(); }
   document.addEventListener('click', e=>{
     const b = e.target.closest('[data-login]'); if(b){ doLogin(b.dataset.login); return; }
     const t = e.target.closest('[data-tab]'); if(t){ setTab(t.dataset.tab); return; }
-    if(e.target.closest('#curLogout')){ Auth.logout(); location.reload(); }
+    if(e.target.closest('#curLogout')){ Auth.logout(curScope); location.reload(); }
   });
   document.getElementById('loginForm').addEventListener('submit', e=>{
     e.preventDefault();
@@ -95,7 +96,8 @@ body{background:radial-gradient(900px 420px at 90% -10%,#e0e7ff 0,transparent 60
     if(!s || p!==s.pass){ showErr('Неверный логин или пароль. Подсказка: пароль — demo'); return; }
     doLogin(s.id);
   });
-  const u = Auth.check();
+  const curScope = (tab==='staff' ? (Auth.check('panel')?'panel':'team') : (Auth.check('team')?'team':'panel'));
+  const u = Auth.check(curScope);
   if(u){ const c=document.getElementById('cur'); c.classList.add('show');
     c.innerHTML = `Вы уже вошли как <b>${esc(u.name)}</b> (${ROLE_NAME[u.role].toLowerCase()}).<div class="row" style="margin-top:8px"><a class="btn sm primary" href="${dest(u)}">Продолжить</a><button class="btn sm" id="curLogout">${ic('logout',14)} Выйти</button></div>`; }
   setTab(tab);

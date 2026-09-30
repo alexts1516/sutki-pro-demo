@@ -1,6 +1,9 @@
 /* Сутки·Pro — общие утилиты, иконки и генерация демо-данных (детерминированно).
    Подключается на всех страницах, чтобы квартиры/брони/уборки совпадали. */
 'use strict';
+/* перевод строк сайта для гостей (assets/i18n.js); на остальных страницах — без перевода */
+window.tx = window.tx || (s => s);
+const IS_EN = !!(window.I18N && window.I18N.lang==='en');
 /* =================== Утилиты =================== */
 const DAY = 86400000;
 const di = (y,m,d) => Math.round(Date.UTC(y,m-1,d)/DAY);
@@ -16,10 +19,11 @@ const dd = i => dt(i).getUTCDate();
 const mm = i => dt(i).getUTCMonth();
 const wd = i => dt(i).getUTCDay();
 const fD = i => `${dd(i)} ${MON_S[mm(i)]}`;
-const relDay = i => i===TODAY?'Сегодня':i===TODAY+1?'Завтра':i===TODAY-1?'Вчера':fD(i);
+const relDay = i => i===TODAY?tx('Сегодня'):i===TODAY+1?tx('Завтра'):i===TODAY-1?tx('Вчера'):fD(i);
 const money = n => String(Math.round(n)).replace(/\B(?=(\d{3})+(?!\d))/g,'\u00a0') + '\u00a0₸';
 const moneyShort = n => n>=1e6 ? (n/1e6).toFixed(1).replace('.',',')+'\u00a0млн\u00a0₸' : n>=1e4 ? Math.round(n/1e3)+'\u00a0тыс\u00a0₸' : money(n);
-const plural = (n,a,b,c) => { const m10=n%10,m100=n%100; return m10===1&&m100!==11?a:(m10>=2&&m10<=4&&(m100<10||m100>=20))?b:c; };
+const plural = (n,a,b,c) => { if(IS_EN) return n===1 ? a : (c||b); const m10=n%10,m100=n%100; return m10===1&&m100!==11?a:(m10>=2&&m10<=4&&(m100<10||m100>=20))?b:c; };
+if(IS_EN){ MON_S.splice(0,12,'Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'); MON_G.splice(0,12,'January','February','March','April','May','June','July','August','September','October','November','December'); MON_N.splice(0,12,'January','February','March','April','May','June','July','August','September','October','November','December'); WD.splice(0,7,'Sun','Mon','Tue','Wed','Thu','Fri','Sat'); WD_L.splice(0,7,'Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'); }
 const esc = s => String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const initials = n => n.split(' ').map(x=>x[0]).slice(0,2).join('').toUpperCase();
 
@@ -87,9 +91,15 @@ const I = {
   baby:'<path d="M9 12h.01"/><path d="M15 12h.01"/><path d="M10 16c.5.3 1.2.5 2 .5s1.5-.2 2-.5"/><path d="M19 6.3a9 9 0 0 1 1.8 3.9 2 2 0 0 1 0 3.6 9 9 0 0 1-17.6 0 2 2 0 0 1 0-3.6A9 9 0 0 1 12 3c2 0 3.5 1.1 3.5 2.5s-.9 2.5-2 2.5c-.8 0-1.5-.4-1.5-1"/>',
   train:'<path d="M8 3.1V7a4 4 0 0 0 8 0V3.1"/><path d="m9 15-1-1"/><path d="m15 15 1-1"/><path d="M9 19c-2.8 0-5-2.2-5-5v-4a8 8 0 0 1 16 0v4c0 2.8-2.2 5-5 5Z"/><path d="m8 19-2 3"/><path d="m16 19 2 3"/>',
   swap:'<path d="M8 3 4 7l4 4"/><path d="M4 7h16"/><path d="m16 21 4-4-4-4"/><path d="M20 17H4"/>',
+  drop:'<path d="M12 3s6 6.6 6 11a6 6 0 0 1-12 0c0-4.4 6-11 6-11z"/>',
+  bolt:'<path d="M13 2 4 14h7l-1 8 9-12h-7z"/>',
+  washer:'<rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="13" r="4.5"/><path d="M7.5 6.5h2"/>',
+  sofa:'<path d="M4 11V8a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v3"/><path d="M2 13a2 2 0 0 1 4 0v2h12v-2a2 2 0 0 1 4 0v5H2z"/><path d="M5 18v2M19 18v2"/>',
   sliders:'<path d="M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6"/>',
   sign:'<rect x="3" y="5" width="18" height="11" rx="2"/><path d="M7 9h10M7 12h6M12 16v5"/>',
   check2:'<path d="M20 6 9 17l-5-5"/>',
+  link:'<path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/>',
+  copy:'<rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/>',
 };
 
 const ic = (n,s=18,sw=2) => `<svg class="ic" width="${s}" height="${s}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round">${I[n]}</svg>`;
@@ -123,34 +133,70 @@ const CLEANERS = ['Айгерим','Динара','Гульнара','Светл
 const GUESTS = ['Айдар Сериков','Мария Иванова','Ержан Касымов','Анна Ли','Тимур Абенов','Дана Нурланова','Ли Вэй','Алия Жумабаева','Сергей Петров','Олжас Бекенов','Эмма Мюллер','Асель Токаева','Дмитрий Ким','Нурлан Ахметов','Камила Садыкова','Арман Джаксыбеков','Екатерина Смирнова','Бахыт Оспанов','Жанна Ермекова','Руслан Галиев','Мадина Исаева','Кирилл Орлов','Айжан Мухтарова','Виктор Пак','Салтанат Ибраева','Джон Смит','Гульмира Абдрахманова','Павел Соколов','Динмухамед Омаров','Ольга Каримова','Азамат Султанов','Юлия Ковалёва'];
 const NOTES = ['Поздний заезд около 23:00, оставить ключи в сейфе.','Гости с ребёнком — нужна детская кроватка.','Просили ранний заезд, если квартира будет готова.','Командировка, нужны закрывающие документы.','Постоянный гость, скидка 5%.','Аллергия на перьевые подушки — положить синтетику.','','',''];
 
+/* большинство квартир владельца — в ЖК Хайвил в центре, рядом с посольством США (блоки A–D) */
+const HIGHVILL = i => ['ЖК Хайвил','Есиль',`пр. Кабанбай батыра, 60/${(i%4)+1}`];
 const apartments = APT_NUMS.map((num,i) => {
-  const c = COMPLEXES[i%COMPLEXES.length];
+  const c = (i%2===0 || (i%6===1 && i!==7)) ? HIGHVILL(i) : COMPLEXES[i%COMPLEXES.length];
   const r = i===0 ? ROOMS[2] : wpick([[ROOMS[0],3],[ROOMS[1],5],[ROOMS[2],4],[ROOMS[3],1.5]]);
   const price = ri(r[2][0]*2,r[2][1]*2)*500;
-  return {id:i+1,num,name:`${c[0]}, кв. ${num}`,complex:c[0],district:c[1],address:`${c[2]}, кв. ${num}`,rooms:r[0],maxGuests:r[1],price};
+  return {id:i+1,num,name:`${c[0]}, кв. ${num}`,complex:c[0],district:c[1],address:`${c[2]}, кв. ${num}`,rooms:r[0],maxGuests:r[1],price, embassy:c[0]==='ЖК Хайвил'};
 });
 const aptById = id => apartments.find(a=>a.id===id);
 
 const blocks = [], repairs = [];
 let repId = 1;
 [[3,TODAY+2,3,'Замена смесителя и сифона','Сантехник Марат',38000],
- [9,TODAY+7,2,'Покраска стен в спальне','Мастер Ерлан',65000],
+ [9,TODAY+7,2,'Покраска стен в спальне','Бригада «ПокрасСтрой»',65000],
  [16,TODAY-1,3,'Ремонт стиральной машины','Сервис «ТехноМастер»',24000],
- [21,TODAY+13,2,'Замена матраса и штор','Мастер Ерлан',120000]].forEach(([idx,from,len,title,who,cost])=>{
+ [21,TODAY+13,2,'Замена матраса и штор','Администратор',120000]].forEach(([idx,from,len,title,who,cost])=>{
   const a = apartments[idx];
   const r = {id:repId++, aptId:a.id, title, assignee:who, priority:'medium', status: from<=TODAY?'progress':'open', date:from, cost, source:'Вручную', blockDays:len};
   repairs.push(r);
   blocks.push({id:'blk'+r.id, aptId:a.id, from, to:from+len, title, repairId:r.id});
 });
-[['Не работает Wi‑Fi роутер','Мастер Ерлан','high','open',TODAY,0],
- ['Заменить батарейки в электронном замке','Мастер Ерлан','high','progress',TODAY,3500],
- ['Скрипит дверь шкафа-купе','Мастер Ерлан','low','open',TODAY+2,0],
+[['Не работает Wi‑Fi роутер','Электрик Ерлан','high','open',TODAY,0],
+ ['Заменить батарейки в электронном замке','Электрик Ерлан','high','progress',TODAY,3500],
+ ['Скрипит дверь шкафа-купе','Не назначен','low','open',TODAY+2,0],
  ['Засор в раковине на кухне','Сантехник Марат','medium','done',TODAY-2,7000],
  ['Проверить кондиционер перед сезоном','Сервис «Климат»','low','done',TODAY-6,12000],
  ['Купить сушилку для белья и 2 комплекта полотенец','Администратор','medium','open',TODAY+1,18000],
- ['Не закрывается окно на балконе','Мастер Ерлан','medium','done',TODAY-9,9000]].forEach(([title,who,prio,st,date,cost])=>{
+ ['Не закрывается окно на балконе','Сервис «ОкнаПро»','medium','done',TODAY-9,9000]].forEach(([title,who,prio,st,date,cost])=>{
   repairs.push({id:repId++, aptId:pick(apartments).id, title, assignee:who, priority:prio, status:st, date, cost, source:'Вручную'});
 });
+/* дополнительные задачи для мастеров — без вызовов rnd, чтобы не сдвигать остальные демо-данные */
+[[5,'Течёт бачок унитаза','Сантехник Марат','high','open',TODAY],
+ [12,'Искрит розетка на кухне','Электрик Ерлан','high','open',TODAY+1]].forEach(([idx,title,who,prio,st,date])=>{
+  repairs.push({id:repId++, aptId:apartments[idx].id, title, assignee:who, priority:prio, status:st, date, cost:0, source:'Вручную'});
+});
+/* мастера (демо-аккаунты role:'master') и подробное описание проблемы для приложения мастера */
+const REP_DESC = {
+  'Замена смесителя и сифона':'Смеситель в ванной подтекает, сифон под раковиной треснул. Квартира закрыта на ремонт — можно работать весь день. Смеситель купить на месте, чек сфотографировать.',
+  'Засор в раковине на кухне':'Вода в раковине на кухне уходит очень медленно. Прочистить сифон и трубу.',
+  'Течёт бачок унитаза':'Гости пишут: бачок постоянно шумит и подтекает. Вероятно, износилась арматура — проверить и заменить. Заезд следующих гостей вечером.',
+  'Не работает Wi‑Fi роутер':'Роутер мигает красным, интернета нет. Проверить блок питания и розетку, перезагрузить; если не поможет — заменить блок питания.',
+  'Заменить батарейки в электронном замке':'Замок пищит при открытии — садятся батарейки. Нужны 4 × AA. Проверить, что код гостя работает после замены.',
+  'Искрит розетка на кухне':'Специалист по клинингу заметила следы гари у розетки над столешницей. Обесточить, заменить розетку, проверить проводку.',
+  'Скрипит дверь шкафа-купе':'Дверь шкафа в спальне скрипит и заедает. Смазать и отрегулировать ролики.'
+};
+repairs.forEach(r=>{ r.seed = true; r.desc = REP_DESC[r.title] || ''; r.masterId = /Марат/.test(r.assignee) ? 'marat' : /Ерлан/.test(r.assignee) ? 'erlan' : null; });
+/* тип работ, подрядчик, доступ в квартиру, сметы и оплата — для демо «Ремонтов» */
+const REP_EXTRA = {
+  'Замена смесителя и сифона':{type:'plumb', access:{mode:'code'}, window:'10:00–18:00', quote:{work:12000, parts:26000, list:'Смеситель Grohe, сифон, гибкая подводка', by:'Марат', at:'Вчера, 18:20', status:'approved', decidedAt:'Вчера, 19:05'}},
+  'Покраска стен в спальне':{type:'other', access:{mode:'keys', who:'admin', whoName:'Алина'}, quote:{work:45000, parts:20000, list:'Краска, грунт, малярные материалы', by:'ПокрасСтрой', at:'28 сен, 12:10', status:'approved', decidedAt:'28 сен, 15:30'}},
+  'Ремонт стиральной машины':{type:'appl', access:{mode:'presence', who:'admin', whoName:'Алина', time:'11:00'}, complex:true, quote:{work:9000, parts:15000, list:'Сливной насос', by:'ТехноМастер', at:'29 сен, 16:40', status:'approved', decidedAt:'29 сен, 17:00'}},
+  'Течёт бачок унитаза':{type:'plumb', access:{mode:'code'}, window:'12:00–15:00', quote:{work:6000, parts:3500, list:'Арматура для бачка, 2 прокладки', by:'Марат', at:'Сегодня, 09:40', status:'pending'}},
+  'Искрит розетка на кухне':{type:'elec', access:{mode:'presence', who:'admin', whoName:'Алина', time:'10:00'}, complex:true, window:'09:00–12:00'},
+  'Не работает Wi‑Fi роутер':{type:'elec', access:{mode:'code'}},
+  'Заменить батарейки в электронном замке':{type:'elec', access:{mode:'keys', who:'admin', whoName:'Алина'}},
+  'Скрипит дверь шкафа-купе':{type:'furn', access:{mode:'code'}},
+  'Засор в раковине на кухне':{type:'plumb', access:{mode:'code'}, paid:true},
+  'Проверить кондиционер перед сезоном':{type:'appl', access:{mode:'code'}, paid:true},
+  'Не закрывается окно на балконе':{type:'other', access:{mode:'code'}, paid:false},
+  'Замена матраса и штор':{type:'furn', access:{mode:'code'}},
+  'Купить сушилку для белья и 2 комплекта полотенец':{type:'other', access:{mode:'code'}}
+};
+const REP_CONTR = {'Сервис «ТехноМастер»':'k1', 'Сервис «Климат»':'k2', 'Бригада «ПокрасСтрой»':'k3', 'Сервис «ОкнаПро»':'k4'};
+repairs.forEach(r=>{ const x = REP_EXTRA[r.title]; if(x) Object.assign(r, JSON.parse(JSON.stringify(x))); r.type = r.type || 'other'; r.access = r.access || {mode:'code'}; r.contractorId = REP_CONTR[r.assignee] || null; if(r.status==='done' && r.paid===undefined) r.paid = true; });
 
 let bookingSeq = 1040;
 const bookings = [];
@@ -262,4 +308,4 @@ const DISTRICTS = ['Есиль','Алматинский','Сарыарка','Б�
 /* правила для животных (детерминированно от id, без rnd — чтобы не менять остальные данные):
    примерно треть квартир принимает животных, часть — с доплатой и ограничением по весу */
 const PET_FEE = 5000;
-const aptPets = a => a.id%3!==1 ? {allowed:false} : {allowed:true, fee: a.id%2===0 ? PET_FEE : 0, weight: (a.id%4===1||a.rooms==='Студия') ? 'до 10 кг' : 'до 25 кг', count: (a.rooms==='Студия'||a.rooms==='1-комн.') ? 1 : 2};
+const aptPets = a => a.id%3!==1 ? {allowed:false} : {allowed:true, fee: a.id%2===0 ? PET_FEE : 0, weight: (a.id%4===1||a.rooms==='Студия') ? tx('до 10 кг') : tx('до 25 кг'), count: (a.rooms==='Студия'||a.rooms==='1-комн.') ? 1 : 2};
