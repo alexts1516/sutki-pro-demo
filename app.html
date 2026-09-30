@@ -121,7 +121,47 @@ table.t .num{text-align:right;font-variant-numeric:tabular-nums}
 .dp-apt span{display:block;font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .dp-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:12.5px;margin-top:5px;color:var(--text)}
 .dp-meta svg{color:var(--muted)}
-.cal-toolbar{display:flex;align-items:center;gap:12px;padding:14px 16px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.page-head.tight{margin-bottom:10px;align-items:center}
+.page-head.tight h1{font-size:21px;line-height:1.2}
+.page-head.tight .sub{margin-top:1px;font-size:12.5px}
+.page-head.tight .btn{height:34px}
+.kpis.compact{display:flex;gap:8px;margin-bottom:12px}
+.kpis.compact .kpi{flex:1 1 0;padding:7px 26px 7px 10px;gap:9px;align-items:center;border-radius:12px}
+.kpis.compact .kpi:not(.kpi-link){padding-right:10px}
+.kpis.compact .k-ic{width:30px;height:30px;border-radius:9px}
+.kpis.compact .k-ic svg{width:16px;height:16px}
+.kpis.compact .grow{display:grid;grid-template-columns:auto minmax(0,1fr);grid-template-areas:"val lbl" "sub sub";column-gap:6px;align-items:baseline;min-width:0}
+.kpis.compact .k-val{grid-area:val;font-size:18px;line-height:1.2;margin:0}
+.kpis.compact .k-lbl{grid-area:lbl;font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpis.compact .k-sub{grid-area:sub;font-size:11.5px;line-height:1.3;margin:0;padding-right:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpis.compact .k-chev{top:50%;bottom:auto;right:7px;transform:translateY(-50%)}
+.kpis.compact .kpi-link:hover .k-chev{transform:translate(2px,-50%)}
+.tg-today{display:inline-flex;align-items:center;gap:8px;height:34px;padding:0 12px 0 7px;border:1px solid var(--border);border-radius:999px;background:#fff;font:inherit;font-weight:600;font-size:13px;color:var(--text2);cursor:pointer;white-space:nowrap;transition:all .15s}
+.tg-today:hover{border-color:#c7d2fe}
+.tg-today .sw{width:30px;height:18px;border-radius:999px;background:#cbd5e1;position:relative;transition:background .15s;flex:none}
+.tg-today .sw::after{content:'';position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .15s}
+.tg-today.on{border-color:#c7d2fe;background:#eef2ff;color:var(--primary)}
+.tg-today.on .sw{background:var(--primary)}
+.tg-today.on .sw::after{transform:translateX(12px)}
+@media (max-width:1500px){.fchip .fl{display:none}.fchip{padding:4px}}
+@media (max-width:1360px){.kpis.compact .k-ic{display:none}.kpis.compact .kpi{padding-left:12px}}
+.tv{padding:14px 16px 16px;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,360px),1fr));gap:14px;align-items:start}
+.tv-sec{min-width:0;border:1px solid var(--border);border-radius:14px;background:#fbfcfe;padding:12px}
+.tv-h{display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;list-style:none}
+.tv-h::-webkit-details-marker{display:none}
+.tv-ic{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;flex:none}
+.tv-h b{font-size:14.5px}
+.tv-h .n{background:#e2e8f0;color:var(--text2);border-radius:999px;font-size:12px;font-weight:700;padding:1px 8px}
+.tv-h .tv-tot{font-size:12.5px;color:var(--muted);margin-left:auto}
+.tv-sec .dp-row:last-child{margin-bottom:0}
+.tv-empty{padding:14px 8px;text-align:center;color:var(--muted);font-size:13px}
+.tv-stay{grid-column:1/-1}
+.tv-stay summary{cursor:pointer;margin-bottom:0}
+.tv-stay[open] summary{margin-bottom:10px}
+.tv-stay .tv-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:0 10px}
+.tv-stay .chev{transition:transform .15s;color:var(--muted)}
+.tv-stay[open] .chev{transform:rotate(90deg)}
+.cal-toolbar{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap}
 .nav-group{display:flex;align-items:center;gap:6px}
 .nav-group .btn{height:34px}
 .nav-group .sq{width:34px;padding:0}
@@ -347,6 +387,24 @@ table.staff-t th:first-child,table.staff-t td:first-child{padding-left:18px}
   .req{flex-wrap:wrap}
   .req-actions{flex-direction:row;width:100%;justify-content:flex-end;flex-wrap:wrap}
   .cal-scroll{max-height:70vh}
+  .kpis.compact{overflow-x:auto;margin:0 -14px 12px;padding:2px 14px 4px;scroll-snap-type:x proximity;scrollbar-width:none}
+  .kpis.compact::-webkit-scrollbar{display:none}
+  .kpis.compact .kpi{flex:0 0 auto;width:178px;scroll-snap-align:start}
+  .tv{padding:12px}
+}
+@media (max-width:400px){.top-right .btn .u-txt{display:none}.top-right .btn.sm{padding:0 9px}}
+@media (max-width:640px){
+  .page-head.tight{flex-wrap:nowrap;align-items:flex-start;gap:10px}
+  .page-head.tight>div:first-child{min-width:0}
+  .page-head.tight .sub{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .page-head.tight .hide-m{display:none}
+  .cal-toolbar .tg-today{order:0}
+  .cal-toolbar .filters{order:1;margin-left:auto}
+  .cal-toolbar .nav-group{order:2}
+  .cal-toolbar .tabs{order:3}
+  .tv-range{white-space:normal;margin-left:0;font-size:13.5px}
+  .tv{padding:10px;gap:10px}
+  .tv-sec{padding:9px}
 }
 @media (max-width:520px){.kpi{padding:12px}.kpi .k-val{font-size:18px}.kpi .k-ic{display:none}.page-head h1{font-size:20px}.demo-badge span{display:none}.kv{grid-template-columns:100px 1fr}}
 
@@ -487,7 +545,8 @@ const S = {
   filters: new Set(CH_KEYS),
   reqTab:'all', cleanTab:'today', repTab:'all',
   finMonth: 9, finSort:{key:'revenue',dir:-1},
-  voiceIdx:0
+  voiceIdx:0,
+  calToday: (()=>{ try{ return localStorage.getItem('sp_cal_today')==='1'; }catch(e){ return false; } })()   // «Только сегодня»
 };
 const VIEWS = [
   ['calendar','Календарь','calendar'],['requests','Заявки','inbox'],['cleaning','Уборки','sparkle'],
@@ -552,9 +611,9 @@ function renderCalendar(m){
   const diff = prev.revenue? Math.round((st.revenue/prev.revenue-1)*100):0;
   const rangeEnd = S.calStart+S.calDays-1;
   m.innerHTML = `
-  <div class="page-head"><div><h1>Календарь</h1><p class="sub">Шахматка по всем квартирам · ${apartments.length} ${plural(apartments.length,'объект','объекта','объектов')} · ${bookings.filter(b=>b.co>TODAY).length} активных и будущих броней</p></div>
-    <div class="row"><button class="btn" data-action="nav" data-view="requests">${ic('inbox',16)} Новые заявки: ${requests.filter(r=>r.status==='new').length}</button></div></div>
-  <div class="kpis">
+  <div class="page-head tight"><div><h1>Календарь</h1><p class="sub">Шахматка по всем квартирам · ${apartments.length} ${plural(apartments.length,'объект','объекта','объектов')} · ${bookings.filter(b=>b.co>TODAY).length} активных и будущих броней</p></div>
+    <div class="row"><button class="btn" data-action="nav" data-view="requests" title="Новые заявки">${ic('inbox',16)} <span class="hide-m">Новые заявки: </span>${requests.filter(r=>r.status==='new').length}</button></div></div>
+  <div class="kpis compact">
     ${kpiCard('in','#e0e7ff','#4f46e5','Заезды сегодня',arr.length, `${arr.reduce((s,b)=>s+b.guests,0)} гостей · ${trToday} трансф.`, {d:TODAY,tab:'in',title:'Все заезды сегодня'})}
     ${kpiCard('out','#fce7f3','#db2777','Выезды сегодня',dep.length, (()=>{const u=dep.filter(b=>b.payment!=='paid').length; return u?`до 12:00 · ${u} не оплач.`:'до 12:00 · всё оплачено';})(), {d:TODAY,tab:'out',title:'Все выезды сегодня'})}
     ${kpiCard('sparkle','#fef3c7','#d97706','Уборки сегодня',cl.length, `${cl.filter(c=>c.status==='done').length} готово · ${cl.filter(c=>c.status==='progress').length} в работе`, {d:TODAY,tab:'clean',title:'Все уборки сегодня'})}
@@ -564,6 +623,8 @@ function renderCalendar(m){
   </div>
   <div class="card">
     <div class="cal-toolbar">
+      <button class="tg-today ${S.calToday?'on':''}" data-action="cal-today-only" role="switch" aria-checked="${S.calToday}" title="Показать только квартиры, где сегодня что-то происходит"><span class="sw"></span>Только сегодня</button>
+      ${S.calToday ? `<span class="range tv-range">Сегодня, ${dd(TODAY)} ${MON_G[mm(TODAY)]} · ${todayActiveCount()} ${plural(todayActiveCount(),'квартира','квартиры','квартир')} с событиями</span>` : `
       <div class="nav-group">
         <button class="btn sq" data-action="cal-prev" title="Неделя назад">${ic('chevL',16)}</button>
         <button class="btn" data-action="cal-today">Сегодня</button>
@@ -571,18 +632,36 @@ function renderCalendar(m){
         <span class="range">${fD(S.calStart)} – ${fD(rangeEnd)} ${dt(rangeEnd).getUTCFullYear()}</span>
       </div>
       <div class="tabs"><button class="${S.calDays===14?'active':''}" data-action="cal-mode" data-days="14">2 недели</button><button class="${S.calDays===35?'active':''}" data-action="cal-mode" data-days="35">5 недель</button><button data-action="cal-month" title="Весь октябрь">Октябрь</button></div>
-      <div class="filters">${CH_KEYS.map(k=>`<button class="fchip ${S.filters.has(k)?'':'off'}" data-action="filter" data-ch="${k}" title="Показать/скрыть ${CH[k].name}">${chb(k,18)}${CH[k].name}</button>`).join('')}</div>
+      <div class="filters">${CH_KEYS.map(k=>`<button class="fchip ${S.filters.has(k)?'':'off'}" data-action="filter" data-ch="${k}" title="Показать/скрыть ${CH[k].name}">${chb(k,18)}<span class="fl">${CH[k].name}</span></button>`).join('')}</div>`}
     </div>
-    <div class="cal-scroll" id="calScroll"></div>
+    ${S.calToday ? renderTodayView() : `<div class="cal-scroll" id="calScroll"></div>
     <div class="legend">
       ${CH_KEYS.map(k=>`<span><i class="lg-sw" style="background:${CH[k].color}"></i>${CH[k].name}</span>`).join('')}
       <span><i class="lg-sw" style="background:repeating-linear-gradient(135deg,#cbd5e1 0 3px,#e2e8f0 3px 6px);border:1px solid #b8c2cf"></i>Ремонт / блокировка</span>
       <span><span class="clean-mk" style="position:static;margin:0;width:16px;height:16px">${ic('sparkle',9,2.5)}</span>Уборка в день выезда</span>
       <span><span style="width:8px;height:8px;border-radius:50%;box-shadow:0 0 0 2px #dc2626;background:#fff;display:inline-block;margin:0 2px"></span>Не оплачено</span>
       <span style="margin-left:auto">Нажмите на бронь — детали, на дату — заезды, выезды и уборки дня</span>
-    </div>
+    </div>`}
   </div>`;
   renderGrid();
+}
+/* «Только сегодня»: квартиры с событиями сегодня, без горизонтальной прокрутки */
+function todayActiveCount(){ const D=dayData(TODAY); return new Set([...D.out,...D.inn,...D.clean,...dayRepairs(TODAY)].map(x=>x.aptId)).size; }
+function renderTodayView(){
+  const D = dayData(TODAY), R = dayRepairs(TODAY);
+  const stay = bookings.filter(b=>b.ci<TODAY && TODAY<b.co).sort((x,y)=>x.co-y.co||x.aptId-y.aptId);
+  const g = l => l.reduce((s,b)=>s+(+b.guests||0),0);
+  const sec = (key, icon, bg, fg, title, list, row, tot, empty) => `<section class="tv-sec" data-sec="${key}"><div class="tv-h"><span class="tv-ic" style="background:${bg};color:${fg}">${ic(icon,15)}</span><b>${title}</b><span class="n">${list.length}</span><span class="tv-tot">${tot}</span></div>${list.length?list.map(row).join(''):`<div class="tv-empty">${empty}</div>`}</section>`;
+  const unpaid = D.out.filter(b=>b.payment!=='paid').length;
+  const trN = D.inn.filter(b=>b.transfer||transfers.some(t=>t.bookingId===b.id&&t.dir==='in')).length;
+  const done = D.clean.filter(c=>c.status==='done').length, prog = D.clean.filter(c=>c.status==='progress'||c.status==='enroute').length;
+  return `<div class="tv" id="todayView">
+    ${sec('out','out','#fce7f3','#db2777','Выезды',D.out,b=>dayRowOut(b,D),`${gN(g(D.out))}${unpaid?` · <span style="color:var(--red,#dc2626)">${unpaid} не оплач.</span>`:''}`,'Сегодня выездов нет')}
+    ${sec('in','in','#e0e7ff','#4f46e5','Заезды',D.inn,b=>dayRowIn(b),`${gN(g(D.inn))} · ${trN} ${plural(trN,'трансфер','трансфера','трансферов')}`,'Сегодня заездов нет')}
+    ${sec('clean','sparkle','#fef3c7','#d97706','Уборки',D.clean,c=>dayRowClean(c),`${done} готово · ${prog} в работе`,'Сегодня уборок нет')}
+    ${sec('repair','wrench','#e2e8f0','#475569','Ремонты',R,dayRowRepair,`${R.filter(r=>r.status!=='done').length} в работе и открыто`,'Сегодня ремонтов нет')}
+    <details class="tv-sec tv-stay" data-sec="stay"><summary class="tv-h"><span class="tv-ic" style="background:#dcfce7;color:#16a34a">${ic('users',15)}</span><b>Проживают</b><span class="n">${stay.length}</span><span class="tv-tot">${gN(g(stay))} · без событий сегодня</span><span class="chev" style="display:flex">${ic('chevR',16)}</span></summary><div class="tv-grid">${stay.map(dayRowStay).join('')}</div></details>
+  </div>`;
 }
 function renderGrid(){
   const sc = document.getElementById('calScroll'); if(!sc) return;
@@ -632,6 +711,33 @@ function dayData(d){
 }
 const clStatus = c => c.plan ? '<span class="chip grey"><i></i>План</span>' : `<span class="chip" style="background:${CL_ST[c.status][0]}1a;color:${CL_ST[c.status][0]}"><i style="background:${CL_ST[c.status][0]}"></i>${CL_ST[c.status][1]}${c.status==='done'&&c.doneAt?' · '+c.doneAt:''}</span>`;
 const clAv = n => `<span class="avatar" style="width:22px;height:22px;font-size:10px;background:linear-gradient(135deg,#34d399,#059669)">${esc((n||'?')[0])}</span>`;
+const aptCell = a => `<div class="dp-apt"><b>${esc(a.name)}</b><span>${esc(a.address)}</span></div>`;
+const gN = n => `${n} ${plural(n,'гость','гостя','гостей')}`;
+function dayRowOut(b, D, back){ const a=aptById(b.aptId); const c=D.clean.find(x=>x.bookingId===b.id);
+  return `<button class="dp-row" data-action="open-booking" data-id="${b.id}"${back?' data-back="1"':''}><div class="dp-time">${esc(b.checkoutTime||'12:00')}<small>выезд</small></div>
+    <div class="grow" style="min-width:0">${aptCell(a)}<div class="dp-meta"><span>${ic('users',13)} ${esc(b.guest)} · ${gN(b.guests)}</span>${b.payment!=='paid'?payChip(b.payment):''}</div>
+    <div class="dp-meta">${ic('sparkle',13)} Уборка: ${clAv(c?c.cleaner:b.cleaner)} ${esc(c?c.cleaner:b.cleaner)} ${c?clStatus(c):''}</div></div>${ic('chevR',16)}</button>`; }
+function dayRowIn(b, back){ const a=aptById(b.aptId); const tr=transfers.find(t=>t.bookingId===b.id&&t.dir==='in');
+  const trTxt = tr ? `${ic(tr.place==='station'?'train':'plane',13)} Трансфер ${esc(tr.time)} · ${esc(tr.flight||'')}${tr.driver?' · '+esc(tr.driver):' · водитель не назначен'}` : b.transfer ? `${ic('car',13)} Трансфер заказан` : `<span class="muted">без трансфера</span>`;
+  return `<button class="dp-row" data-action="open-booking" data-id="${b.id}"${back?' data-back="1"':''}><div class="dp-time">${esc(b.checkinTime||'14:00')}<small>заезд</small></div>
+    <div class="grow" style="min-width:0">${aptCell(a)}<div class="dp-meta"><span>${ic('users',13)} ${esc(b.guest)} · ${gN(b.guests)}</span>${chb(b.source,16)}${payChip(b.payment)}</div>
+    <div class="dp-meta">${trTxt}</div></div>${ic('chevR',16)}</button>`; }
+function dayRowClean(c, back){ const a=aptById(c.aptId); const b=bById(c.bookingId);
+  return `<button class="dp-row" ${b?`data-action="open-booking" data-id="${b.id}"${back?' data-back="1"':''}`:''}><div class="dp-time">${esc(c.from||'12:00')}<small>до ${esc(c.to||'18:00')}</small></div>
+    <div class="grow" style="min-width:0">${aptCell(a)}<div class="dp-meta">${clAv(c.cleaner)} <b style="font-weight:600">${esc(c.cleaner)}</b> ${clStatus(c)}</div>
+    <div class="dp-meta">${c.nextGuest?`${ic('in',13)} Следующий заезд: ${esc(c.nextGuest)}, ${esc(c.nextCheckin||'14:00')}`:'<span class="muted">в этот день заезда нет</span>'}</div></div>${b?ic('chevR',16):''}</button>`; }
+function dayRepairs(d){
+  return repairs.filter(r=>r.date===d || blocks.some(b=>b.repairId===r.id && b.from<=d && d<b.to) || (r.status==='progress' && r.date<d && d===TODAY))
+    .sort((x,y)=>({high:0,medium:1,low:2}[x.priority]-{high:0,medium:1,low:2}[y.priority]) || x.aptId-y.aptId);
+}
+function dayRowRepair(r){ const a=aptById(r.aptId); const p=PRIO[r.priority]||PRIO.medium; const blk=blocks.find(b=>b.repairId===r.id);
+  return `<button class="dp-row" data-action="open-repair" data-id="${r.id}"><div class="dp-time" style="color:${p[0]}">${ic('wrench',16)}<small>${p[1].toLowerCase()}</small></div>
+    <div class="grow" style="min-width:0">${aptCell(a)}<div class="dp-meta"><b style="font-weight:600">${esc(r.title)}</b></div>
+    <div class="dp-meta">${ic('users',13)} ${esc(r.assignee||'Не назначен')} ${repStatusChip(r.status)}${blk?` <span class="chip grey"><i></i>блок до ${fD(blk.to)}</span>`:''}</div></div>${ic('chevR',16)}</button>`; }
+function dayRowStay(b){ const a=aptById(b.aptId);
+  return `<button class="dp-row" data-action="open-booking" data-id="${b.id}"><div class="dp-time">${b.co-TODAY}<small>${plural(b.co-TODAY,'ночь','ночи','ночей')} ост.</small></div>
+    <div class="grow" style="min-width:0">${aptCell(a)}<div class="dp-meta"><span>${ic('users',13)} ${esc(b.guest)} · ${gN(b.guests)}</span>${chb(b.source,16)}${b.payment!=='paid'?payChip(b.payment):''}</div>
+    <div class="dp-meta muted">выезд ${fD(b.co)}, ${esc(b.checkoutTime||'12:00')}</div></div>${ic('chevR',16)}</button>`; }
 function openDay(d, tab){
   S.day = {d, tab: tab||S.day?.tab||'out'}; renderDay();
 }
@@ -640,31 +746,20 @@ function renderDay(){
   const g = l => l.reduce((s,b)=>s+(+b.guests||0),0);
   const cnt = {out:D.out.length, in:D.inn.length, clean:D.clean.length};
   const rel = d===TODAY?'Сегодня':d===TODAY+1?'Завтра':d===TODAY-1?'Вчера':WD_L[wd(d)][0].toUpperCase()+WD_L[wd(d)].slice(1);
-  const aptCell = a => `<div class="dp-apt"><b>${esc(a.name)}</b><span>${esc(a.address)}</span></div>`;
   let total='', body='';
   if(tab==='out'){
     const unpaid = D.out.filter(b=>b.payment!=='paid').length;
     total = `<b>${cnt.out} ${plural(cnt.out,'выезд','выезда','выездов')}</b> · ${g(D.out)} ${plural(g(D.out),'гость','гостя','гостей')}${unpaid?` · <span style="color:var(--red,#dc2626)">${unpaid} не оплач.</span>`:''}`;
-    body = D.out.map(b=>{ const a=aptById(b.aptId); const c=D.clean.find(x=>x.bookingId===b.id);
-      return `<button class="dp-row" data-action="open-booking" data-id="${b.id}" data-back="1"><div class="dp-time">${esc(b.checkoutTime||'12:00')}<small>выезд</small></div>
-        <div class="grow" style="min-width:0">${aptCell(a)}<div class="dp-meta"><span>${ic('users',13)} ${esc(b.guest)} · ${b.guests} ${plural(b.guests,'гость','гостя','гостей')}</span>${b.payment!=='paid'?payChip(b.payment):''}</div>
-        <div class="dp-meta">${ic('sparkle',13)} Уборка: ${clAv(c?c.cleaner:b.cleaner)} ${esc(c?c.cleaner:b.cleaner)} ${c?clStatus(c):''}</div></div>${ic('chevR',16)}</button>`; }).join('');
+    body = D.out.map(b=>dayRowOut(b,D,1)).join('');
   } else if(tab==='in'){
     const trN = D.inn.filter(b=>b.transfer||transfers.some(t=>t.bookingId===b.id&&t.dir==='in')).length;
     total = `<b>${cnt.in} ${plural(cnt.in,'заезд','заезда','заездов')}</b> · ${g(D.inn)} ${plural(g(D.inn),'гость','гостя','гостей')} · ${trN} ${plural(trN,'трансфер','трансфера','трансферов')}`;
-    body = D.inn.map(b=>{ const a=aptById(b.aptId); const tr=transfers.find(t=>t.bookingId===b.id&&t.dir==='in');
-      const trTxt = tr ? `${ic(tr.place==='station'?'train':'plane',13)} Трансфер ${esc(tr.time)} · ${esc(tr.flight||'')}${tr.driver?' · '+esc(tr.driver):' · водитель не назначен'}` : b.transfer ? `${ic('car',13)} Трансфер заказан` : `<span class="muted">без трансфера</span>`;
-      return `<button class="dp-row" data-action="open-booking" data-id="${b.id}" data-back="1"><div class="dp-time">${esc(b.checkinTime||'14:00')}<small>заезд</small></div>
-        <div class="grow" style="min-width:0">${aptCell(a)}<div class="dp-meta"><span>${ic('users',13)} ${esc(b.guest)} · ${b.guests} ${plural(b.guests,'гость','гостя','гостей')}</span>${chb(b.source,16)}${payChip(b.payment)}</div>
-        <div class="dp-meta">${trTxt}</div></div>${ic('chevR',16)}</button>`; }).join('');
+    body = D.inn.map(b=>dayRowIn(b,1)).join('');
   } else {
     const done = D.clean.filter(c=>c.status==='done').length, prog = D.clean.filter(c=>c.status==='progress'||c.status==='enroute').length;
     const who = [...new Set(D.clean.map(c=>c.cleaner))];
     total = `<b>${cnt.clean} ${plural(cnt.clean,'уборка','уборки','уборок')}</b> · ${done} готово · ${prog} в работе · ${who.length} ${plural(who.length,'специалист','специалиста','специалистов')}`;
-    body = D.clean.map(c=>{ const a=aptById(c.aptId); const b=bById(c.bookingId);
-      return `<button class="dp-row" ${b?`data-action="open-booking" data-id="${b.id}" data-back="1"`:''}><div class="dp-time">${esc(c.from||'12:00')}<small>до ${esc(c.to||'18:00')}</small></div>
-        <div class="grow" style="min-width:0">${aptCell(a)}<div class="dp-meta">${clAv(c.cleaner)} <b style="font-weight:600">${esc(c.cleaner)}</b> ${clStatus(c)}</div>
-        <div class="dp-meta">${c.nextGuest?`${ic('in',13)} Следующий заезд: ${esc(c.nextGuest)}, ${esc(c.nextCheckin||'14:00')}`:'<span class="muted">в этот день заезда нет</span>'}</div></div>${b?ic('chevR',16):''}</button>`; }).join('');
+    body = D.clean.map(c=>dayRowClean(c,1)).join('');
   }
   const empty = {out:'В этот день выездов нет',in:'В этот день заездов нет',clean:'В этот день уборок нет'}[tab];
   openDrawer(`<div class="dr-head"><div style="width:32px;height:32px;border-radius:9px;background:#eef2ff;color:#4f46e5;display:grid;place-items:center">${ic('calendar',16)}</div>
@@ -1243,6 +1338,7 @@ document.addEventListener('click', e=>{
     case 'cal-prev': S.calStart-=7; render(); break;
     case 'cal-next': S.calStart+=7; render(); break;
     case 'cal-today': S.calStart = TODAY-((wd(TODAY)+6)%7); if(S.calDays===31) S.calDays=35; render(); break;
+    case 'cal-today-only': S.calToday=!S.calToday; try{ localStorage.setItem('sp_cal_today', S.calToday?'1':'0'); }catch(e){} render(); break;
     case 'cal-mode': S.calDays=+t.dataset.days; render(); break;
     case 'cal-month': S.calStart=di(2026,10,1); S.calDays=31; render(); break;
     case 'filter': { const k=t.dataset.ch; if(S.filters.has(k)) S.filters.delete(k); else S.filters.add(k); if(!S.filters.size) CH_KEYS.forEach(x=>S.filters.add(x)); render(); break; }
