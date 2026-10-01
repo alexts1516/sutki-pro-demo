@@ -94,3 +94,15 @@ input:focus,select:focus,textarea:focus{border-color:#a5b4fc;box-shadow:0 0 0 3p
 @media(max-width:1100px){.g4{grid-template-columns:repeat(2,minmax(0,1fr))}.colors{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:860px){.sidebar{transform:translateX(-100%)}.sidebar.open{transform:none}.main{margin-left:0;padding:0 14px 30px}.only-m{display:inline-grid}
   .g2,.g3{grid-template-columns:1fr}.tx-row{grid-template-columns:1fr}.pv-nav{display:none}}
+
+/* заявки мастерам */
+.chip.blue{background:#e0f2fe;color:#0369a1}
+tr.click{cursor:pointer}tr.click:hover td{background:#f8fafc}
+.wr-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:18px;align-items:start}
+.wr-item{border:1px solid var(--border);border-radius:12px;padding:10px 12px;display:flex;flex-direction:column;gap:4px}
+.wr-item.pending{border-color:#f5d08a;background:#fffbeb}.wr-item.rejected{opacity:.75}
+.wr-photos{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}.wr-photos.sm{grid-template-columns:repeat(auto-fill,minmax(80px,1fr))}
+.wr-photos a{position:relative;aspect-ratio:4/3;border-radius:10px;background:#eef1f6 center/cover;border:1px solid var(--border)}
+.wr-photos a span{position:absolute;left:6px;bottom:6px;background:rgba(15,23,42,.7);color:#fff;font-size:11px;padding:2px 6px;border-radius:6px}
+.wr-log{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px}.wr-log li{border-left:3px solid var(--border);padding-left:10px}
+@media(max-width:1000px){.wr-grid{grid-template-columns:1fr}}

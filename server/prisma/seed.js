@@ -145,21 +145,106 @@ async function main() {
       },
     });
   }
-  // подрядчики, ремонты, сметы
+  // подрядчики, заявки мастерам, сметы (статусы — как в services/workRequests.js)
+  const owner = Object.values(users).find(u => u.email.startsWith(d.STAFF_BASE.find(x => x.role === 'owner').login + '@'));
+  const admin = Object.values(users).find(u => u.email.startsWith(d.STAFF_BASE.find(x => x.role === 'admin').login + '@'));
   const contr = {};
   for (const c of d.CONTRACTORS_BASE) contr[c.id] = await prisma.contractor.create({ data: { accountId: acc.id, name: c.name, type: c.type, phone: c.phone, note: c.note, regular: !!c.regular } });
+  const ev = (t, type, actor, note, data, when) => prisma.repairEvent.create({ data: { accountId: acc.id, repairTaskId: t.id, type, actorType: actor.type, actorId: actor.id || null, actorName: actor.name, note: note || null, data: data || undefined, createdAt: when || new Date() } });
+  const OWNER = { type: 'owner', id: owner.id, name: owner.name }, ADMIN = { type: 'admin', id: admin.id, name: admin.name };
   for (const r of d.repairs) {
+    const q = r.quote;
+    const status = r.status === 'done' ? 'DONE' : r.status === 'progress' ? 'IN_PROGRESS' : q?.status === 'approved' ? 'APPROVED' : q?.status === 'pending' ? 'AWAITING_OWNER_APPROVAL' : 'NEW';
+    const quick = status === 'IN_PROGRESS' && !q;   // «в работе» без сметы — в демо это мелкие работы
     const t = await prisma.repairTask.create({
       data: {
         accountId: acc.id, apartmentId: apt[r.aptId].id, title: r.title, description: r.desc || null, type: r.type || 'other', priority: r.priority,
-        status: r.status, assigneeId: r.masterId ? users[r.masterId]?.id : null, contractorId: r.contractorId ? contr[r.contractorId]?.id : null,
+        status, quickJob: quick, assigneeId: r.masterId ? users[r.masterId]?.id : null, contractorId: r.contractorId ? contr[r.contractorId]?.id : null,
         assigneeLabel: r.assignee, date: day(r.date), accessMode: r.access?.mode || 'code', accessNote: r.access?.whoName ? `Ключи/встреча: ${r.access.whoName}${r.access.time ? ', ' + r.access.time : ''}` : null,
-        timeWindow: r.window || null, costKzt: r.cost || null, paid: !!r.paid, blockDays: r.blockDays || null, doneAt: r.status === 'done' ? day(r.date) : null,
+        timeWindow: r.window || null, costKzt: r.cost || null, finalCostKzt: status === 'DONE' ? (r.cost || null) : null, paid: !!r.paid, blockDays: r.blockDays || null,
+        doneAt: status === 'DONE' ? day(r.date) : null, arrivedAt: ['IN_PROGRESS', 'DONE'].includes(status) ? day(r.date) : null, startedAt: ['IN_PROGRESS', 'DONE'].includes(status) ? day(r.date) : null,
+        linkToken: randomToken(18), createdById: owner.id, occupancy: r.access?.mode === 'presence' ? 'OWNER_PRESENT' : 'UNKNOWN', occupancyUpdatedById: owner.id, occupancyUpdatedAt: day(r.date - 1),
       },
     });
-    if (r.quote) {
-      await prisma.repairEstimate.create({ data: { accountId: acc.id, repairTaskId: t.id, workKzt: r.quote.work, partsKzt: r.quote.parts, items: r.quote.list, byName: r.quote.by, status: r.quote.status || 'pending', decidedAt: r.quote.status && r.quote.status !== 'pending' ? new Date() : null } });
+    await ev(t, 'created', OWNER, null, { quickJob: quick }, day(r.date - 1));
+    if (q) {
+      await prisma.repairEstimate.create({ data: { accountId: acc.id, repairTaskId: t.id, method: 'REMOTE', workKzt: q.work, partsKzt: q.parts, materialsIncluded: q.parts > 0, items: q.list, byName: q.by, status: q.status || 'pending', decidedAt: q.status && q.status !== 'pending' ? new Date() : null, decidedById: q.status && q.status !== 'pending' ? owner.id : null } });
+      await ev(t, 'estimate_submitted', { type: 'master', name: q.by }, null, { method: 'REMOTE', totalKzt: q.work + q.parts });
+      if (q.status === 'approved') await ev(t, 'approved', OWNER, null, { totalKzt: q.work + q.parts });
     }
+    if (['IN_PROGRESS', 'DONE'].includes(status)) await ev(t, 'started', { type: 'master', name: r.assignee }, null, quick ? { quickJob: true } : null, day(r.date));
+    if (status === 'DONE') await ev(t, 'completed', { type: 'master', name: r.assignee }, null, { finalCostKzt: r.cost || 0 }, day(r.date));
+  }
+
+  // ---------- Master Electric — внешний электрик с входом в приложение команды; по одной заявке в каждом статусе ----------
+  const meUser = await prisma.user.create({ data: { name: 'Master Electric', email: 'electric@astanastay.example', phone: '+77000000101', passwordHash, locale: 'ru' } });
+  await prisma.membership.create({ data: { userId: meUser.id, accountId: acc.id, role: 'master' } });
+  const me = await prisma.contractor.create({ data: { accountId: acc.id, name: 'Master Electric', type: 'elec', phone: '+7 700 000 01 01', note: 'электрика: розетки, автоматы, свет (демо-контакт)', regular: true, userId: meUser.id } });
+  const ME = { type: 'master', id: meUser.id, name: 'Master Electric' };
+  const hv = Object.values(apt).filter(a => a.complex === 'ЖК Хайвил');
+  const problemSvg = (title, hue) => Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="900" height="600" viewBox="0 0 900 600"><rect width="900" height="600" fill="hsl(${hue},18%,86%)"/>
+<rect x="330" y="170" width="240" height="240" rx="28" fill="#fff" stroke="#9aa3ad" stroke-width="6"/><circle cx="410" cy="290" r="18" fill="#3b4048"/><circle cx="490" cy="290" r="18" fill="#3b4048"/>
+<path d="M560 180c40 10 70 40 80 80" stroke="#3b4048" stroke-width="8" fill="none" opacity=".5"/><circle cx="560" cy="200" r="46" fill="#2b2b2b" opacity=".35"/>
+<text x="40" y="550" font-family="Inter,Arial,sans-serif" font-size="40" font-weight="700" fill="#2c3038">${title}</text><text x="40" y="585" font-family="Inter,Arial,sans-serif" font-size="22" fill="#4b5563">демо-фото проблемы</text></svg>`);
+  const ago = (h) => new Date(Date.now() - h * 3600000);
+  const meTasks = [
+    { status: 'NEW', title: 'Не работает розетка на кухне', desc: 'Розетка у холодильника не даёт питание, автомат не выбивает.', occ: 'UNKNOWN', photos: 0 },
+    { status: 'VISIT_INSPECTION', title: 'Мигает свет в спальне', desc: 'Люстра мигает при включении, иногда гаснет.', occ: 'OWNER_PRESENT', visit: true, arrived: true },
+    { status: 'AWAITING_OWNER_APPROVAL', title: 'Розетка обгорела у кровати', desc: 'Следы гари на розетке, запах пластика. Фото приложены.', occ: 'EMPTY', instr: 'Ключи у консьержа в лобби блока G-1, скажите «к Азамату». Консьерж с 9:00 до 21:00.', photos: 2,
+      est: { method: 'PHOTOS', workKzt: 8000, partsKzt: 3500, materialsIncluded: true, maxKzt: 15000, items: 'Розетка Schneider, подрозетник', comment: 'По фото: менять розетку и подрозетник; если проводка обгорела — дороже.' } },
+    { status: 'REJECTED', title: 'Перенести выключатель в прихожей', desc: 'Выключатель за дверью — перенести на 40 см.', occ: 'UNKNOWN',
+      est: { method: 'REMOTE', workKzt: 25000, partsKzt: 0, materialsIncluded: false, comment: 'Штробление, кабель, шпаклёвка — материалы отдельно.', status: 'rejected', reject: 'Дорого, без штробления — накладным кабель-каналом' } },
+    { status: 'APPROVED', title: 'Установить 3 точечных светильника в ванной', desc: 'Влагозащищённые светильники, белые.', occ: 'EMPTY', instr: 'Код подъезда сообщит админ по телефону в день работ.',
+      est: { method: 'REMOTE', workKzt: 12000, partsKzt: 9000, materialsIncluded: true, items: '3 светильника IP44, кабель', status: 'approved' } },
+    { status: 'IN_PROGRESS', title: 'Заменить автомат в щитке', desc: 'Автомат на кухонную линию выбивает при включении чайника.', occ: 'OWNER_PRESENT', visit: true, arrived: true,
+      est: { method: 'VISIT', workKzt: 7000, partsKzt: 4500, materialsIncluded: true, items: 'Автомат 16А ABB', status: 'approved' },
+      extras: [{ amountKzt: 6000, description: 'Замена подгоревшей шины в щитке', reason: 'Обнаружена при вскрытии щитка — не было видно при осмотре', status: 'APPROVED' },
+        { amountKzt: 3500, description: 'Клеммы WAGO, 10 шт.', reason: 'Старые скрутки на линии — менять обязательно по технике безопасности', status: 'PENDING' }] },
+    { status: 'DONE', quick: true, title: 'Заменить перегоревшую лампочку в коридоре', desc: 'Цоколь E27, тёплый свет.', occ: 'EMPTY', instr: 'Ключ в почтовом ящике №45, код ящика скажет админ.', arrived: true, final: 2500, report: 'Заменил лампу E27 3000K, проверил выключатель.' },
+    { status: 'CANCELLED', title: 'Подключить варочную панель', desc: 'Нужна отдельная линия 32А.', occ: 'UNKNOWN', cancel: 'Хозяин решил подключать через застройщика' },
+  ];
+  for (const [i, x] of meTasks.entries()) {
+    const a = hv[i % hv.length] || Object.values(apt)[i];
+    // у каждой заявки своя последовательная «лента времени»: каждый следующий шаг — на 50 минут позже
+    let clock = ago(30 + i * 4); const next = () => (clock = new Date(clock.getTime() + 50 * 60000));
+    const t0 = clock;
+    const T = {}; for (const k of ['occ', 'visit', 'arrived', 'inspected', 'est', 'decided', 'started', 'extra', 'extraOk', 'done', 'cancel']) T[k] = next();
+    const t = await prisma.repairTask.create({
+      data: {
+        accountId: acc.id, apartmentId: a.id, title: x.title, description: x.desc, type: 'elec', priority: i === 2 ? 'high' : 'medium', status: x.status, quickJob: !!x.quick,
+        contractorId: me.id, date: day(d.TODAY + (i % 3)), linkToken: randomToken(18), createdById: owner.id,
+        occupancy: x.occ, accessInstructions: x.instr || null, occupancyUpdatedById: i % 2 ? admin.id : owner.id, occupancyUpdatedAt: T.occ,
+        visitRequestedAt: x.visit ? T.visit : null, arrivedAt: x.arrived ? T.arrived : null, inspectionNotes: x.visit ? 'Проверил щиток и линию, причина найдена.' : null,
+        startedAt: ['IN_PROGRESS', 'DONE'].includes(x.status) ? T.started : null, finalCostKzt: x.final ?? null, report: x.report || null,
+        doneAt: x.status === 'DONE' ? T.done : null, cancelReason: x.cancel || null,
+      },
+    });
+    await ev(t, 'created', OWNER, null, { quickJob: !!x.quick }, t0);
+    await ev(t, 'occupancy_changed', i % 2 ? ADMIN : OWNER, null, { from: 'UNKNOWN', to: x.occ, instructions: !!x.instr }, T.occ);
+    for (let k = 0; k < (x.photos || 0); k++) {
+      const saved = await storage.save(`${acc.id}/repairs/${t.id}/problem-${k + 1}.svg`, problemSvg(k ? 'Розетка крупно' : 'Розетка у кровати', 20 + k * 30), 'image/svg+xml');
+      await prisma.repairPhoto.create({ data: { accountId: acc.id, repairTaskId: t.id, kind: 'problem', url: saved.url, storageKey: saved.key, caption: k ? 'Крупно' : 'Общий вид', uploadedBy: 'owner', mimeType: 'image/svg+xml', createdAt: t0 } });
+    }
+    if (x.visit) await ev(t, 'visit_requested', ME, 'По описанию не понять — нужно посмотреть на месте', null, T.visit);
+    if (x.arrived) await ev(t, 'arrived', ME, null, null, T.arrived);
+    if (x.visit) await ev(t, 'inspected', ME, 'Проверил щиток и линию, причина найдена.', null, T.inspected);
+    if (x.est) {
+      const e = await prisma.repairEstimate.create({ data: { accountId: acc.id, repairTaskId: t.id, method: x.est.method, workKzt: x.est.workKzt, partsKzt: x.est.partsKzt, materialsIncluded: x.est.materialsIncluded, maxKzt: x.est.maxKzt ?? null, items: x.est.items || null, comment: x.est.comment || null, byName: 'Master Electric', byUserId: meUser.id, status: x.est.status || 'pending', rejectReason: x.est.reject || null, decidedAt: x.est.status ? T.decided : null, decidedById: x.est.status ? owner.id : null, createdAt: T.est } });
+      await ev(t, 'estimate_submitted', ME, x.est.comment, { estimateId: e.id, method: x.est.method, totalKzt: x.est.workKzt + x.est.partsKzt, maxKzt: x.est.maxKzt ?? null, materialsIncluded: x.est.materialsIncluded }, T.est);
+      if (x.est.status) await ev(t, x.est.status === 'approved' ? 'approved' : 'rejected', OWNER, x.est.reject, { estimateId: e.id, totalKzt: x.est.workKzt + x.est.partsKzt }, T.decided);
+    }
+    if (['IN_PROGRESS', 'DONE'].includes(x.status)) await ev(t, 'started', ME, null, x.quick ? { quickJob: true } : null, T.started);
+    for (const xe of x.extras || []) {
+      const e = await prisma.extraExpense.create({ data: { accountId: acc.id, repairTaskId: t.id, amountKzt: xe.amountKzt, description: xe.description, reason: xe.reason, status: xe.status, byName: 'Master Electric', byUserId: meUser.id, decidedAt: xe.status !== 'PENDING' ? T.extraOk : null, decidedById: xe.status !== 'PENDING' ? owner.id : null, createdAt: T.extra } });
+      await ev(t, 'extra_submitted', ME, xe.description, { extraId: e.id, amountKzt: xe.amountKzt, reason: xe.reason }, T.extra);
+      if (xe.status === 'APPROVED') await ev(t, 'extra_approved', OWNER, null, { extraId: e.id, amountKzt: xe.amountKzt }, T.extraOk);
+    }
+    if (x.status === 'DONE') await ev(t, 'completed', ME, x.report, { finalCostKzt: x.final }, T.done);
+    if (x.status === 'CANCELLED') await ev(t, 'cancelled', OWNER, x.cancel, null, T.cancel);
+    // сумма для финансов: итог/одобренная смета + одобренные доп. расходы
+    const base = x.final ?? (x.est?.status === 'approved' ? x.est.workKzt + x.est.partsKzt : null);
+    const extrasOk = (x.extras || []).filter(e => e.status === 'APPROVED').reduce((s2, e) => s2 + e.amountKzt, 0);
+    if (base != null || extrasOk) await prisma.repairTask.update({ where: { id: t.id }, data: { costKzt: (base || 0) + extrasOk } });
   }
 
   // ---------- аккаунт B — второй владелец (для проверки, что аккаунты не видят друг друга) ----------
@@ -175,8 +260,8 @@ async function main() {
 
   const counts = await Promise.all([prisma.apartment.count(), prisma.apartmentPhoto.count(), prisma.booking.count(), prisma.cleaningTask.count(), prisma.repairTask.count(), prisma.transfer.count()]);
   if (!config.isTest) {
-    console.log(`Готово: квартир ${counts[0]}, фото ${counts[1]}, броней ${counts[2]}, уборок ${counts[3]}, ремонтов ${counts[4]}, трансферов ${counts[5]}`);
-    console.log(`Вход в админку: azamat@astanastay.example / ${PASSWORD} (владелец), alina@astanastay.example (админ), gulnara@… (клининг), marat@… (мастер)`);
+    console.log(`Готово: квартир ${counts[0]}, фото ${counts[1]}, броней ${counts[2]}, уборок ${counts[3]}, заявок мастерам ${counts[4]}, трансферов ${counts[5]}`);
+    console.log(`Вход в админку: azamat@astanastay.example / ${PASSWORD} (владелец), alina@astanastay.example (админ), gulnara@… (клининг), marat@… (мастер), electric@… (подрядчик Master Electric)`);
   }
 }
 

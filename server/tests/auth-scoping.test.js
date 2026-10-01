@@ -67,14 +67,16 @@ test('клининг видит только свои уборки, без де�
   assert.equal(card.status, 200); assert.ok(card.body.access.lockCode, 'исполнитель видит код замка');
 });
 
-test('мастер видит только свои ремонты, без стоимости', async () => {
+test('мастер видит только свои заявки, без стоимости', async () => {
   const r = await request(app).get('/api/staff/tasks').set(master.auth);
   assert.ok(r.body.repairs.length > 0);
-  assert.ok(r.body.repairs.every(t => t.assigneeId === master.me.user.id));
-  assert.ok(r.body.repairs.every(t => !('costKzt' in t)));
+  const mine = await prisma.repairTask.findMany({ where: { assigneeId: master.me.user.id }, select: { id: true } });
+  assert.ok(r.body.repairs.every(t => mine.some(m => m.id === t.id)));
+  assert.ok(r.body.repairs.every(t => !('costKzt' in t) && !('paid' in t)));
   assert.deepEqual(r.body.cleaning, []);
   const other = await prisma.repairTask.findFirst({ where: { accountId: accA.id, OR: [{ assigneeId: null }, { NOT: { assigneeId: master.me.user.id } }] } });
-  assert.equal((await request(app).post(`/api/staff/repairs/${other.id}/status`).set(master.auth).send({ status: 'done' })).status, 403);
+  assert.equal((await request(app).get(`/api/staff/repairs/${other.id}`).set(master.auth)).status, 403);
+  assert.equal((await request(app).post(`/api/staff/repairs/${other.id}/start`).set(master.auth)).status, 403);
 });
 
 test('аккаунт Б не видит данные аккаунта А (и наоборот)', async () => {

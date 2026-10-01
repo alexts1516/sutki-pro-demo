@@ -10,7 +10,7 @@ export const BLOCKING = ['request', 'confirmed'];   // заявки тоже д�
 export async function busyRanges(accountId, apartmentId, from, to) {
   const [bookings, repairs] = await Promise.all([
     prisma.booking.findMany({ where: { accountId, apartmentId, status: { in: BLOCKING }, checkIn: { lt: to }, checkOut: { gt: from } }, select: { checkIn: true, checkOut: true }, orderBy: { checkIn: 'asc' } }),
-    prisma.repairTask.findMany({ where: { accountId, apartmentId, blockDays: { gt: 0 }, status: { not: 'done' } }, select: { date: true, blockDays: true } }),
+    prisma.repairTask.findMany({ where: { accountId, apartmentId, blockDays: { gt: 0 }, status: { notIn: ['DONE', 'CANCELLED'] } }, select: { date: true, blockDays: true } }),
   ]);
   return [
     ...bookings.map(b => ({ from: b.checkIn, to: b.checkOut, kind: 'booking' })),

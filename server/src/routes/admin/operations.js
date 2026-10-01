@@ -1,4 +1,4 @@
-// Брони, трансферы, уборки, ремонты, сметы, подрядчики, журнал уведомлений (владелец и администратор).
+// Брони, трансферы, уборки, журнал уведомлений (владелец и администратор). Заявки мастерам — workRequests.js.
 // Финансы, платежи и курсы валют — только владелец.
 import { Router } from 'express';
 import { z } from 'zod';
@@ -99,39 +99,7 @@ export default function operationsRouter({ events }) {
     res.json(await prisma.cleaningTask.update({ where: { id: t.id }, data: { assigneeId } }));
   });
 
-  // ---------- ремонты и сметы ----------
-  r.get('/repairs', async (req, res) => {
-    res.json(await prisma.repairTask.findMany({ where: { accountId: req.accountId }, include: { apartment: { select: { id: true, title: true } }, assignee: { select: { id: true, name: true } }, contractor: true, estimates: true }, orderBy: { date: 'desc' }, take: 500 }));
-  });
-  r.post('/repairs', async (req, res) => {
-    const data = parse(z.object({
-      apartmentId: z.string(), title: z.string().min(3).max(160), description: z.string().max(3000).optional(),
-      type: z.enum(['plumb', 'elec', 'appl', 'furn', 'other']).default('other'), priority: z.enum(['low', 'medium', 'high']).default('medium'),
-      assigneeId: z.string().optional().nullable(), contractorId: z.string().optional().nullable(), date: z.string().optional(),
-      accessMode: z.enum(['code', 'keys', 'presence']).default('code'), accessNote: z.string().max(500).optional(), blockDays: z.number().int().min(0).max(60).optional(),
-    }), req.body);
-    const apt = await prisma.apartment.findFirst({ where: { id: data.apartmentId, accountId: req.accountId } });
-    if (!apt) throw notFound('Квартира не найдена');
-    if (data.assigneeId && !(await prisma.membership.findFirst({ where: { accountId: req.accountId, userId: data.assigneeId, role: 'master', active: true } }))) throw badRequest('Мастер не найден в команде');
-    if (data.contractorId && !(await prisma.contractor.findFirst({ where: { id: data.contractorId, accountId: req.accountId } }))) throw badRequest('Подрядчик не найден');
-    const t = await prisma.repairTask.create({ data: { ...data, date: day(data.date, todayIn(req.account.timezone)), accountId: req.accountId } });
-    res.status(201).json(t);
-  });
-  r.post('/estimates/:id/:decision', async (req, res) => {
-    if (!['approve', 'reject'].includes(req.params.decision)) throw notFound('Нет такого действия');
-    const est = await prisma.repairEstimate.findFirst({ where: { id: req.params.id, accountId: req.accountId } });
-    if (!est) throw notFound('Смета не найдена');
-    if (est.status !== 'pending') throw new HttpError(409, 'Смета уже рассмотрена');
-    const approved = req.params.decision === 'approve';
-    const u = await prisma.repairEstimate.update({ where: { id: est.id }, data: { status: approved ? 'approved' : 'rejected', decidedAt: new Date(), decidedById: req.user.id } });
-    if (approved) await prisma.repairTask.update({ where: { id: est.repairTaskId }, data: { costKzt: est.workKzt + est.partsKzt } });
-    res.json(u);
-  });
-  r.get('/contractors', async (req, res) => res.json(await prisma.contractor.findMany({ where: { accountId: req.accountId }, orderBy: { name: 'asc' } })));
-  r.post('/contractors', async (req, res) => {
-    const data = parse(z.object({ name: z.string().min(2).max(100), type: z.enum(['plumb', 'elec', 'appl', 'furn', 'other']), phone: z.string().max(40).optional(), note: z.string().max(500).optional(), regular: z.boolean().optional() }), req.body);
-    res.status(201).json(await prisma.contractor.create({ data: { ...data, accountId: req.accountId } }));
-  });
+  // ремонты, сметы, доп. расходы и подрядчики — в workRequests.js
 
   // ---------- журнал уведомлений ----------
   r.get('/notifications', async (req, res) => {

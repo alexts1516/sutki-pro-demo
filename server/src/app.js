@@ -16,9 +16,13 @@ import teamRouter from './routes/admin/team.js';
 import staffRouter from './routes/staff.js';
 import publicRouter from './routes/public.js';
 import paymentsRouter from './routes/payments.js';
+import workRequestsRouter from './routes/admin/workRequests.js';
+import taskLinkRouter from './routes/taskLink.js';
+import { createWorkflow } from './services/workRequests.js';
 
 export function createApp({ config = defaultConfig, events, storage, payments = null, telegramWebhook = null, logger = console }) {
   const app = express();
+  const workflow = createWorkflow({ events });
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
 
@@ -58,8 +62,10 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
   admin.use(siteRouter({ storage, config }));
   admin.use(operationsRouter({ events }));
   admin.use(teamRouter({ config }));
+  admin.use(workRequestsRouter({ workflow, storage, config }));
   app.use('/api/admin', admin);
-  app.use('/api/staff', authenticate, staffRouter({ events }));
+  app.use('/api/staff', authenticate, staffRouter({ events, workflow, storage, config }));
+  app.use('/api/task-link', taskLinkRouter({ workflow, storage, config }));
 
   // файлы и админка
   if (storage.driver === 'local') app.use('/uploads', express.static(storage.uploadDir, { maxAge: '7d', fallthrough: false }));

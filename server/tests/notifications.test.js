@@ -7,6 +7,7 @@ import { linkByStartPayload } from '../src/telegram/linking.js';
 import { createTelegramBot } from '../src/telegram/bot.js';
 import { runReminders } from '../src/notifications/scheduler.js';
 import { render } from '../src/notifications/templates.js';
+import { EVENTS } from '../src/notifications/service.js';
 
 // «Бот» без интернета: вместо Telegram API — массив отправленных сообщений
 const sent = [];
@@ -126,19 +127,26 @@ test('трансфер, отчёт мастера и смета — уведом
   sent.length = 0;
   const t = await request(withBot.app).post('/api/public/astana-stay/transfers').send({ direction: 'in', place: 'airport', date: '2030-05-01', time: '23:40', flight: 'KC 852', pax: 2, childSeats: 1, name: 'Трансфер Тестов', phone: '+7 701 000 00 00' });
   assert.equal(t.status, 201); assert.equal(t.body.priceKzt, 8000 + 2000 + 1500);
-  const task = await prisma.repairTask.findFirst({ where: { assigneeId: master.me.user.id, status: { not: 'done' } } });
-  const est = await request(withBot.app).post(`/api/staff/repairs/${task.id}/estimate`).set(master.auth).send({ workKzt: 6000, partsKzt: 3500, items: 'Арматура' });
+  const task = (await request(withBot.app).post('/api/admin/repairs').set(owner.auth).send({ apartmentId: apt.id, title: 'Течёт бачок', type: 'plumb', assigneeId: master.me.user.id })).body;
+  assert.equal(task.status, 'NEW');
+  const est = await request(withBot.app).post(`/api/staff/repairs/${task.id}/estimate`).set(master.auth).send({ method: 'REMOTE', labourKzt: 6000, materialsIncluded: true, materialsKzt: 3500, items: 'Арматура' });
   assert.equal(est.status, 201);
-  const rep = await request(withBot.app).post(`/api/staff/repairs/${task.id}/status`).set(master.auth).send({ status: 'progress', report: 'Приехал, начал' });
-  assert.equal(rep.status, 200);
+  const estId = est.body.estimates.at(-1).id;
   await withBot.events.idle();
   const toOwner = sent.filter(s => s.chatId === '111').map(s => s.text);
   assert.ok(toOwner.some(x => /Заказ трансфера/.test(x) && /KC 852/.test(x)));
   assert.ok(toOwner.some(x => /Смета ждёт одобрения/.test(x) && /9 500 ₸/.test(x)));
-  assert.ok(toOwner.some(x => /Ремонт:/.test(x) && /Приехал, начал/.test(x)));
-  const ap = await request(withBot.app).post(`/api/admin/estimates/${est.body.id}/approve`).set(owner.auth);
-  assert.equal(ap.body.status, 'approved');
-  assert.equal((await request(withBot.app).post(`/api/admin/estimates/${est.body.id}/approve`).set(owner.auth)).status, 409);
+  sent.length = 0;
+  const ap = await request(withBot.app).post(`/api/admin/estimates/${estId}/approve`).set(owner.auth);
+  assert.equal(ap.status, 200); assert.equal(ap.body.status, 'APPROVED');
+  assert.equal((await request(withBot.app).post(`/api/admin/estimates/${estId}/approve`).set(owner.auth)).status, 409);
+  await withBot.events.idle();
+  assert.ok(sent.some(s => s.chatId === '777' && /Смета одобрена/.test(s.text)), 'мастер (Telegram привязан выше) получил решение');
+  assert.equal((await request(withBot.app).post(`/api/staff/repairs/${task.id}/start`).set(master.auth)).status, 200);
+  const done = await request(withBot.app).post(`/api/staff/repairs/${task.id}/complete`).set(master.auth).send({ finalCostKzt: 9500, report: 'Заменил арматуру, протечки нет' });
+  assert.equal(done.body.status, 'DONE');
+  await withBot.events.idle();
+  assert.ok(sent.some(s => s.chatId === '111' && /Заявка:/.test(s.text) && /протечки нет/.test(s.text)));
 });
 
 test('клининг: отчёт об уборке → уведомление', async () => {
@@ -165,8 +173,8 @@ test('напоминания о заезде: команде и гостю, бе
 
 test('шаблоны есть на русском и английском для всех событий', () => {
   const d = { booking: { number: 1, source: 'site', checkIn: new Date(), checkOut: new Date(), checkInTime: '14:00', checkOutTime: '12:00', guestsCount: 2, totalKzt: 1000, paymentStatus: 'paid' }, apartment: { title: 'Кв', address: 'Адрес', lockCode: '1234' }, guest: { name: 'Г' }, nights: 1,
-    transfer: { direction: 'in', place: 'airport', date: new Date(), time: '10:00', pax: 1, priceKzt: 8000 }, task: { title: 'Т', status: 'done' }, estimate: { workKzt: 1, partsKzt: 2 }, payment: { amountKzt: 1, provider: 'x' }, when: 'today' };
-  for (const ev of ['booking.requested', 'booking.confirmed', 'checkin.upcoming', 'guest.checkin_instructions', 'transfer.requested', 'transfer.assigned', 'cleaning.reported', 'repair.reported', 'estimate.submitted', 'payment.succeeded']) {
+    transfer: { direction: 'in', place: 'airport', date: new Date(), time: '10:00', pax: 1, priceKzt: 8000 }, task: { title: 'Т', status: 'DONE', occupancy: 'EMPTY', accessInstructions: 'Ключ у консьержа', finalCostKzt: 5 }, estimate: { workKzt: 1, partsKzt: 2, method: 'PHOTOS', status: 'approved', materialsIncluded: true }, extra: { amountKzt: 3, description: 'Д', reason: 'П', status: 'APPROVED' }, payment: { amountKzt: 1, provider: 'x' }, when: 'today' };
+  for (const ev of EVENTS) {
     assert.ok(render(ev, 'ru', d).length > 10, ev); assert.ok(render(ev, 'en', d).length > 10, ev);
     assert.notEqual(render(ev, 'ru', d), render(ev, 'en', d), ev);
   }

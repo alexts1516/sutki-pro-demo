@@ -6,7 +6,8 @@ import { consoleTransport } from './transports.js';
 import { nights } from '../lib/dates.js';
 
 export const EVENTS = ['booking.requested', 'booking.confirmed', 'checkin.upcoming', 'guest.checkin_instructions', 'transfer.requested',
-  'transfer.assigned', 'cleaning.reported', 'repair.reported', 'estimate.submitted', 'payment.succeeded'];
+  'transfer.assigned', 'cleaning.reported', 'repair.assigned', 'repair.visit_requested', 'estimate.submitted', 'estimate.decided',
+  'extra.submitted', 'extra.decided', 'repair.reported', 'repair.cancelled', 'repair.occupancy_changed', 'payment.succeeded'];
 
 export function createNotificationService({ prisma, transport = null, logger = console, quiet = false }) {
   const fallback = consoleTransport({ quiet });
@@ -47,6 +48,18 @@ export function createNotificationService({ prisma, transport = null, logger = c
     return deliver({ accountId, event, recipientType: 'guest', recipientId: guest?.id, chatId: guest?.telegramChatId || null, lang: guest?.locale || 'ru', data, dedupeKey });
   }
 
+  /** Исполнителю заявки: мастеру из команды или пользователю подрядчика; у подрядчика без входа — только журнал */
+  async function toExecutor(accountId, taskId, event, extra = {}) {
+    const task = await prisma.repairTask.findFirst({ where: { id: taskId, accountId }, include: { apartment: true, assignee: true, contractor: { include: { user: true } }, occupancyUpdatedBy: true } });
+    if (!task) return;
+    const user = task.assignee || task.contractor?.user || null;
+    const data = { task, apartment: task.apartment, ...extra };
+    if (user) return deliver({ accountId, event, recipientType: 'master', recipientId: user.id, recipientName: task.contractor?.name || user.name, chatId: user.telegramId, lang: user.locale, data });
+    if (task.contractor) return deliver({ accountId, event, recipientType: 'contractor', recipientId: task.contractor.id, recipientName: task.contractor.name, data });
+  }
+  const loadRepair = (accountId, id) => prisma.repairTask.findFirst({ where: { id, accountId }, include: { apartment: true, assignee: true, contractor: true } });
+  const repairData = (t) => ({ task: t, apartment: t.apartment, assignee: t.assignee || (t.contractor ? { name: t.contractor.name } : null) });
+
   const loadBooking = (accountId, id) => prisma.booking.findFirst({ where: { id, accountId }, include: { apartment: true, guest: true, transfers: true } });
   const bookingData = (b) => ({ booking: b, apartment: b.apartment, guest: b.guest, nights: nights(b.checkIn, b.checkOut) });
 
@@ -82,13 +95,33 @@ export function createNotificationService({ prisma, transport = null, logger = c
       const task = await prisma.cleaningTask.findFirst({ where: { id: taskId, accountId }, include: { apartment: true, assignee: true } }); if (!task) return;
       return toManagers(accountId, 'cleaning.reported', { task, apartment: task.apartment, assignee: task.assignee });
     },
-    async 'repair.reported'({ accountId, taskId }) {
-      const task = await prisma.repairTask.findFirst({ where: { id: taskId, accountId }, include: { apartment: true, assignee: true } }); if (!task) return;
-      return toManagers(accountId, 'repair.reported', { task, apartment: task.apartment, assignee: task.assignee });
+    async 'repair.assigned'({ accountId, taskId }) { return toExecutor(accountId, taskId, 'repair.assigned'); },
+    async 'repair.visit_requested'({ accountId, taskId }) {
+      const t = await loadRepair(accountId, taskId); if (!t) return;
+      const ev = await prisma.repairEvent.findFirst({ where: { repairTaskId: t.id, type: 'visit_requested' }, orderBy: { createdAt: 'desc' } });
+      return toManagers(accountId, 'repair.visit_requested', { ...repairData(t), note: ev?.note });
     },
+    async 'repair.reported'({ accountId, taskId }) {
+      const t = await loadRepair(accountId, taskId); if (!t) return;
+      return toManagers(accountId, 'repair.reported', repairData(t));
+    },
+    async 'repair.cancelled'({ accountId, taskId }) { return toExecutor(accountId, taskId, 'repair.cancelled'); },
+    async 'repair.occupancy_changed'({ accountId, taskId }) { return toExecutor(accountId, taskId, 'repair.occupancy_changed'); },
     async 'estimate.submitted'({ accountId, estimateId }) {
       const est = await prisma.repairEstimate.findFirst({ where: { id: estimateId, accountId }, include: { repairTask: { include: { apartment: true } } } }); if (!est) return;
       return toManagers(accountId, 'estimate.submitted', { estimate: est, task: est.repairTask, apartment: est.repairTask.apartment });
+    },
+    async 'estimate.decided'({ accountId, estimateId }) {
+      const est = await prisma.repairEstimate.findFirst({ where: { id: estimateId, accountId } }); if (!est) return;
+      return toExecutor(accountId, est.repairTaskId, 'estimate.decided', { estimate: est });
+    },
+    async 'extra.submitted'({ accountId, extraId }) {
+      const x = await prisma.extraExpense.findFirst({ where: { id: extraId, accountId }, include: { repairTask: { include: { apartment: true } } } }); if (!x) return;
+      return toManagers(accountId, 'extra.submitted', { extra: x, task: x.repairTask, apartment: x.repairTask.apartment });
+    },
+    async 'extra.decided'({ accountId, extraId }) {
+      const x = await prisma.extraExpense.findFirst({ where: { id: extraId, accountId } }); if (!x) return;
+      return toExecutor(accountId, x.repairTaskId, 'extra.decided', { extra: x });
     },
     async 'payment.succeeded'({ accountId, paymentId }) {
       const p = await prisma.payment.findFirst({ where: { id: paymentId, accountId }, include: { booking: true } }); if (!p) return;
