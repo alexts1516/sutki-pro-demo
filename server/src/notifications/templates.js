@@ -14,6 +14,14 @@ const METHOD = { ru: { REMOTE: 'без выезда', PHOTOS: 'по фото', V
 const OCC = { ru: { OWNER_PRESENT: 'владелец будет в квартире', EMPTY: 'квартира пустая', UNKNOWN: 'пока неизвестно, кто будет' }, en: { OWNER_PRESENT: 'the owner will be there', EMPTY: 'the apartment will be empty', UNKNOWN: 'not known yet who will be there' } };
 const total = (x) => x.workKzt + (x.partsKzt || 0);
 const range = (x) => money(total(x)) + (x.maxKzt ? ' – ' + money(x.maxKzt) : '');
+const hm = (d) => d ? new Date(d).toLocaleTimeString('ru-RU', { timeZone: 'Asia/Almaty', hour: '2-digit', minute: '2-digit' }) : '';
+// трансфер: d.transfer — поездка, d.job — заказ водителю, d.trip — { from, to }
+const J = (d) => d.job || {}, T = (d) => d.trip || {};
+const when = (d, l) => `${DIR[l][d.transfer.direction]} · ${day(d.transfer.date, l)} ${d.transfer.time}${d.transfer.flight ? (l === 'en' ? ' · flight ' : ' · рейс ') + e(d.transfer.flight) : ''}`;
+const way = (d) => T(d).from ? `\n📍 ${e(T(d).from)} → ${e(T(d).to)}` : '';
+const pax = (d, l) => l === 'en'
+  ? `👤 ${e(d.transfer.guestName || '')} · ${d.transfer.pax} pax · ${d.transfer.bags ?? 0} bags${d.transfer.childSeats ? ` · child seats: ${d.transfer.childSeats}` : ''}`
+  : `👤 ${e(d.transfer.guestName || '')} · ${d.transfer.pax} пасс. · багаж ${d.transfer.bags ?? 0}${d.transfer.childSeats ? ` · детских кресел: ${d.transfer.childSeats}` : ''}`;
 const aptNo = (a) => `${e(a.title)}${a.address ? `\n📍 ${e(a.address)}` : ''}`;
 
 export const templates = {
@@ -38,7 +46,24 @@ export const templates = {
       `${DIR.ru[d.transfer.direction]} · ${PLACE.ru[d.transfer.place]} · ${day(d.transfer.date, 'ru')} ${d.transfer.time}${d.transfer.flight ? ' · ' + e(d.transfer.flight) : ''}\n` +
       `👤 ${e(d.transfer.guestName || d.guest?.name)} ${e(d.transfer.guestPhone || '')} · ${d.transfer.pax} пасс.\n💳 ${money(d.transfer.priceKzt)}\n\nНазначьте водителя в админке.`,
     'transfer.assigned': d => `🚗 <b>Трансфер подтверждён</b>\n${DIR.ru[d.transfer.direction]} · ${day(d.transfer.date, 'ru')} ${d.transfer.time}${d.transfer.flight ? ' · рейс ' + e(d.transfer.flight) : ''}\n` +
-      `${d.transfer.driverName ? `👨‍✈️ Водитель: ${e(d.transfer.driverName)}\n` : ''}${d.transfer.sign ? `🪧 Табличка: ${e(d.transfer.sign)}\n` : ''}💳 ${money(d.transfer.priceKzt)}`,
+      `${d.transfer.driverName ? `👨‍✈️ Водитель: ${e(d.transfer.driverName)}${J(d).vehicle ? `, ${e(J(d).vehicle)}` : ''}\n` : ''}${d.transfer.sign ? `🪧 Табличка: ${e(d.transfer.sign)}\n` : ''}💳 ${money(d.transfer.priceKzt)}`,
+    'transfer.offered': d => `🚗 <b>Новый заказ на трансфер — кто возьмёт?</b>\n${when(d, 'ru')}${way(d)}\n${pax(d, 'ru')}` +
+      `${J(d).notes ? `\n💬 ${e(J(d).notes)}` : ''}${J(d).payoutKzt != null ? `\n💵 Водителю: ${money(J(d).payoutKzt)}` : ''}\n\nПриложение команды → «Трансферы» → «Беру». Заказ получает первый.`,
+    'transfer.accepted': d => `✅ <b>Трансфер взял ${e(J(d).driverName)}</b>${J(d).vehicle ? ` (${e(J(d).vehicle)})` : ''}\n${when(d, 'ru')}${way(d)}\n${pax(d, 'ru')}${d.booking ? `\nБронь №${d.booking.number}` : ''}`,
+    'transfer.driver_assigned': d => `🚗 <b>Вам назначен трансфер</b>\n${when(d, 'ru')}${way(d)}\n${pax(d, 'ru')}` +
+      `${d.transfer.guestPhone ? `\n📞 Гость: ${e(d.transfer.guestPhone)}` : ''}${d.transfer.sign ? `\n🪧 Табличка: ${e(d.transfer.sign)}` : ''}` +
+      `${J(d).meetingPoint ? `\n📌 Встреча: ${e(J(d).meetingPoint)}` : ''}${J(d).freeWaitMin ? `\n⏱ Бесплатное ожидание: ${J(d).freeWaitMin} мин` : ''}${J(d).payoutKzt != null ? `\n💵 ${money(J(d).payoutKzt)}` : ''}` +
+      `${d.link ? `\n\nОтмечайте шаги по ссылке: ${e(d.link)}` : ''}`,
+    'transfer.driver_removed': d => `↩️ <b>Трансфер передан другому водителю</b>\n${when(d, 'ru')}${way(d)}\nЕхать не нужно.`,
+    'transfer.unassigned': d => `${d.urgent ? '🚨 <b>Срочно: трансфер без водителя</b>' : '⚠️ <b>Никто не взял трансфер</b>'}${d.reason ? ` (${e(d.reason)})` : ''}\n${when(d, 'ru')}${way(d)}\n${pax(d, 'ru')}\n\nНазначьте водителя вручную: админка → «Трансферы».`,
+    'transfer.released': d => `↩️ <b>${e(d.byName || 'Водитель')} отказался от трансфера</b>${d.reason ? `\n💬 ${e(d.reason)}` : ''}\n${when(d, 'ru')}${way(d)}\nЗаказ снова предложен всем водителям.`,
+    'transfer.updated': d => `🕒 <b>Изменения в трансфере</b>${d.byName ? ` (${e(d.byName)})` : ''}\n${d.before ? `Было: ${e(d.before)}\nСтало: ${e(d.after)}\n` : ''}${when(d, 'ru')}${way(d)}\n${pax(d, 'ru')}`,
+    'transfer.cancelled': d => `🚫 <b>Трансфер отменён</b>${J(d).cancelReason ? ` — ${e(J(d).cancelReason)}` : ''}\n${when(d, 'ru')}${way(d)}\nЕхать не нужно.`,
+    'transfer.reminder': d => `⏰ <b>Скоро подача</b>\n${when(d, 'ru')}${way(d)}\n${pax(d, 'ru')}${d.transfer.guestPhone ? `\n📞 ${e(d.transfer.guestPhone)}` : ''}${d.transfer.sign ? `\n🪧 Табличка: ${e(d.transfer.sign)}` : ''}` +
+      `${d.transfer.flight ? '\nПроверьте рейс — если задерживается, поменяйте время в приложении.' : ''}`,
+    'transfer.en_route': d => `🚗 <b>Водитель выехал</b>\n${e(J(d).driverName || '')}${J(d).vehicle ? `, ${e(J(d).vehicle)}` : ''}${J(d).etaAt ? `\nБудет примерно в ${hm(J(d).etaAt)}` : ''}`,
+    'transfer.driver_arrived': d => `📍 <b>Водитель на месте</b>\n${e(J(d).driverName || '')}${J(d).vehicle ? `, ${e(J(d).vehicle)}` : ''}${d.transfer.sign ? `\n🪧 Табличка: ${e(d.transfer.sign)}` : ''}` +
+      `${J(d).meetingPoint ? `\n📌 ${e(J(d).meetingPoint)}` : ''}${J(d).freeWaitMin ? `\n⏱ Бесплатно ждёт ${J(d).freeWaitMin} мин` : ''}`,
     'cleaning.reported': d => `🧹 <b>Уборка ${d.task.status === 'done' ? 'завершена' : 'обновлена'}</b>\n🏠 ${e(d.apartment.title)}\n👤 ${e(d.assignee?.name || '—')}` +
       `${d.task.report ? `\n💬 ${e(d.task.report)}` : ''}`,
     'repair.assigned': d => `🛠 <b>Новая заявка</b>${d.task.quickJob ? ' · простая работа' : ''}\n🔧 ${e(d.task.title)}\n🏠 ${aptNo(d.apartment)}\n👥 ${OCC.ru[d.task.occupancy] || ''}` +
@@ -74,7 +99,24 @@ export const templates = {
     'transfer.requested': d => `🚗 <b>Transfer order</b>${d.booking ? ` for booking #${d.booking.number}` : ''}\n${DIR.en[d.transfer.direction]} · ${PLACE.en[d.transfer.place]} · ${day(d.transfer.date, 'en')} ${d.transfer.time}${d.transfer.flight ? ' · ' + e(d.transfer.flight) : ''}\n` +
       `👤 ${e(d.transfer.guestName || d.guest?.name)} ${e(d.transfer.guestPhone || '')} · ${d.transfer.pax} pax\n💳 ${money(d.transfer.priceKzt)}\n\nAssign a driver in the admin panel.`,
     'transfer.assigned': d => `🚗 <b>Your transfer is confirmed</b>\n${DIR.en[d.transfer.direction]} · ${day(d.transfer.date, 'en')} ${d.transfer.time}${d.transfer.flight ? ' · flight ' + e(d.transfer.flight) : ''}\n` +
-      `${d.transfer.driverName ? `👨‍✈️ Driver: ${e(d.transfer.driverName)}\n` : ''}${d.transfer.sign ? `🪧 Name sign: ${e(d.transfer.sign)}\n` : ''}💳 ${money(d.transfer.priceKzt)}`,
+      `${d.transfer.driverName ? `👨‍✈️ Driver: ${e(d.transfer.driverName)}${J(d).vehicle ? `, ${e(J(d).vehicle)}` : ''}\n` : ''}${d.transfer.sign ? `🪧 Name sign: ${e(d.transfer.sign)}\n` : ''}💳 ${money(d.transfer.priceKzt)}`,
+    'transfer.offered': d => `🚗 <b>New transfer job — who takes it?</b>\n${when(d, 'en')}${way(d)}\n${pax(d, 'en')}` +
+      `${J(d).notes ? `\n💬 ${e(J(d).notes)}` : ''}${J(d).payoutKzt != null ? `\n💵 Driver pay: ${money(J(d).payoutKzt)}` : ''}\n\nTeam app → “Transfers” → “Take it”. First to accept gets it.`,
+    'transfer.accepted': d => `✅ <b>${e(J(d).driverName)} took the transfer</b>${J(d).vehicle ? ` (${e(J(d).vehicle)})` : ''}\n${when(d, 'en')}${way(d)}\n${pax(d, 'en')}${d.booking ? `\nBooking #${d.booking.number}` : ''}`,
+    'transfer.driver_assigned': d => `🚗 <b>You are assigned a transfer</b>\n${when(d, 'en')}${way(d)}\n${pax(d, 'en')}` +
+      `${d.transfer.guestPhone ? `\n📞 Guest: ${e(d.transfer.guestPhone)}` : ''}${d.transfer.sign ? `\n🪧 Name sign: ${e(d.transfer.sign)}` : ''}` +
+      `${J(d).meetingPoint ? `\n📌 Meeting point: ${e(J(d).meetingPoint)}` : ''}${J(d).freeWaitMin ? `\n⏱ Free waiting: ${J(d).freeWaitMin} min` : ''}${J(d).payoutKzt != null ? `\n💵 ${money(J(d).payoutKzt)}` : ''}` +
+      `${d.link ? `\n\nUpdate the steps via the link: ${e(d.link)}` : ''}`,
+    'transfer.driver_removed': d => `↩️ <b>The transfer was given to another driver</b>\n${when(d, 'en')}${way(d)}\nNo need to go.`,
+    'transfer.unassigned': d => `${d.urgent ? '🚨 <b>Urgent: transfer has no driver</b>' : '⚠️ <b>Nobody took the transfer</b>'}${d.reason ? ` (${e(d.reason)})` : ''}\n${when(d, 'en')}${way(d)}\n${pax(d, 'en')}\n\nAssign a driver manually: admin → “Transfers”.`,
+    'transfer.released': d => `↩️ <b>${e(d.byName || 'The driver')} dropped the transfer</b>${d.reason ? `\n💬 ${e(d.reason)}` : ''}\n${when(d, 'en')}${way(d)}\nOffered to all drivers again.`,
+    'transfer.updated': d => `🕒 <b>Transfer changed</b>${d.byName ? ` (${e(d.byName)})` : ''}\n${d.before ? `Was: ${e(d.before)}\nNow: ${e(d.after)}\n` : ''}${when(d, 'en')}${way(d)}\n${pax(d, 'en')}`,
+    'transfer.cancelled': d => `🚫 <b>Transfer cancelled</b>${J(d).cancelReason ? ` — ${e(J(d).cancelReason)}` : ''}\n${when(d, 'en')}${way(d)}\nNo need to go.`,
+    'transfer.reminder': d => `⏰ <b>Pickup soon</b>\n${when(d, 'en')}${way(d)}\n${pax(d, 'en')}${d.transfer.guestPhone ? `\n📞 ${e(d.transfer.guestPhone)}` : ''}${d.transfer.sign ? `\n🪧 Name sign: ${e(d.transfer.sign)}` : ''}` +
+      `${d.transfer.flight ? '\nCheck the flight — if it is delayed, change the time in the app.' : ''}`,
+    'transfer.en_route': d => `🚗 <b>Your driver is on the way</b>\n${e(J(d).driverName || '')}${J(d).vehicle ? `, ${e(J(d).vehicle)}` : ''}${J(d).etaAt ? `\nExpected around ${hm(J(d).etaAt)}` : ''}`,
+    'transfer.driver_arrived': d => `📍 <b>Your driver has arrived</b>\n${e(J(d).driverName || '')}${J(d).vehicle ? `, ${e(J(d).vehicle)}` : ''}${d.transfer.sign ? `\n🪧 Name sign: ${e(d.transfer.sign)}` : ''}` +
+      `${J(d).meetingPoint ? `\n📌 ${e(J(d).meetingPoint)}` : ''}${J(d).freeWaitMin ? `\n⏱ Free waiting: ${J(d).freeWaitMin} min` : ''}`,
     'cleaning.reported': d => `🧹 <b>Cleaning ${d.task.status === 'done' ? 'finished' : 'updated'}</b>\n🏠 ${e(d.apartment.titleEn || d.apartment.title)}\n👤 ${e(d.assignee?.name || '—')}${d.task.report ? `\n💬 ${e(d.task.report)}` : ''}`,
     'repair.assigned': d => `🛠 <b>New work request</b>${d.task.quickJob ? ' · quick job' : ''}\n🔧 ${e(d.task.title)}\n🏠 ${aptNo(d.apartment)}\n👥 ${OCC.en[d.task.occupancy] || ''}` +
       `${d.task.description ? `\n💬 ${e(d.task.description)}` : ''}\n\nEstimate remotely, from photos, or request a visit.`,

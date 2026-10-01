@@ -34,7 +34,7 @@ const server = app.listen(config.port, async () => {
     startTelegram({ bot, mode: config.telegram.mode, publicUrl: config.publicUrl }).catch(e => console.error('[telegram] не удалось запустить:', e.message));
   }
 });
-const stopScheduler = startScheduler({ prisma, events });
+const stopScheduler = startScheduler({ prisma, events, dispatch: app.locals.dispatch });
 
 const shutdown = async () => {
   stopScheduler(); if (bot && config.telegram.mode === 'polling') await bot.stop().catch(() => {});

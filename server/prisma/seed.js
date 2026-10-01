@@ -20,7 +20,7 @@ const BUILDING = fs.readFileSync(path.join(ASSETS, 'photos', 'highvill-g1-1200.j
 const prisma = new PrismaClient();
 const PASSWORD = process.env.SEED_PASSWORD || 'demo12345';
 const DEMO_SLUGS = ['astana-stay', 'demo-b'];
-const ROLE = { owner: 'owner', admin: 'admin', cleaner: 'cleaning', master: 'master' };
+const ROLE = { owner: 'owner', admin: 'admin', cleaner: 'cleaning', master: 'master', driver: 'driver' };
 const AREA = { 'Студия': 24, '1-комн.': 38, '2-комн.': 58, '3-комн.': 82 };
 const ROOMS_EN = { 'Студия': 'Studio', '1-комн.': '1-bedroom', '2-комн.': '2-bedroom', '3-комн.': '3-bedroom' };
 const CAPTIONS = [['Вид', 'View'], ['Гостиная', 'Living room'], ['Спальня', 'Bedroom'], ['Кухня', 'Kitchen'], ['Ванная', 'Bathroom']];
@@ -124,17 +124,118 @@ async function main() {
       },
     });
   }
-  // трансферы
-  for (const t of d.transfers) {
-    const b = d.bookings.find(x => x.id === t.bookingId);
-    await prisma.transfer.create({
+  // ---------- водители и трансферы «как в Uber» (статусы — src/services/transferJobs.js) ----------
+  // владелец и админ — в списке водителей; три нанятых водителя (роль driver) и внешний водитель без входа (по ссылке)
+  await prisma.membership.updateMany({ where: { accountId: acc.id, role: { in: ['owner', 'admin'] } }, data: { canDrive: true } });
+  await prisma.membership.updateMany({ where: { accountId: acc.id, role: 'owner' }, data: { vehicle: 'Toyota Land Cruiser Prado, белый, 001 AZN 01' } });
+  const DRIVERS = [
+    { login: 'ruslan', name: 'Руслан Тлеубаев', phone: '+77003000001', vehicle: 'Hyundai Sonata, белая, 777 AAA 01' },
+    { login: 'bauyrzhan', name: 'Бауыржан Сеитов', phone: '+77003000002', vehicle: 'Toyota Camry, чёрная, 505 KZT 01' },
+    { login: 'kanat', name: 'Канат Ермеков', phone: '+77003000003', vehicle: 'Kia K5, серая, 123 ABK 01' },
+  ];
+  const drv = {};
+  for (const x of DRIVERS) {
+    const u = await prisma.user.create({ data: { name: x.name, email: `${x.login}@astanastay.example`, phone: x.phone, passwordHash, locale: 'ru' } });
+    await prisma.membership.create({ data: { userId: u.id, accountId: acc.id, role: 'driver', canDrive: true, vehicle: x.vehicle } });
+    drv[x.name.split(' ')[0]] = { ...u, vehicle: x.vehicle };
+  }
+  const extDriver = await prisma.contractor.create({ data: { accountId: acc.id, name: 'Такси «Жол» (внешний водитель)', type: 'other', phone: '+7 701 909 09 09', note: 'Hyundai Staria, минивэн, 909 JOL 01', canDrive: true } });
+  const ownerUser = Object.values(users).find(u => u.email.startsWith('azamat@'));
+  const SYS = { type: 'system' };
+  const nowMs = Date.now();
+  // «ЧЧ:ММ» по Астане через m минут (в пределах сегодняшнего дня)
+  const hmIn = (m) => { const t = new Date(nowMs + m * 60000 + 5 * 3600000); const mins = Math.min(Math.max(t.getUTCHours() * 60 + t.getUTCMinutes(), 5), 23 * 60 + 55); return `${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`; };
+  const minutes = (m) => new Date(nowMs + m * 60000);
+  async function seedJob(tr, x) {
+    const pickupAt = at(Math.round(tr.date / DAY_MS) - offset, tr.time);
+    const driver = x.driver === 'owner' ? { ...ownerUser, vehicle: 'Toyota Land Cruiser Prado, белый, 001 AZN 01' } : x.driver ? drv[x.driver] : null;
+    const job = await prisma.transferJob.create({
       data: {
-        accountId: acc.id, bookingId: bk[t.bookingId]?.id, guestId: bk[t.bookingId]?.guestId, apartmentId: b ? apt[b.aptId].id : null,
-        direction: t.dir, place: 'airport', date: day(t.date), time: t.time, flight: t.flight, pax: t.pax, priceKzt: t.price,
-        status: t.status, driverName: t.driver, guestName: b?.guest, sign: b?.guest,
+        accountId: acc.id, transferId: tr.id, bookingId: tr.bookingId, apartmentId: tr.apartmentId, status: x.status, pickupAt,
+        freeWaitMin: tr.direction === 'out' ? 15 : (tr.place === 'station' ? 30 : 60), payoutKzt: tr.priceKzt, notes: x.notes || null,
+        meetingPoint: tr.direction === 'in' && tr.place === 'airport' ? 'Зал прилёта, у выхода из зоны выдачи багажа, с табличкой' : null,
+        driverUserId: driver?.id || null, driverContractorId: x.ext ? extDriver.id : null, driverName: x.ext ? extDriver.name : driver?.name || null,
+        vehicle: x.ext ? extDriver.note : driver?.vehicle || null, linkToken: x.ext ? randomToken(12) : null,
+        offeredAt: x.offeredAt, escalatedAt: x.escalatedAt || null, acceptedAt: x.acceptedAt || null, enRouteAt: x.enRouteAt || null, etaAt: x.etaAt || null,
+        arrivedAt: x.arrivedAt || null, pickedUpAt: x.pickedUpAt || null, doneAt: x.doneAt || null, cancelledAt: x.cancelledAt || null, cancelReason: x.cancelReason || null,
+        paid: !!x.paid, paidAt: x.paid ? x.doneAt : null,
       },
     });
+    const TR_ST = { OFFERED: 'planned', UNASSIGNED: 'planned', DONE: 'done', CANCELLED: 'cancelled' };
+    await prisma.transfer.update({ where: { id: tr.id }, data: { status: TR_ST[x.status] || 'driver', driverName: job.driverName } });
+    const D = driver ? { type: x.driver === 'owner' ? 'owner' : 'driver', id: driver.id, name: driver.name } : null;
+    const OWN = { type: 'owner', id: ownerUser.id, name: ownerUser.name };
+    const evs = [['offered', SYS, x.offeredAt, null, { round: 1 }]];
+    if (x.escalatedAt) evs.push(['escalated', SYS, x.escalatedAt, x.escalateNote || 'никто не взял за 30 мин']);
+    if (x.acceptedAt) evs.push(x.ext || x.assigned ? ['assigned', OWN, x.acceptedAt, null, { driver: job.driverName }] : ['accepted', D, x.acceptedAt]);
+    if (x.enRouteAt) evs.push(['en_route', D, x.enRouteAt, null, x.etaAt ? { etaMinutes: Math.round((x.etaAt - x.enRouteAt) / 60000) } : null]);
+    if (x.arrivedAt) evs.push(['arrived', D, x.arrivedAt]);
+    if (x.pickedUpAt) evs.push(['picked_up', D, x.pickedUpAt]);
+    if (x.doneAt) evs.push(['done', D, x.doneAt]);
+    if (x.paid) evs.push(['paid', OWN, new Date(x.doneAt.getTime() + 3600000), null, { payoutKzt: tr.priceKzt }]);
+    if (x.cancelledAt) evs.push(['cancelled', OWN, x.cancelledAt, x.cancelReason]);
+    for (const [type, actor, createdAt, note, data] of evs) {
+      await prisma.transferEvent.create({ data: { accountId: acc.id, jobId: job.id, type, actorType: actor?.type || 'system', actorId: actor?.id || null, actorName: actor?.name || null, note: note || null, data: data || undefined, createdAt } });
+    }
+    return job;
   }
+  const mkTransfer = (bkRec, aptRec, guestName, x) => prisma.transfer.create({
+    data: {
+      accountId: acc.id, bookingId: bkRec?.id, guestId: bkRec?.guestId, apartmentId: aptRec?.id, direction: x.dir, place: x.place || 'airport', date: x.date, time: x.time,
+      flight: x.flight || null, pax: x.pax || 2, bags: x.bags ?? 2, childSeats: x.childSeats || 0, priceKzt: x.price || 8000, status: 'requested',
+      guestName, sign: guestName, guestPhone: x.phone || null,
+    },
+  });
+  const guestPhone = (b) => b.phone.replace(/\s/g, '');
+  // трансферы из прототипа: прошлые — выполнены; будущие — водитель взял или ищем водителя
+  let k = 0, cancelledOne = false, extOne = false, ownerOne = false;
+  for (const t of d.transfers) {
+    const b = d.bookings.find(x => x.id === t.bookingId);
+    const tr = await mkTransfer(bk[t.bookingId], apt[b.aptId], b.guest, { dir: t.dir, date: day(t.date), time: t.time, flight: t.flight, pax: t.pax, price: t.price, phone: guestPhone(b), bags: Math.min(t.pax, 3), childSeats: t.pax >= 4 ? 1 : 0 });
+    const name = (t.driver || '').split(' · ')[0];
+    const pickup = at(t.date, t.time);
+    const base = { offeredAt: new Date(pickup.getTime() - 3 * DAY_MS) };
+    k++;
+    if (pickup.getTime() < nowMs - 2 * 3600000) {
+      await seedJob(tr, { ...base, status: 'DONE', driver: drv[name] ? name : 'Руслан', acceptedAt: new Date(base.offeredAt.getTime() + 7 * 60000), enRouteAt: new Date(pickup.getTime() - 50 * 60000), arrivedAt: new Date(pickup.getTime() - 5 * 60000), pickedUpAt: new Date(pickup.getTime() + 25 * 60000), doneAt: new Date(pickup.getTime() + 70 * 60000), paid: k % 2 === 0 });
+    } else if (t.status === 'planned' && !cancelledOne && t.date - d.TODAY > 3) {
+      cancelledOne = true;
+      await seedJob(tr, { ...base, offeredAt: minutes(-26 * 60), status: 'CANCELLED', cancelledAt: minutes(-20 * 60), cancelReason: 'Гость поедет сам — передумал' });
+    } else if (t.status === 'planned') {
+      await seedJob(tr, { status: 'OFFERED', offeredAt: minutes(-5 - (k % 10)) });
+    } else if (!extOne && t.date - d.TODAY > 1) {
+      extOne = true;
+      await seedJob(tr, { status: 'ACCEPTED', ext: true, offeredAt: minutes(-30 * 60), escalatedAt: minutes(-29.5 * 60), acceptedAt: minutes(-29 * 60) });
+    } else if (!ownerOne && t.date - d.TODAY > 1) {
+      ownerOne = true;
+      await seedJob(tr, { status: 'ACCEPTED', driver: 'owner', offeredAt: minutes(-10 * 60), acceptedAt: minutes(-9.8 * 60) });
+    } else {
+      await seedJob(tr, { status: 'ACCEPTED', driver: drv[name] ? name : 'Канат', offeredAt: minutes(-48 * 60 + k * 20), acceptedAt: minutes(-48 * 60 + k * 20 + 4) });
+    }
+  }
+  // сегодняшние заезды — водитель в пути, на месте, гость в машине; один заказ никто не взял (эскалация)
+  const todayIn0 = (id) => d.bookings.find(x => x.id === id && x.ci === d.TODAY);
+  const live = [
+    [1179, { status: 'PICKED_UP', driver: 'Руслан', time: hmIn(-40), flight: 'KC 852' }],
+    [1328, { status: 'ARRIVED', driver: 'Бауыржан', time: hmIn(10), flight: 'DV 728' }],
+    [1363, { status: 'EN_ROUTE', driver: 'Канат', time: hmIn(55), flight: 'FS 7023', place: 'station' }],
+    [1065, { status: 'UNASSIGNED', time: hmIn(150), flight: 'IQ 3311', childSeats: 1 }],
+  ];
+  for (const [id, x] of live) {
+    const b = todayIn0(id); if (!b) continue;
+    const tr = await mkTransfer(bk[id], apt[b.aptId], b.guest, { dir: 'in', place: x.place || 'airport', date: day(d.TODAY), time: x.time, flight: x.place === 'station' ? null : x.flight, pax: b.guests, bags: Math.min(b.guests, 3), childSeats: x.childSeats || 0, price: x.place === 'station' ? 6000 : 8000, phone: guestPhone(b) });
+    const pickup = at(d.TODAY, x.time);
+    const j = { status: x.status, driver: x.driver, offeredAt: minutes(-20 * 60), notes: x.childSeats ? 'Детское кресло (ребёнок 3 года)' : null };
+    if (x.status === 'UNASSIGNED') Object.assign(j, { offeredAt: minutes(-90), escalatedAt: minutes(-60), escalateNote: 'никто не взял за 30 мин' });
+    else j.acceptedAt = minutes(-19 * 60);
+    if (['EN_ROUTE', 'ARRIVED', 'PICKED_UP'].includes(x.status)) { j.enRouteAt = new Date(Math.min(pickup.getTime() - 45 * 60000, nowMs - 5 * 60000)); j.etaAt = new Date(pickup.getTime() - 10 * 60000); }
+    if (['ARRIVED', 'PICKED_UP'].includes(x.status)) j.arrivedAt = new Date(Math.min(pickup.getTime() - 8 * 60000, nowMs - 2 * 60000));
+    if (x.status === 'PICKED_UP') j.pickedUpAt = new Date(Math.min(pickup.getTime() + 20 * 60000, nowMs - 60000));
+    await seedJob(tr, j);
+  }
+  // заявка на бронь с трансфером — заказ водителям появится, когда хозяин/админ подтвердит бронь
+  const reqWithTransfer = await prisma.booking.findFirst({ where: { accountId: acc.id, status: 'request' }, orderBy: { checkIn: 'asc' }, include: { guest: true, apartment: true } });
+  if (reqWithTransfer) await mkTransfer(reqWithTransfer, reqWithTransfer.apartment, reqWithTransfer.guest.name, { dir: 'in', date: reqWithTransfer.checkIn, time: '21:35', flight: 'KC 921', pax: reqWithTransfer.guestsCount, price: 9500, phone: reqWithTransfer.guest.phone });
   // уборки
   for (const c of d.cleanings) {
     await prisma.cleaningTask.create({
@@ -258,10 +359,10 @@ async function main() {
   const gB = await prisma.guest.create({ data: { accountId: accB.id, name: 'Гость Б', phone: '+77000000001' } });
   await prisma.booking.create({ data: { accountId: accB.id, apartmentId: b1.id, guestId: gB.id, number: 1001, token: randomToken(12), source: 'direct', status: 'confirmed', checkIn: day(d.TODAY + 2), checkOut: day(d.TODAY + 4), guestsCount: 2, nightlyKzt: 22000, totalKzt: 44000 } });
 
-  const counts = await Promise.all([prisma.apartment.count(), prisma.apartmentPhoto.count(), prisma.booking.count(), prisma.cleaningTask.count(), prisma.repairTask.count(), prisma.transfer.count()]);
+  const counts = await Promise.all([prisma.apartment.count(), prisma.apartmentPhoto.count(), prisma.booking.count(), prisma.cleaningTask.count(), prisma.repairTask.count(), prisma.transfer.count(), prisma.transferJob.count()]);
   if (!config.isTest) {
-    console.log(`Готово: квартир ${counts[0]}, фото ${counts[1]}, броней ${counts[2]}, уборок ${counts[3]}, заявок мастерам ${counts[4]}, трансферов ${counts[5]}`);
-    console.log(`Вход в админку: azamat@astanastay.example / ${PASSWORD} (владелец), alina@astanastay.example (админ), gulnara@… (клининг), marat@… (мастер), electric@… (подрядчик Master Electric)`);
+    console.log(`Готово: квартир ${counts[0]}, фото ${counts[1]}, броней ${counts[2]}, уборок ${counts[3]}, заявок мастерам ${counts[4]}, трансферов ${counts[5]} (заказов водителям ${counts[6]})`);
+    console.log(`Вход в админку: azamat@astanastay.example / ${PASSWORD} (владелец), alina@astanastay.example (админ), gulnara@… (клининг), marat@… (мастер), electric@… (подрядчик Master Electric), ruslan@ / bauyrzhan@ / kanat@ (водители)`);
   }
 }
 

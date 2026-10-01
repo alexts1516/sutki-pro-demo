@@ -34,7 +34,7 @@ const TransferSchema = z.object({
   name: z.string().trim().min(2).max(80).optional(), phone: z.string().trim().regex(phoneRe).optional(), lang: z.enum(['ru', 'en']).default('ru'),
 });
 
-export default function publicRouter({ events, payments, config }) {
+export default function publicRouter({ events, payments, config, dispatch }) {
   const r = Router({ mergeParams: true });
 
   // аккаунт по slug (кешировать не будем — запрос дешёвый)
@@ -152,7 +152,10 @@ export default function publicRouter({ events, payments, config }) {
       },
     });
     events.emit('transfer.requested', { accountId: req.accountId, transferId: t.id });
-    res.status(201).json({ id: t.id, status: t.status, priceKzt: t.priceKzt, date: isoDay(t.date), time: t.time });
+    // бронь уже подтверждена — заказ водителям создаётся сразу; иначе — при подтверждении брони
+    let status = t.status;
+    if (booking?.status === 'confirmed' && dispatch) { await dispatch.createForTransfer({ accountId: req.accountId, transferId: t.id }); status = 'planned'; }
+    res.status(201).json({ id: t.id, status, priceKzt: t.priceKzt, date: isoDay(t.date), time: t.time });
   });
   return r;
 }

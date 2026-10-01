@@ -32,26 +32,28 @@ model Account {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
-  memberships   Membership[]
-  invites       Invite[]
-  guests        Guest[]
-  apartments    Apartment[]
-  photos        ApartmentPhoto[]
-  bookings      Booking[]
-  transfers     Transfer[]
-  cleaningTasks CleaningTask[]
-  repairTasks   RepairTask[]
-  estimates     RepairEstimate[]
-  contractors   Contractor[]
-  rates         ExchangeRate[]
-  currency      CurrencySettings?
-  siteTexts     SiteText[]
-  brand         Brand?
-  notifications NotificationLog[]
-  payments      Payment[]
-  repairEvents  RepairEvent[]
-  repairPhotos  RepairPhoto[]
-  extraExpenses ExtraExpense[]
+  memberships    Membership[]
+  invites        Invite[]
+  guests         Guest[]
+  apartments     Apartment[]
+  photos         ApartmentPhoto[]
+  bookings       Booking[]
+  transfers      Transfer[]
+  cleaningTasks  CleaningTask[]
+  repairTasks    RepairTask[]
+  estimates      RepairEstimate[]
+  contractors    Contractor[]
+  rates          ExchangeRate[]
+  currency       CurrencySettings?
+  siteTexts      SiteText[]
+  brand          Brand?
+  notifications  NotificationLog[]
+  payments       Payment[]
+  repairEvents   RepairEvent[]
+  repairPhotos   RepairPhoto[]
+  extraExpenses  ExtraExpense[]
+  transferJobs   TransferJob[]
+  transferEvents TransferEvent[]
 }
 
 /// Сотрудник или владелец (гости — отдельная таблица Guest). Один человек может состоять в нескольких аккаунтах.
@@ -72,6 +74,7 @@ model User {
   occupancyEdits RepairTask[]   @relation("OccupancyUpdatedBy")
   invites        Invite[]
   contractorOf   Contractor[]   @relation("ContractorUser") /// вход внешнего подрядчика (например, Master Electric)
+  transferJobs   TransferJob[]  @relation("TransferDriver")
 }
 
 /// Роль пользователя в конкретном аккаунте.
@@ -79,8 +82,10 @@ model Membership {
   id        String   @id @default(cuid())
   userId    String
   accountId String
-  role      String /// owner | admin | cleaning | master
+  role      String /// owner | admin | cleaning | master | driver
   active    Boolean  @default(true)
+  canDrive  Boolean  @default(false) /// в списке водителей: получает предложения трансферов (владелец/админ — по умолчанию да, роль driver — всегда)
+  vehicle   String? /// машина водителя для гостя: «Toyota Camry, белая, 123 ABC 01»
   createdAt DateTime @default(now())
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -161,6 +166,7 @@ model Apartment {
   cleaningTasks CleaningTask[]
   repairTasks   RepairTask[]
   transfers     Transfer[]
+  transferJobs  TransferJob[]
 
   @@index([accountId])
 }
@@ -214,12 +220,13 @@ model Booking {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  account   Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  apartment Apartment      @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
-  guest     Guest?         @relation(fields: [guestId], references: [id], onDelete: SetNull)
-  transfers Transfer[]
-  cleanings CleaningTask[]
-  payments  Payment[]
+  account      Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  apartment    Apartment      @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  guest        Guest?         @relation(fields: [guestId], references: [id], onDelete: SetNull)
+  transfers    Transfer[]
+  cleanings    CleaningTask[]
+  payments     Payment[]
+  transferJobs TransferJob[]
 
   @@unique([accountId, number])
   @@index([accountId, checkIn])
@@ -242,7 +249,7 @@ model Transfer {
   childSeats  Int      @default(0)
   carClass    String   @default("standard") /// standard | minivan
   priceKzt    Int
-  status      String   @default("requested") /// requested | planned | driver | done | cancelled
+  status      String   @default("requested") /// requested | planned | driver | done | cancelled — зеркало статуса TransferJob для гостя
   driverName  String?
   sign        String?
   address     String?
@@ -251,12 +258,81 @@ model Transfer {
   paid        Boolean  @default(false)
   createdAt   DateTime @default(now())
 
-  account   Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  booking   Booking?   @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  guest     Guest?     @relation(fields: [guestId], references: [id], onDelete: SetNull)
-  apartment Apartment? @relation(fields: [apartmentId], references: [id], onDelete: SetNull)
+  account   Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  booking   Booking?     @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  guest     Guest?       @relation(fields: [guestId], references: [id], onDelete: SetNull)
+  apartment Apartment?   @relation(fields: [apartmentId], references: [id], onDelete: SetNull)
+  job       TransferJob?
 
   @@index([accountId, date])
+}
+
+/// Заказ-наряд на трансфер «как в Uber»: создаётся, когда хозяин/админ подтвердил бронь с трансфером,
+/// предлагается всем, кто может водить; первый «Беру» получает заказ. Детали поездки (дата, время, рейс,
+/// пассажиры, телефон гостя) живут в Transfer; здесь — диспетчерская часть. Статусы — src/services/transferJobs.js.
+model TransferJob {
+  id                 String    @id @default(cuid())
+  accountId          String
+  transferId         String    @unique
+  bookingId          String?
+  apartmentId        String?
+  status             String    @default("OFFERED") /// OFFERED | UNASSIGNED | ACCEPTED | EN_ROUTE | ARRIVED | PICKED_UP | DONE | CANCELLED
+  pickupAt           DateTime /// момент подачи (UTC) — из даты и времени трансфера в часовом поясе аккаунта
+  meetingPoint       String? /// где встречать: «зал прилёта, выход 3, у кофейни»
+  notes              String? /// багаж, детское кресло, особые просьбы
+  freeWaitMin        Int       @default(60) /// бесплатное ожидание: аэропорт 60, вокзал 30, адрес 15 мин
+  driverUserId       String? /// водитель из команды (владелец/админ/сотрудник с canDrive)
+  driverContractorId String? /// внешний водитель без входа — работает по ссылке linkToken
+  driverName         String?
+  vehicle            String?
+  payoutKzt          Int? /// сколько платим водителю (уходит в финансы после DONE)
+  paid               Boolean   @default(false)
+  paidAt             DateTime?
+  offerRound         Int       @default(1) /// сколько раз предлагали всем (после отказа водителя — снова)
+  offeredAt          DateTime?
+  escalatedAt        DateTime? /// никто не взял — хозяину/админу ушло «назначьте вручную»
+  acceptedAt         DateTime?
+  enRouteAt          DateTime?
+  etaAt              DateTime? /// водитель указал, когда будет на месте
+  arrivedAt          DateTime? /// «Я на месте» — с этого момента идёт бесплатное ожидание
+  pickedUpAt         DateTime?
+  doneAt             DateTime?
+  cancelledAt        DateTime?
+  cancelReason       String?
+  linkToken          String?   @unique
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  account          Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  transfer         Transfer        @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  booking          Booking?        @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  apartment        Apartment?      @relation(fields: [apartmentId], references: [id], onDelete: SetNull)
+  driverUser       User?           @relation("TransferDriver", fields: [driverUserId], references: [id], onDelete: SetNull)
+  driverContractor Contractor?     @relation(fields: [driverContractorId], references: [id], onDelete: SetNull)
+  events           TransferEvent[]
+
+  @@index([accountId, pickupAt])
+  @@index([accountId, status])
+  @@index([driverUserId])
+}
+
+/// Журнал заказа на трансфер: предложено, взял, отказался, назначен, выехал, на месте, гость в машине, завершён, отменён, эскалация, изменение времени.
+model TransferEvent {
+  id        String   @id @default(cuid())
+  accountId String
+  jobId     String
+  type      String
+  actorType String /// system | owner | admin | driver | link
+  actorId   String?
+  actorName String?
+  note      String?
+  data      Json?
+  createdAt DateTime @default(now())
+
+  account Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  job     TransferJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, createdAt])
 }
 
 model CleaningTask {
@@ -291,12 +367,14 @@ model Contractor {
   phone     String?
   note      String?
   regular   Boolean  @default(false)
+  canDrive  Boolean  @default(false) /// внешний водитель: можно назначить на трансфер (работает по ссылке)
   userId    String? /// пользователь с ролью master, под которым подрядчик входит в приложение команды
   createdAt DateTime @default(now())
 
-  account     Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  user        User?        @relation("ContractorUser", fields: [userId], references: [id], onDelete: SetNull)
-  repairTasks RepairTask[]
+  account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user         User?         @relation("ContractorUser", fields: [userId], references: [id], onDelete: SetNull)
+  repairTasks  RepairTask[]
+  transferJobs TransferJob[]
 
   @@index([userId])
 }

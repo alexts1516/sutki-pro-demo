@@ -4,10 +4,14 @@
 import { render } from './templates.js';
 import { consoleTransport } from './transports.js';
 import { nights } from '../lib/dates.js';
+import { route, driverWhere, PLACE_RU } from '../services/transferJobs.js';
+import { config } from '../config.js';
 
 export const EVENTS = ['booking.requested', 'booking.confirmed', 'checkin.upcoming', 'guest.checkin_instructions', 'transfer.requested',
   'transfer.assigned', 'cleaning.reported', 'repair.assigned', 'repair.visit_requested', 'estimate.submitted', 'estimate.decided',
-  'extra.submitted', 'extra.decided', 'repair.reported', 'repair.cancelled', 'repair.occupancy_changed', 'payment.succeeded'];
+  'extra.submitted', 'extra.decided', 'repair.reported', 'repair.cancelled', 'repair.occupancy_changed', 'payment.succeeded',
+  'transfer.offered', 'transfer.accepted', 'transfer.driver_assigned', 'transfer.driver_removed', 'transfer.unassigned', 'transfer.released',
+  'transfer.updated', 'transfer.cancelled', 'transfer.reminder', 'transfer.en_route', 'transfer.driver_arrived'];
 
 export function createNotificationService({ prisma, transport = null, logger = console, quiet = false }) {
   const fallback = consoleTransport({ quiet });
@@ -60,6 +64,19 @@ export function createNotificationService({ prisma, transport = null, logger = c
   const loadRepair = (accountId, id) => prisma.repairTask.findFirst({ where: { id, accountId }, include: { apartment: true, assignee: true, contractor: true } });
   const repairData = (t) => ({ task: t, apartment: t.apartment, assignee: t.assignee || (t.contractor ? { name: t.contractor.name } : null) });
 
+  // ---------- трансферы ----------
+  const loadJob = (accountId, id) => prisma.transferJob.findFirst({ where: { id, accountId }, include: { transfer: { include: { guest: true, booking: { include: { guest: true } } } }, apartment: true, booking: { select: { number: true } }, driverUser: true, driverContractor: true } });
+  const jobData = (j, extra = {}) => ({ job: j, transfer: j.transfer, trip: { ...route(j), placeLabel: PLACE_RU[j.transfer.place] }, booking: j.booking, ...extra });
+  /** Водителю заказа: из команды — в Telegram; внешнему — в журнал (ему отправляют ссылку вручную) */
+  async function toDriver(j, event, extra = {}, dedupeKey = null, who = null) {
+    const user = who?.userId !== undefined ? (who.userId ? await prisma.user.findUnique({ where: { id: who.userId } }) : null) : j.driverUser;
+    const contractor = who?.contractorId !== undefined ? (who.contractorId ? await prisma.contractor.findUnique({ where: { id: who.contractorId } }) : null) : j.driverContractor;
+    const data = jobData(j, extra);
+    if (user) return deliver({ accountId: j.accountId, event, recipientType: 'driver', recipientId: user.id, recipientName: user.name, chatId: user.telegramId, lang: user.locale, data, dedupeKey: dedupeKey && `${dedupeKey}:${user.id}` });
+    if (contractor) return deliver({ accountId: j.accountId, event, recipientType: 'contractor', recipientId: contractor.id, recipientName: contractor.name, data, dedupeKey: dedupeKey && `${dedupeKey}:${contractor.id}` });
+  }
+  const jobGuest = (j) => j.transfer.guest || j.transfer.booking?.guest || null;
+
   const loadBooking = (accountId, id) => prisma.booking.findFirst({ where: { id, accountId }, include: { apartment: true, guest: true, transfers: true } });
   const bookingData = (b) => ({ booking: b, apartment: b.apartment, guest: b.guest, nights: nights(b.checkIn, b.checkOut) });
 
@@ -90,6 +107,64 @@ export function createNotificationService({ prisma, transport = null, logger = c
       const t = await prisma.transfer.findFirst({ where: { id: transferId, accountId }, include: { booking: { include: { guest: true } }, guest: true } }); if (!t) return;
       const guest = t.guest || t.booking?.guest;
       return toGuest(accountId, guest, 'transfer.assigned', { transfer: t }, `transfer.assigned:${t.id}:${t.driverName || ''}`);
+    },
+    /** Новый заказ — всем, кто может водить (кроме отказавшегося) */
+    async 'transfer.offered'({ accountId, jobId, round = 1, exceptUserId = null }) {
+      const j = await loadJob(accountId, jobId); if (!j || !['OFFERED', 'UNASSIGNED'].includes(j.status)) return;
+      const drivers = await prisma.membership.findMany({ where: driverWhere(accountId), include: { user: true } });
+      const out = [];
+      for (const m of drivers) {
+        if (m.userId === exceptUserId) continue;
+        out.push(await deliver({ accountId, event: 'transfer.offered', recipientType: 'driver', recipientId: m.userId, recipientName: m.user.name, chatId: m.user.telegramId, lang: m.user.locale, data: jobData(j), dedupeKey: `transfer.offered:${j.id}:${round}:${m.userId}` }));
+      }
+      return out;
+    },
+    /** Водитель взял заказ — хозяину/админу; гостю — имя водителя, машина, табличка */
+    async 'transfer.accepted'({ accountId, jobId }) {
+      const j = await loadJob(accountId, jobId); if (!j) return;
+      await toManagers(accountId, 'transfer.accepted', jobData(j), { dedupeKey: `transfer.accepted:${j.id}:${j.driverUserId}` });
+      return toGuest(accountId, jobGuest(j), 'transfer.assigned', { transfer: j.transfer, job: j }, `transfer.assigned:${j.transferId}:${j.driverName || ''}`);
+    },
+    async 'transfer.driver_assigned'({ accountId, jobId, previousUserId = null, previousContractorId = null }) {
+      const j = await loadJob(accountId, jobId); if (!j) return;
+      await toDriver(j, 'transfer.driver_assigned', { link: j.linkToken ? `${config.publicUrl}/api/transfer-link/${j.linkToken}` : null });
+      if (previousUserId || previousContractorId) await toDriver(j, 'transfer.driver_removed', {}, null, { userId: previousUserId, contractorId: previousContractorId });
+      return toGuest(accountId, jobGuest(j), 'transfer.assigned', { transfer: j.transfer, job: j }, `transfer.assigned:${j.transferId}:${j.driverName || ''}`);
+    },
+    async 'transfer.driver_removed'({ accountId, jobId, userId = null, contractorId = null }) {
+      const j = await loadJob(accountId, jobId); if (!j) return;
+      return toDriver(j, 'transfer.driver_removed', {}, null, { userId, contractorId });
+    },
+    /** Никто не взял — хозяину/админу «назначьте вручную» (и срочно — за час до подачи) */
+    async 'transfer.unassigned'({ accountId, jobId, reason, urgent = false, dedupe }) {
+      const j = await loadJob(accountId, jobId); if (!j || j.status !== 'UNASSIGNED') return;
+      return toManagers(accountId, 'transfer.unassigned', jobData(j, { reason, urgent }), { dedupeKey: `transfer.unassigned:${dedupe || j.id}` });
+    },
+    async 'transfer.released'({ accountId, jobId, byName, reason }) {
+      const j = await loadJob(accountId, jobId); if (!j) return;
+      return toManagers(accountId, 'transfer.released', jobData(j, { byName, reason }));
+    },
+    async 'transfer.updated'({ accountId, jobId, before = null, after = null, byName = null, notifyManagers = false }) {
+      const j = await loadJob(accountId, jobId); if (!j) return;
+      const extra = { before, after, byName };
+      if (notifyManagers) await toManagers(accountId, 'transfer.updated', jobData(j, extra));
+      else if (j.driverUserId || j.driverContractorId) await toDriver(j, 'transfer.updated', extra);
+    },
+    async 'transfer.cancelled'({ accountId, jobId }) {
+      const j = await loadJob(accountId, jobId); if (!j) return;
+      return toDriver(j, 'transfer.cancelled');
+    },
+    async 'transfer.reminder'({ accountId, jobId, dedupe }) {
+      const j = await loadJob(accountId, jobId); if (!j) return;
+      return toDriver(j, 'transfer.reminder', {}, `transfer.reminder:${dedupe || j.id}`);
+    },
+    async 'transfer.en_route'({ accountId, jobId }) {
+      const j = await loadJob(accountId, jobId); if (!j) return;
+      return toGuest(accountId, jobGuest(j), 'transfer.en_route', jobData(j), `transfer.en_route:${j.id}`);
+    },
+    async 'transfer.driver_arrived'({ accountId, jobId }) {
+      const j = await loadJob(accountId, jobId); if (!j) return;
+      return toGuest(accountId, jobGuest(j), 'transfer.driver_arrived', jobData(j), `transfer.driver_arrived:${j.id}:${j.arrivedAt?.getTime() || ''}`);
     },
     async 'cleaning.reported'({ accountId, taskId }) {
       const task = await prisma.cleaningTask.findFirst({ where: { id: taskId, accountId }, include: { apartment: true, assignee: true } }); if (!task) return;

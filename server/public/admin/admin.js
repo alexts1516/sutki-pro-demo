@@ -1,12 +1,12 @@
-// Админка владельца: квартиры и фото, тексты сайта, бренд и логотип, брони, заявки мастерам, команда, журнал уведомлений.
+// Админка владельца: календарь (брони, уборки, заявки мастерам, трансферы), брони, трансферы «как в Uber», заявки мастерам, квартиры и фото, тексты, бренд, команда, уведомления.
 // Обычный JavaScript без сборки. Все данные — через REST API сервера (/api/admin/...).
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const money = (n) => String(Math.round(n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0') + '\u00a0₸';
 const fmtDay = (iso) => { const [y, m, d] = iso.split('-').map(Number); return `${d} ${['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'][m - 1]}`; };
-const ROLE = { owner: 'Владелец', admin: 'Администратор', cleaning: 'Клининг', master: 'Мастер' };
+const ROLE = { owner: 'Владелец', admin: 'Администратор', cleaning: 'Клининг', master: 'Мастер', driver: 'Водитель' };
 const SRC = { site: 'Сайт', airbnb: 'Airbnb', booking: 'Booking', telegram: 'Telegram', whatsapp: 'WhatsApp', direct: 'Напрямую' };
-const S = { me: null, view: 'apartments', apt: null, txLang: 'ru', texts: null, brand: null, drag: null };
+const S = { me: null, view: 'calendar', apt: null, txLang: 'ru', texts: null, brand: null, drag: null };
 
 async function api(path, opts = {}) {
   const o = { credentials: 'same-origin', ...opts, headers: { ...(opts.body && !(opts.body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}), ...(opts.headers || {}) } };
@@ -40,27 +40,28 @@ $('#loginForm').addEventListener('submit', async (e) => {
 $('#logoutBtn').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); location.hash = ''; showLogin(); });
 $('#menuBtn').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
 
-const VIEWS = [['apartments', '🏠', 'Квартиры и фото'], ['bookings', '📅', 'Брони и заявки'], ['repairs', '🛠', 'Заявки мастерам'], ['texts', '✏️', 'Тексты сайта'], ['brand', '🎨', 'Бренд и логотип'], ['team', '👥', 'Команда и Telegram'], ['notifications', '🔔', 'Уведомления']];
+const VIEWS = [['calendar', '🗓', 'Календарь'], ['bookings', '📅', 'Брони и заявки'], ['transfers', '🚗', 'Трансферы'], ['repairs', '🛠', 'Заявки мастерам'], ['apartments', '🏠', 'Квартиры и фото'], ['texts', '✏️', 'Тексты сайта'], ['brand', '🎨', 'Бренд и логотип'], ['team', '👥', 'Команда и Telegram'], ['notifications', '🔔', 'Уведомления']];
 function start(me) {
   S.me = me; $('#login').hidden = true; $('#app').hidden = false;
   $('#accName').textContent = me.account.name;
   $('#userBox').innerHTML = `<b>${esc(me.user.name)}</b>${esc(ROLE[me.role])}`;
   const [v, id] = location.hash.slice(1).split('/');
-  go(VIEWS.some(x => x[0] === v) ? v : 'apartments', id);
+  go(VIEWS.some(x => x[0] === v) ? v : 'calendar', id);
 }
 function renderNav() {
-  $('#nav').innerHTML = VIEWS.map(([k, i, l]) => `<button class="${S.view === k ? 'active' : ''}" data-nav="${k}"><span>${i}</span>${l}${k === 'bookings' && S.reqCount ? `<span class="cnt">${S.reqCount}</span>` : ''}${k === 'repairs' && S.wrCount ? `<span class="cnt">${S.wrCount}</span>` : ''}</button>`).join('');
+  $('#nav').innerHTML = VIEWS.map(([k, i, l]) => `<button class="${S.view === k ? 'active' : ''}" data-nav="${k}"><span>${i}</span>${l}${k === 'bookings' && S.reqCount ? `<span class="cnt">${S.reqCount}</span>` : ''}${k === 'repairs' && S.wrCount ? `<span class="cnt">${S.wrCount}</span>` : ''}${k === 'transfers' && S.trCount ? `<span class="cnt">${S.trCount}</span>` : ''}</button>`).join('');
 }
 $('#nav').addEventListener('click', (e) => { const b = e.target.closest('[data-nav]'); if (b) go(b.dataset.nav); });
 function go(view, id) {
-  S.view = view; renderNav(); $('#sidebar').classList.remove('open');
+  S.view = view; renderNav(); $('#sidebar').classList.remove('open'); closeDrawer();
   $('#crumb').textContent = VIEWS.find(v => v[0] === view)[2];
   history.replaceState(null, '', '#' + view + (id ? '/' + id : ''));
   window.scrollTo(0, 0);
   guard(async () => {
     if (view === 'apartments') return id ? openApartment(id) : renderApartments();
     if (view === 'repairs') return id ? (id === 'new' ? newRepair() : openRepair(id)) : renderRepairs();
-    return ({ bookings: renderBookings, texts: renderTexts, brand: renderBrand, team: renderTeam, notifications: renderNotifications })[view]();
+    if (view === 'transfers') return renderTransfers(id);
+    return ({ calendar: renderCalendar, bookings: renderBookings, texts: renderTexts, brand: renderBrand, team: renderTeam, notifications: renderNotifications })[view]();
   })();
 }
 const view = (html) => { $('#view').innerHTML = html; };
@@ -253,18 +254,18 @@ async function renderBrand() {
 async function renderBookings() {
   const [req, list] = await Promise.all([api('/api/admin/bookings?status=request'), api('/api/admin/bookings')]);
   S.reqCount = req.length; renderNav();
-  const pay = { paid: ['green', 'Оплачено'], prepaid: ['amber', 'Предоплата'], unpaid: ['red', 'Не оплачено'], refunded: ['', 'Возврат'] };
-  const st = { request: ['violet', 'Заявка'], confirmed: ['green', 'Подтверждена'], cancelled: ['', 'Отменена'], completed: ['', 'Завершена'] };
-  const row = (b, actions) => `<tr><td><b>№${b.number}</b><div class="muted small">${SRC[b.source] || b.source}</div></td><td>${esc(b.guest?.name || '—')}<div class="muted small">${esc(b.guest?.phone || '')}${b.guest?.telegramLinked ? ' · Telegram ✓' : ''}</div></td>
+  const pay = PAY_ST, st = BK_ST;
+  const row = (b, actions) => `<tr class="click" data-open="bk:${b.id}"><td><b>№${b.number}</b><div class="muted small">${SRC[b.source] || b.source}</div></td><td>${esc(b.guest?.name || '—')}<div class="muted small">${esc(b.guest?.phone || '')}${b.guest?.telegramLinked ? ' · Telegram ✓' : ''}</div></td>
     <td>${esc(b.apartment?.title || '')}</td><td style="white-space:nowrap">${fmtDay(b.checkIn)} → ${fmtDay(b.checkOut)}<div class="muted small">${b.guestsCount} гост.</div></td><td style="white-space:nowrap">${money(b.totalKzt)}${b.currencyShown !== 'KZT' && b.amountShown ? `<div class="muted small">гость видел ${b.amountShown} ${b.currencyShown}</div>` : ''}</td>
     <td><span class="chip ${st[b.status][0]}">${st[b.status][1]}</span> <span class="chip ${pay[b.paymentStatus][0]}">${pay[b.paymentStatus][1]}</span></td><td>${actions || ''}</td></tr>`;
-  view(`<div class="page-head"><div><h1>Брони и заявки</h1><p class="sub">Подтверждение заявки отправит гостю сообщение в Telegram (если он подключил бота по ссылке)</p></div></div>
+  view(`<div class="page-head"><div><h1>Брони и заявки</h1><p class="sub">Подтверждение заявки отправит гостю сообщение в Telegram, а заказанный трансфер — всем водителям. Нажмите на строку — откроется карточка брони.</p></div></div>
     <div class="stack"><div class="card"><div class="card-h"><h2>Новые заявки · ${req.length}</h2></div>${req.length ? `<div class="table-wrap"><table class="t"><thead><tr><th>Бронь</th><th>Гость</th><th>Квартира</th><th>Даты</th><th>Сумма</th><th>Статус</th><th></th></tr></thead><tbody>
       ${req.map(b => row(b, `<div class="row"><button class="btn sm success" data-confirm="${b.id}">Подтвердить</button><button class="btn sm" data-cancel="${b.id}">Отклонить</button></div>`)).join('')}</tbody></table></div>` : '<div class="empty">Новых заявок нет</div>'}</div>
     <div class="card"><div class="card-h"><h2>Ближайшие брони</h2><span class="muted small">неделя назад — 2 месяца вперёд</span></div><div class="table-wrap"><table class="t"><thead><tr><th>Бронь</th><th>Гость</th><th>Квартира</th><th>Даты</th><th>Сумма</th><th>Статус</th><th></th></tr></thead><tbody>
       ${list.filter(b => b.status !== 'request').slice(0, 150).map(b => row(b)).join('')}</tbody></table></div></div></div>`);
   $('#view').onclick = guard(async (e) => {
-    const b = e.target.closest('button'); if (!b) return;
+    const b = e.target.closest('button');
+    if (!b) { const o = e.target.closest('[data-open]'); if (o) openItem(o.dataset.open); return; }
     if (b.dataset.confirm) { const x = await api(`/api/admin/bookings/${b.dataset.confirm}/confirm`, { method: 'POST' }); toast(`Бронь №${x.number} подтверждена`); renderBookings(); }
     if (b.dataset.cancel) { if (!confirm('Отклонить заявку?')) return; const x = await api(`/api/admin/bookings/${b.dataset.cancel}/cancel`, { method: 'POST' }); toast(`Заявка №${x.number} отклонена`); renderBookings(); }
   });
@@ -386,11 +387,19 @@ function drawRepair() {
 // ---------------- команда ----------------
 async function renderTeam() {
   const list = await api('/api/admin/team');
-  view(`<div class="page-head"><div><h1>Команда и Telegram</h1><p class="sub">Чтобы получать уведомления, каждый открывает свою ссылку-приглашение в Telegram (нужен бот — см. README_SERVER.md)</p></div></div>
-    <div class="card"><div class="table-wrap"><table class="t"><thead><tr><th>Сотрудник</th><th>Роль</th><th>Доступ</th><th>Telegram</th><th></th></tr></thead><tbody>
-    ${list.map(m => `<tr><td><b>${esc(m.name)}</b><div class="muted small">${esc(m.email || m.phone || '')}</div></td><td>${ROLE[m.role]}</td><td>${m.active ? '<span class="chip green">включён</span>' : '<span class="chip">отключён</span>'}</td>
+  view(`<div class="page-head"><div><h1>Команда и Telegram</h1><p class="sub">Чтобы получать уведомления, каждый открывает свою ссылку-приглашение в Telegram (нужен бот — см. README_SERVER.md). «Водит» — человек получает заказы на трансфер и может нажать «Беру».</p></div></div>
+    <div class="card"><div class="table-wrap"><table class="t"><thead><tr><th>Сотрудник</th><th>Роль</th><th>Доступ</th><th>Водит (трансферы)</th><th>Telegram</th><th></th></tr></thead><tbody>
+    ${list.map(m => `<tr><td><b>${esc(m.name)}</b><div class="muted small">${esc(m.email || m.phone || '')}</div></td><td>${ROLE[m.role] || m.role}</td><td>${m.active ? '<span class="chip green">включён</span>' : '<span class="chip">отключён</span>'}</td>
+      <td>${m.role === 'driver' ? '<span class="chip blue">🚗 водитель</span>' : `<button class="btn sm ${m.canDrive ? 'success' : ''}" data-drive="${m.userId}" data-on="${m.canDrive ? 1 : 0}">${m.canDrive ? '🚗 Водит' : 'Не водит'}</button>`}
+        ${m.canDrive ? `<input class="veh" data-veh="${m.userId}" value="${esc(m.vehicle || '')}" placeholder="Машина, цвет, номер" title="Гость увидит машину, когда водитель возьмёт заказ">` : ''}</td>
       <td>${m.telegramLinked ? '<span class="chip green">подключён</span>' : '<span class="chip amber">не подключён</span>'}</td><td><button class="btn sm" data-invite="${m.userId}">Ссылка для Telegram</button><div class="muted small" id="inv-${m.userId}"></div></td></tr>`).join('')}</tbody></table></div></div>`);
+  $('#view').onchange = guard(async (e) => {
+    const v = e.target.closest('[data-veh]'); if (!v) return;
+    await api(`/api/admin/team/${v.dataset.veh}`, { method: 'PATCH', body: { vehicle: v.value.trim() || null } }); toast('Машина сохранена');
+  });
   $('#view').onclick = guard(async (e) => {
+    const dr = e.target.closest('[data-drive]');
+    if (dr) { const r = await api(`/api/admin/team/${dr.dataset.drive}`, { method: 'PATCH', body: { canDrive: dr.dataset.on !== '1' } }); toast(r.canDrive ? 'Теперь получает заказы на трансфер' : 'Больше не получает заказы на трансфер'); return renderTeam(); }
     const b = e.target.closest('[data-invite]'); if (!b) return;
     const r = await api(`/api/admin/team/${b.dataset.invite}/telegram-invite`, { method: 'POST' });
     $('#inv-' + b.dataset.invite).innerHTML = r.link ? `<a href="${esc(r.link)}" target="_blank" rel="noopener">${esc(r.link)}</a>` : `Код: <code>/start ${esc(r.payload)}</code> — бот ещё не настроен (нет TELEGRAM_BOT_USERNAME)`;
@@ -408,5 +417,270 @@ async function renderNotifications() {
   $('#nfRefresh').onclick = () => renderNotifications();
 }
 
+// ---------------- единые цвета и статусы ----------------
+// Один смысл цвета во всей админке: фиолетовый — новое; жёлтый — ждёт решения / ищем исполнителя;
+// красный — срочно / проблема; синий — в работе; зелёный — готово / подтверждено; серый — закрыто.
+const TONES = [['violet', 'Новое'], ['amber', 'Ждёт решения / ищем'], ['red', 'Срочно / проблема'], ['blue', 'В работе'], ['green', 'Готово / подтверждено'], ['', 'Закрыто / отменено']];
+const BK_ST = { request: ['violet', 'Заявка'], confirmed: ['green', 'Подтверждена'], completed: ['', 'Завершена'], cancelled: ['', 'Отменена'] };
+const PAY_ST = { paid: ['green', 'Оплачено'], prepaid: ['amber', 'Предоплата'], unpaid: ['red', 'Не оплачено'], refunded: ['', 'Возврат'] };
+const CL_ST = { assigned: ['', 'Запланирована'], enroute: ['blue', 'Клинер в пути'], progress: ['blue', 'Идёт уборка'], done: ['green', 'Готово'] };
+const TR_ST = { REQUESTED: ['violet', 'Ждёт подтверждения брони'], OFFERED: ['amber', 'Ищем водителя'], UNASSIGNED: ['red', 'Никто не взял'], ACCEPTED: ['blue', 'Водитель назначен'],
+  EN_ROUTE: ['blue', 'Водитель в пути'], ARRIVED: ['blue', 'Водитель на месте'], PICKED_UP: ['blue', 'Гость в машине'], DONE: ['green', 'Выполнен'], CANCELLED: ['', 'Отменён'] };
+const TR_EV = { offered: 'Предложен всем водителям', escalated: 'Никто не взял — сигнал хозяину/админу', accepted: 'Водитель взял заказ', assigned: 'Назначен водитель', reassigned: 'Водитель заменён',
+  released: 'Водитель отказался', en_route: 'Водитель выехал', arrived: 'Водитель на месте', picked_up: 'Гость в машине', done: 'Выполнен', cancelled: 'Отменён', time_changed: 'Изменено время подачи',
+  updated: 'Изменены детали', paid: 'Оплачено водителю', unpaid: 'Снята отметка «оплачено»', link: 'Новая ссылка водителю' };
+const DIR = { in: 'Встреча', out: 'Проводы' };
+const badge = (map, s) => { const [t, l] = map[s] || ['', s]; return `<span class="chip ${t}">${l}</span>`; };
+const trStatus = (t) => t.job?.status || (t.status === 'cancelled' ? 'CANCELLED' : t.status === 'done' ? 'DONE' : 'REQUESTED');
+const hmOf = (d) => new Date(d).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' });
+const todayIso = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Almaty' });
+const isoAdd = (iso, n) => { const d = new Date(iso + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+const wd = (iso) => new Date(iso + 'T00:00:00Z').getUTCDay();
+const legend = () => `<div class="legend m-scroll">${TONES.map(([t, l]) => `<span><i class="dot ${t || 'grey'}"></i>${l}</span>`).join('')}<span class="sep"></span><span>▬ бронь</span><span>🧹 уборка</span><span>🔧 мастер</span><span>🚗 трансфер</span></div>`;
+
+// ---------------- карточка сбоку (на телефоне — снизу) ----------------
+function drawer(html) {
+  let d = $('#drawer');
+  if (!d) {
+    d = document.createElement('div'); d.id = 'drawer'; d.className = 'drawer-wrap';
+    d.innerHTML = '<div class="drawer-bg" data-close></div><aside class="drawer" role="dialog" aria-modal="true"><button class="icon-btn drawer-x" data-close aria-label="Закрыть">✕</button><div class="drawer-body"></div></aside>';
+    document.body.append(d);
+    d.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) closeDrawer(); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !d.hidden) closeDrawer(); });
+  }
+  const body = d.querySelector('.drawer-body'); body.innerHTML = html; d.hidden = false; document.body.classList.add('noscroll');
+  body.scrollTop = 0;
+  return body;
+}
+function closeDrawer() { const d = $('#drawer'); if (d) d.hidden = true; document.body.classList.remove('noscroll'); }
+/** Открыть детали одним кликом: bk:<id> бронь · tr:<jobId>:<transferId> трансфер · cl:<id> уборка · wr:<id> заявка мастеру */
+const openItem = guard(async (code) => {
+  const [k, a, b] = code.split(':');
+  if (k === 'bk') return bookingCard(a);
+  if (k === 'tr') return a ? transferCard(a) : requestedTransferCard(b);
+  if (k === 'cl') return cleaningCard(a);
+  if (k === 'wr') return repairCard(a);
+});
+const refresh = () => { if (S.view === 'calendar') renderCalendar(); else if (S.view === 'transfers') renderTransfers(); else if (S.view === 'bookings') renderBookings(); };
+
+// ---------------- календарь ----------------
+S.cal = { from: null, days: 14, mode: matchMedia('(max-width: 760px)').matches ? 'list' : 'grid', show: { bookings: true, cleanings: true, repairs: true, transfers: true } };
+async function renderCalendar() {
+  const c = S.cal;
+  const [cal, need, req, wr] = await Promise.all([
+    api(`/api/admin/calendar?${c.from ? `from=${c.from}&` : c.mode === 'list' ? `from=${todayIso()}&` : ''}days=${c.days}`), api('/api/admin/transfer-jobs?status=UNASSIGNED,OFFERED&from=' + isoAdd(todayIso(), -1)),
+    api('/api/admin/bookings?status=request'), api('/api/admin/repairs').catch(() => []),
+  ]);
+  c.from = cal.from; S.calData = cal;
+  const unassigned = need.items.filter(x => x.status === 'UNASSIGNED').length, offered = need.items.length - unassigned;
+  S.reqCount = req.length; S.trCount = unassigned; S.wrCount = wr.filter(x => x.pendingEstimate || x.pendingExtras).length; renderNav();
+  const att = [
+    unassigned && `<button class="att red" data-goto="transfers">🚗 Никто не взял: <b>${unassigned}</b></button>`,
+    offered && `<button class="att amber" data-goto="transfers">🚗 Ищем водителя: <b>${offered}</b></button>`,
+    req.length && `<button class="att violet" data-goto="bookings">📩 Заявки на бронь: <b>${req.length}</b></button>`,
+    S.wrCount && `<button class="att amber" data-goto="repairs">🔧 Ждут вашего решения: <b>${S.wrCount}</b></button>`,
+  ].filter(Boolean);
+  const last = isoAdd(cal.from, cal.days - 1);
+  view(`<div class="page-head"><div><h1>Календарь</h1><p class="sub hide-m">Брони, уборки, заявки мастерам и трансферы. Нажмите на любой элемент — откроется карточка.</p></div>
+      <div class="row"><div class="tabs"><button class="${c.mode === 'grid' ? 'active' : ''}" data-mode="grid">Шахматка</button><button class="${c.mode === 'list' ? 'active' : ''}" data-mode="list">По дням</button></div></div></div>
+    <div class="attention m-scroll">${att.length ? att.join('') : '<span class="att green">✓ Всё под контролем — срочных дел нет</span>'}</div>
+    <div class="cal-bar">
+      <div class="row"><button class="btn sm" data-shift="-7">←</button><button class="btn sm" data-shift="0">Сегодня</button><button class="btn sm" data-shift="7">→</button>
+        <b class="cal-range">${fmtDay(cal.from)} — ${fmtDay(last)}</b></div>
+      <div class="row filters m-scroll">${[['bookings', '▬ Брони'], ['cleanings', '🧹 Уборки'], ['repairs', '🔧 Мастера'], ['transfers', '🚗 Трансферы']].map(([k, l]) => `<button class="fchip ${c.show[k] ? 'on' : ''}" data-show="${k}">${l}</button>`).join('')}</div>
+    </div>
+    ${legend()}
+    <div class="card cal-card">${c.mode === 'grid' ? calGrid(cal) : calList(cal, cal.from, cal.days)}</div>`);
+  $('#view').onclick = (e) => {
+    const t = e.target.closest('[data-open],[data-day],[data-shift],[data-show],[data-mode],[data-goto]'); if (!t) return;
+    if (t.dataset.open) return openItem(t.dataset.open);
+    if (t.dataset.day) return drawer(`<div class="dh"><div class="muted small">${WD[wd(t.dataset.day)]}</div><h2>${fmtDay(t.dataset.day)}</h2></div>${calList(S.calData, t.dataset.day, 1, true)}`).onclick = (ev) => { const o = ev.target.closest('[data-open]'); if (o) openItem(o.dataset.open); };
+    if (t.dataset.shift) { c.from = +t.dataset.shift ? isoAdd(c.from, +t.dataset.shift) : null; return renderCalendar(); }
+    if (t.dataset.show) { c.show[t.dataset.show] = !c.show[t.dataset.show]; return renderCalendar(); }
+    if (t.dataset.mode) { c.mode = t.dataset.mode; return renderCalendar(); }
+    if (t.dataset.goto) return go(t.dataset.goto);
+  };
+}
+function calIndex(cal) {
+  const map = {}; const put = (apt, d, x) => { (map[`${apt}|${d}`] ||= []).push(x); };
+  const sh = S.cal.show;
+  if (sh.cleanings) for (const c of cal.cleanings) put(c.apartmentId, c.date, { kind: 'cl', time: c.fromTime, icon: '🧹', tone: (c.status === 'assigned' && !c.assignee ? CL_ST.assigned : CL_ST[c.status])[0] || 'grey', open: `cl:${c.id}`, title: `Уборка ${c.fromTime} · ${CL_ST[c.status][1]}${c.assignee ? ' · ' + c.assignee : ' · не назначена'}` });
+  if (sh.repairs) for (const r of cal.repairs) put(r.apartmentId, r.date, { kind: 'wr', icon: '🔧', tone: WR_ST[r.status][0] || 'grey', open: `wr:${r.id}`, title: `${r.title} · ${WR_ST[r.status][1]}` });
+  if (sh.transfers) for (const t of cal.transfers) put(t.apartmentId, t.date, { kind: 'tr', time: t.time, icon: '🚗', label: t.time, tone: TR_ST[t.status][0] || 'grey', open: `tr:${t.jobId || ''}:${t.transferId}`, title: `${DIR[t.direction]} ${t.time}${t.flight ? ' · ' + t.flight : ''} · ${TR_ST[t.status][1]}${t.driverName ? ' · ' + t.driverName : ''}` });
+  for (const k in map) map[k].sort((a, b) => (a.time || '99').localeCompare(b.time || '99'));
+  return map;
+}
+const cchip = (x) => `<button class="cchip t-${x.tone}" data-open="${x.open}" title="${esc(x.title)}">${x.icon}${x.label ? `<span>${esc(x.label)}</span>` : ''}</button>`;
+function calGrid(cal) {
+  const days = [...Array(cal.days)].map((_, i) => isoAdd(cal.from, i)), last = days.at(-1);
+  const idx = Object.fromEntries(days.map((d, i) => [d, i]));
+  const map = calIndex(cal);
+  const rows = [...cal.apartments];
+  if (cal.transfers.some(t => !t.apartmentId)) rows.push({ id: null, title: 'Трансферы без квартиры', number: null });
+  const dc = (d) => `${d === cal.today ? ' today' : ''}${[0, 6].includes(wd(d)) ? ' we' : ''}`;
+  let h = `<div class="cal-scroll"><div class="cal" style="--n:${days.length}"><div class="cal-corner" style="grid-row:1;grid-column:1">Квартира</div>`;
+  days.forEach((d, i) => { h += `<button class="cal-day${dc(d)}" style="grid-row:1;grid-column:${i + 2}" data-day="${d}" title="Все события дня"><small>${WD[wd(d)]}</small><b>${+d.slice(8)}</b></button>`; });
+  rows.forEach((a, r) => {
+    const r1 = 2 + r * 2, r2 = r1 + 1;
+    h += `<div class="cal-apt" style="grid-row:${r1} / span 2;grid-column:1" title="${esc(a.title)}"><b>${a.number ? 'кв. ' + esc(a.number) : esc(a.title)}</b>${a.number ? `<small>${esc(a.title)}</small>` : ''}</div>`;
+    days.forEach((d, i) => {
+      const items = map[`${a.id}|${d}`] || [];
+      h += `<div class="cal-cell${dc(d)}" style="grid-row:${r1};grid-column:${i + 2}"></div><div class="cal-cell lane${dc(d)}" style="grid-row:${r2};grid-column:${i + 2}">${items.map(cchip).join('')}</div>`;
+    });
+    if (S.cal.show.bookings && a.id) for (const b of cal.bookings.filter(b => b.apartmentId === a.id)) {
+      const cutL = b.checkIn < cal.from, cutR = b.checkOut > last;
+      const s0 = cutL ? 0 : idx[b.checkIn], e0 = cutR ? days.length - 1 : idx[b.checkOut];
+      if (s0 == null || e0 == null) continue;
+      const tone = BK_ST[b.status][0] || 'grey';
+      h += `<button class="cal-bar-b t-${tone}${cutL ? ' cut-l' : ''}${cutR ? ' cut-r' : ''}${b.status === 'request' ? ' req' : ''}" style="grid-row:${r1};grid-column:${s0 + 2} / ${e0 + 3}" data-open="bk:${b.id}"
+        title="№${b.number} · ${esc(b.guestName || '')} · ${fmtDay(b.checkIn)} → ${fmtDay(b.checkOut)} · ${BK_ST[b.status][1]} · ${PAY_ST[b.paymentStatus]?.[1] || ''}">${b.paymentStatus === 'unpaid' && b.status !== 'completed' ? '<i class="unpaid" title="не оплачено"></i>' : ''}<b>№${b.number}</b> ${esc(b.guestName || '')}</button>`;
+    }
+  });
+  return h + '</div></div>';
+}
+function calList(cal, from, n, inDrawer) {
+  const apt = Object.fromEntries(cal.apartments.map(a => [a.id, a.number ? 'кв. ' + a.number : a.title]));
+  const sh = S.cal.show; const out = [];
+  for (let k = 0; k < n; k++) {
+    const d = isoAdd(from, k); const items = [];
+    if (sh.bookings) for (const b of cal.bookings) {
+      if (b.checkIn === d) items.push({ time: b.checkInTime, icon: '🛬', text: `Заезд · ${apt[b.apartmentId]} · ${b.guestName || ''} · ${b.guestsCount} гост.`, badge: badge(BK_ST, b.status), open: `bk:${b.id}` });
+      if (b.checkOut === d) items.push({ time: b.checkOutTime, icon: '🛫', text: `Выезд · ${apt[b.apartmentId]} · ${b.guestName || ''}`, badge: badge(BK_ST, b.status), open: `bk:${b.id}` });
+    }
+    if (sh.transfers) for (const t of cal.transfers.filter(t => t.date === d)) items.push({ time: t.time, icon: '🚗', text: `${DIR[t.direction]}${t.flight ? ' · ' + t.flight : ''} · ${t.apartmentId ? apt[t.apartmentId] : 'без квартиры'} · ${t.guestName || ''}${t.driverName ? ' · 👤 ' + t.driverName : ''}`, badge: badge(TR_ST, t.status), open: `tr:${t.jobId || ''}:${t.transferId}` });
+    if (sh.cleanings) for (const c of cal.cleanings.filter(c => c.date === d)) items.push({ time: c.fromTime, icon: '🧹', text: `Уборка · ${apt[c.apartmentId]} · ${c.assignee || 'не назначена'}`, badge: badge(CL_ST, c.status), open: `cl:${c.id}` });
+    if (sh.repairs) for (const r of cal.repairs.filter(r => r.date === d)) items.push({ time: '', icon: '🔧', text: `${r.title} · ${apt[r.apartmentId]}`, badge: badge(WR_ST, r.status), open: `wr:${r.id}` });
+    items.sort((a, b) => (a.time || '99').localeCompare(b.time || '99'));
+    out.push(`<div class="agenda-day">${inDrawer ? '' : `<div class="agenda-h${d === cal.today ? ' today' : ''}">${WD[wd(d)]}, ${fmtDay(d)}${d === cal.today ? ' · сегодня' : ''}<span class="muted small">${items.length || ''}</span></div>`}
+      ${items.length ? items.map(x => `<button class="agenda-i" data-open="${x.open}"><span class="tm">${x.time || ''}</span><span class="ic">${x.icon}</span><span class="tx">${esc(x.text)}</span>${x.badge}</button>`).join('') : '<div class="muted small agenda-empty">Ничего не запланировано</div>'}</div>`);
+  }
+  return `<div class="agenda">${out.join('')}</div>`;
+}
+
+// ---------------- карточки ----------------
+async function bookingCard(id) {
+  const b = await api('/api/admin/bookings/' + id);
+  const nights = Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 86400000);
+  const body = drawer(`<div class="dh"><div class="muted small">▬ Бронь №${b.number} · ${SRC[b.source] || b.source}</div><h2>${esc(b.guest?.name || 'Гость')}</h2><div class="row">${badge(BK_ST, b.status)}${badge(PAY_ST, b.paymentStatus)}</div></div>
+    <section class="ds"><dl class="kv"><dt>Квартира</dt><dd>${esc(b.apartment?.title || '')}</dd><dt>Даты</dt><dd>${fmtDay(b.checkIn)} с ${b.checkInTime} → ${fmtDay(b.checkOut)} до ${b.checkOutTime} · ${nights} ноч.</dd>
+      <dt>Гостей</dt><dd>${b.guestsCount}${b.pets ? ' · с животным' : ''}</dd><dt>Телефон</dt><dd>${b.guest?.phone ? `<a href="tel:${esc(b.guest.phone.replace(/\s/g, ''))}">${esc(b.guest.phone)}</a>` : '—'}${b.guest?.telegramLinked ? ' · Telegram ✓' : ''}</dd>
+      <dt>Сумма</dt><dd>${money(b.totalKzt)}</dd>${b.note ? `<dt>Комментарий</dt><dd>${esc(b.note)}</dd>` : ''}</dl></section>
+    <section class="ds"><h3>Трансферы</h3>${b.transfers.length ? b.transfers.map(t => `<button class="li" data-open="tr:${t.job?.id || ''}:${t.id}"><span>🚗 ${DIR[t.direction]} · ${fmtDay(t.date)} ${t.time}${t.flight ? ' · ' + esc(t.flight) : ''}${t.job?.driverName ? ` · ${esc(t.job.driverName)}` : ''}</span>${badge(TR_ST, trStatus(t))}</button>`).join('') : '<div class="muted small">Трансфер не заказан</div>'}
+      ${b.status === 'request' && b.transfers.length ? '<div class="muted small" style="margin-top:6px">После подтверждения брони заказ сразу уйдёт всем водителям.</div>' : ''}</section>
+    <section class="ds"><h3>Уборка</h3>${b.cleanings.length ? b.cleanings.map(c => `<button class="li" data-open="cl:${c.id}"><span>🧹 ${fmtDay(c.date)} · ${esc(c.assignee || 'не назначена')}</span>${badge(CL_ST, c.status)}</button>`).join('') : `<div class="muted small">${b.status === 'request' ? 'Появится после подтверждения' : 'Не запланирована'}</div>`}</section>
+    <div class="row">${b.status === 'request' ? `<button class="btn success" data-act="confirm">Подтвердить бронь</button><button class="btn" data-act="cancel">Отклонить</button>` : b.status === 'confirmed' ? '<button class="btn danger sm" data-act="cancel">Отменить бронь</button>' : ''}</div>`);
+  body.onclick = guard(async (e) => {
+    const o = e.target.closest('[data-open]'); if (o) return openItem(o.dataset.open);
+    const a = e.target.closest('[data-act]'); if (!a) return;
+    if (a.dataset.act === 'confirm') { await api(`/api/admin/bookings/${b.id}/confirm`, { method: 'POST' }); toast(`Бронь №${b.number} подтверждена${b.transfers.length ? ' — трансфер предложен водителям' : ''}`); }
+    if (a.dataset.act === 'cancel') { if (!confirm(b.status === 'request' ? 'Отклонить заявку?' : 'Отменить бронь? Трансфер и уборка тоже отменятся, водитель получит уведомление.')) return; await api(`/api/admin/bookings/${b.id}/cancel`, { method: 'POST' }); toast('Готово'); }
+    await bookingCard(b.id); refresh();
+  });
+}
+function cleaningCard(id) {
+  const c = S.calData?.cleanings.find(x => x.id === id); if (!c) return;
+  const a = S.calData.apartments.find(x => x.id === c.apartmentId);
+  drawer(`<div class="dh"><div class="muted small">🧹 Уборка</div><h2>${a ? (a.number ? 'кв. ' + esc(a.number) : esc(a.title)) : ''} · ${fmtDay(c.date)}</h2><div class="row">${badge(CL_ST, c.status)}${c.assignee ? '' : '<span class="chip amber">не назначена</span>'}</div></div>
+    <section class="ds"><dl class="kv"><dt>Квартира</dt><dd>${esc(a?.title || '')}</dd><dt>С</dt><dd>${esc(c.fromTime)}</dd><dt>Клинер</dt><dd>${esc(c.assignee || '—')}</dd></dl>
+    <p class="muted small">Клинер отмечает «в пути», «начала», «готово» и отчёт в приложении команды.</p></section>`);
+}
+function repairCard(id) {
+  const r = S.calData?.repairs.find(x => x.id === id);
+  if (!r) return go('repairs', id);
+  const a = S.calData.apartments.find(x => x.id === r.apartmentId);
+  const body = drawer(`<div class="dh"><div class="muted small">🔧 Заявка мастеру</div><h2>${esc(r.title)}</h2><div class="row">${wrBadge(r.status)}${r.priority === 'high' ? '<span class="chip red">срочно</span>' : ''}</div></div>
+    <section class="ds"><dl class="kv"><dt>Квартира</dt><dd>${esc(a?.title || '')}</dd><dt>Дата</dt><dd>${fmtDay(r.date)}</dd></dl></section>
+    <button class="btn primary" data-wr="${r.id}">Открыть заявку — сметы, фото, журнал</button>`);
+  body.onclick = (e) => { if (e.target.closest('[data-wr]')) { closeDrawer(); go('repairs', id); } };
+}
+async function requestedTransferCard(transferId) {
+  const list = await api('/api/admin/transfers?from=' + isoAdd(todayIso(), -60));
+  const t = list.find(x => x.id === transferId); if (!t) return toast('Трансфер не найден', true);
+  if (t.job) return transferCard(t.job.id);
+  const body = drawer(`<div class="dh"><div class="muted small">🚗 Трансфер${t.booking ? ` · бронь №${t.booking.number}` : ''}</div><h2>${DIR[t.direction]} · ${fmtDay(t.date.slice(0, 10))}, ${t.time}</h2><div class="row">${badge(TR_ST, trStatus(t))}</div></div>
+    <div class="alert violet">${t.booking?.status === 'request' ? 'Заказ водителям создастся автоматически, как только вы подтвердите бронь.' : 'Заказ водителям ещё не создан.'}</div>
+    <section class="ds"><dl class="kv">${t.flight ? `<dt>Рейс</dt><dd>${esc(t.flight)}</dd>` : ''}<dt>Гость</dt><dd>${esc(t.guestName || '—')} ${t.guestPhone ? '· ' + esc(t.guestPhone) : ''}</dd><dt>Пассажиры</dt><dd>${t.pax} · багаж ${t.bags}${t.childSeats ? ` · кресел: ${t.childSeats}` : ''}</dd><dt>Цена</dt><dd>${money(t.priceKzt)}</dd></dl></section>
+    <div class="row">${t.bookingId ? `<button class="btn" data-open="bk:${t.bookingId}">Открыть бронь</button>` : ''}${t.status !== 'cancelled' ? '<button class="btn primary" data-act="dispatch">Отправить водителям сейчас</button>' : ''}</div>`);
+  body.onclick = guard(async (e) => {
+    const o = e.target.closest('[data-open]'); if (o) return openItem(o.dataset.open);
+    if (e.target.closest('[data-act=dispatch]')) { const j = await api(`/api/admin/transfers/${t.id}/dispatch`, { method: 'POST' }); toast('Заказ предложен всем водителям'); await transferCard(j.id); refresh(); }
+  });
+}
+async function transferCard(id) {
+  const [j, drivers] = await Promise.all([api('/api/admin/transfer-jobs/' + id), api('/api/admin/drivers')]);
+  S.job = j; S.drivers = drivers; drawTransferCard();
+}
+function driverOptions(j) {
+  const cur = j.driver ? `${j.driver.kind === 'user' ? 'u' : 'c'}:${j.driver.id}` : '';
+  return `<option value="">— выберите водителя —</option><optgroup label="Команда">${S.drivers.team.map(d => `<option value="u:${d.userId}" ${cur === 'u:' + d.userId ? 'selected' : ''}>${esc(d.name)} · ${ROLE[d.role]}${d.vehicle ? ' · ' + esc(d.vehicle.split(',')[0]) : ''}${d.activeJobs ? ` · в работе ${d.activeJobs}` : ''}</option>`).join('')}</optgroup>
+    ${S.drivers.external.length ? `<optgroup label="Внешние (по ссылке)">${S.drivers.external.map(c => `<option value="c:${c.contractorId}" ${cur === 'c:' + c.contractorId ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}</optgroup>` : ''}`;
+}
+function drawTransferCard() {
+  const j = S.job; const open = !['DONE', 'CANCELLED'].includes(j.status);
+  const canAssign = ['OFFERED', 'UNASSIGNED', 'ACCEPTED', 'EN_ROUTE', 'ARRIVED'].includes(j.status);
+  const next = { ACCEPTED: ['en-route', 'выехал'], EN_ROUTE: ['arrived', 'на месте'], ARRIVED: ['picked-up', 'гость в машине'], PICKED_UP: ['done', 'выполнен'] }[j.status];
+  const flightUrl = j.flight ? `https://www.flightradar24.com/data/flights/${encodeURIComponent(j.flight.replace(/\s+/g, '').toLowerCase())}` : null;
+  const body = drawer(`<div class="dh"><div class="muted small">🚗 Трансфер${j.booking ? ` · бронь №${j.booking.number}` : ''}${j.apartment ? ` · ${esc(j.apartment.title)}` : ''}</div>
+      <h2>${DIR[j.direction]} · ${fmtDay(j.date)}, ${j.time}</h2><div class="row">${badge(TR_ST, j.status)}${j.paid ? '<span class="chip green">оплачено водителю</span>' : ''}</div></div>
+    ${j.status === 'UNASSIGNED' ? '<div class="alert red">Никто из водителей не взял заказ. Назначьте водителя вручную ниже.</div>' : j.status === 'OFFERED' ? `<div class="alert amber">Заказ предложен всем водителям (${S.drivers.team.length + ' чел.'}). Кто первым нажмёт «Беру», тот и везёт. Если никто не возьмёт — придёт сигнал.</div>` : ''}
+    <section class="ds"><h3>Маршрут</h3><div class="route"><div><i></i>${esc(j.from)}</div><div><i class="end"></i>${esc(j.to)}</div></div>
+      <dl class="kv">${j.flight ? `<dt>Рейс</dt><dd><b>${esc(j.flight)}</b> · <a href="${flightUrl}" target="_blank" rel="noopener">проверить рейс ↗</a></dd>` : ''}${j.meetingPoint ? `<dt>Где встречать</dt><dd>${esc(j.meetingPoint)}</dd>` : ''}
+      <dt>Табличка</dt><dd>${esc(j.sign || '—')}</dd><dt>Ожидание</dt><dd>бесплатно ${j.freeWaitMin} мин${j.arrivedAt ? ` · водитель на месте с ${hmOf(j.arrivedAt)}` : ''}</dd></dl></section>
+    <section class="ds"><h3>Гость</h3><dl class="kv"><dt>Имя</dt><dd>${esc(j.guestName || '—')}</dd><dt>Телефон</dt><dd>${j.guestPhone ? `<a href="tel:${esc(j.guestPhone.replace(/\s/g, ''))}">${esc(j.guestPhone)}</a>` : '—'}</dd>
+      <dt>Пассажиры</dt><dd>${j.pax} · багаж ${j.bags}${j.childSeats ? ` · детских кресел: ${j.childSeats}` : ''}</dd>${j.notes ? `<dt>Заметки</dt><dd>${esc(j.notes)}</dd>` : ''}<dt>Цена для гостя</dt><dd>${money(j.priceKzt)}</dd></dl></section>
+    <section class="ds"><h3>Водитель</h3>
+      ${j.driver ? `<div class="driver"><b>${esc(j.driver.name)}</b>${j.driver.kind === 'contractor' ? ' <span class="chip">внешний</span>' : ''}<div class="muted small">${esc(j.vehicle || '')}${j.driver.phone ? ` · <a href="tel:${esc(j.driver.phone.replace(/\s/g, ''))}">${esc(j.driver.phone)}</a>` : ''}</div>${j.etaAt && j.status === 'EN_ROUTE' ? `<div class="small">Будет примерно в <b>${hmOf(j.etaAt)}</b></div>` : ''}</div>` : '<div class="muted">Пока никто не взял</div>'}
+      ${j.link ? `<div class="small" style="margin-top:6px">Ссылка для внешнего водителя: <a href="${esc(j.link.url)}" target="_blank" rel="noopener">${esc(j.link.url)}</a></div>` : ''}
+      ${canAssign ? `<div class="row" style="margin-top:10px"><select id="trDriver" class="grow">${driverOptions(j)}</select><button class="btn sm primary" data-act="assign">${j.driver ? 'Заменить' : 'Назначить'}</button></div>` : ''}
+      <div class="row" style="margin-top:8px">${next ? `<button class="btn sm" data-act="step" data-step="${next[0]}">Отметить за водителя: ${next[1]}</button>` : ''}${['UNASSIGNED', 'ACCEPTED'].includes(j.status) ? `<button class="btn sm" data-act="offer">${j.status === 'ACCEPTED' ? 'Снять водителя и предложить всем' : 'Предложить всем ещё раз'}</button>` : ''}</div></section>
+    <section class="ds"><h3>Выплата водителю</h3><div class="row"><input id="trPay" type="number" min="0" step="500" value="${j.payoutKzt ?? ''}" style="max-width:140px"><span class="muted">₸</span><button class="btn sm" data-act="pay">Сохранить</button>
+      ${j.status === 'DONE' ? `<button class="btn sm ${j.paid ? '' : 'success'}" data-act="paid">${j.paid ? 'Снять «оплачено»' : 'Оплачено водителю'}</button>` : '<span class="muted small">«Оплачено» — после выполнения; сумма попадёт в финансы</span>'}</div></section>
+    ${open && j.status !== 'PICKED_UP' ? `<details class="ds"><summary>Изменить время, рейс, место встречи</summary><div class="grid g3" style="margin-top:10px"><label>Дата<input id="trDate" type="date" value="${j.date}"></label><label>Время<input id="trTime" type="time" value="${j.time}"></label><label>Рейс<input id="trFlight" value="${esc(j.flight || '')}"></label>
+      <label style="grid-column:1/-1">Где встречать<input id="trMeet" value="${esc(j.meetingPoint || '')}" placeholder="Зал прилёта, выход 3, у кофейни"></label></div><div class="row" style="margin-top:8px"><button class="btn sm primary" data-act="save">Сохранить${j.driver ? ' — водитель получит уведомление' : ''}</button></div></details>` : ''}
+    <section class="ds"><h3>Журнал</h3><ul class="wr-log">${[...j.events].reverse().map(e => `<li><b>${TR_EV[e.type] || e.type}</b>${e.actorName ? ` — ${esc(e.actorName)}` : ''}<div class="muted small">${fmtTime(e.createdAt)}${e.note ? ' · ' + esc(e.note) : ''}${e.data?.before ? ` · ${esc(e.data.before)} → ${esc(e.data.after)}` : ''}${e.data?.etaMinutes ? ` · ETA ${e.data.etaMinutes} мин` : ''}${e.data?.driver ? ` · ${esc(e.data.driver)}` : ''}</div></li>`).join('')}</ul></section>
+    ${open ? '<div class="row"><button class="btn sm danger" data-act="cancel">Отменить заказ</button></div>' : j.cancelReason ? `<div class="muted small">Причина отмены: ${esc(j.cancelReason)}</div>` : ''}`);
+  body.onclick = guard(async (e) => {
+    const a = e.target.closest('[data-act]'); if (!a) return;
+    const url = `/api/admin/transfer-jobs/${j.id}`; let msg = 'Сохранено';
+    if (a.dataset.act === 'assign') {
+      const v = $('#trDriver').value; if (!v) return toast('Выберите водителя', true);
+      const [k, id] = v.split(':'); S.job = await api(url + '/assign', { method: 'POST', body: k === 'u' ? { driverUserId: id } : { driverContractorId: id } }); msg = `Назначен: ${S.job.driver.name}`;
+    } else if (a.dataset.act === 'offer') { S.job = await api(url + '/offer', { method: 'POST' }); msg = 'Заказ снова предложен всем водителям'; }
+    else if (a.dataset.act === 'step') { S.job = await api(url + '/status', { method: 'POST', body: { action: a.dataset.step } }); msg = TR_ST[S.job.status][1]; }
+    else if (a.dataset.act === 'pay') { S.job = await api(url, { method: 'PATCH', body: { payoutKzt: $('#trPay').value === '' ? null : +$('#trPay').value } }); msg = 'Сумма водителю сохранена'; }
+    else if (a.dataset.act === 'paid') { S.job = await api(url + '/paid', { method: 'POST', body: { paid: !j.paid } }); msg = S.job.paid ? 'Отмечено: оплачено водителю' : 'Отметка снята'; }
+    else if (a.dataset.act === 'save') {
+      const body = { date: $('#trDate').value, time: $('#trTime').value, flight: $('#trFlight').value.trim() || null, meetingPoint: $('#trMeet').value.trim() || null };
+      if (body.date === j.date) delete body.date; if (body.time === j.time) delete body.time;
+      S.job = await api(url, { method: 'PATCH', body }); msg = 'Изменения сохранены';
+    } else if (a.dataset.act === 'cancel') { const reason = prompt('Причина отмены (водитель увидит):', ''); if (reason === null) return; S.job = await api(url + '/cancel', { method: 'POST', body: { reason: reason || undefined } }); msg = 'Заказ отменён'; }
+    toast(msg); S.drivers = await api('/api/admin/drivers'); drawTransferCard(); refresh();
+  });
+}
+
+// ---------------- трансферы (диспетчерская) ----------------
+const TR_TABS = [['need', 'Нужно действие', ['UNASSIGNED', 'OFFERED']], ['assigned', 'Назначены', ['ACCEPTED']], ['live', 'Сейчас в пути', ['EN_ROUTE', 'ARRIVED', 'PICKED_UP']], ['done', 'Выполнены', ['DONE']], ['cancelled', 'Отменены', ['CANCELLED']], ['all', 'Все', null]];
+async function renderTransfers(openId) {
+  const r = await api('/api/admin/transfer-jobs?from=' + isoAdd(todayIso(), -14));
+  const items = r.items; S.trCount = items.filter(x => x.status === 'UNASSIGNED').length; renderNav();
+  const inTab = (t) => (x) => !t[2] || t[2].includes(x.status);
+  const tab = TR_TABS.find(t => t[0] === S.trTab) || TR_TABS[items.some(inTab(TR_TABS[0])) ? 0 : 1];
+  const rows = items.filter(inTab(tab));
+  const unpaid = items.filter(x => x.status === 'DONE' && !x.paid).reduce((s, x) => s + (x.payoutKzt || 0), 0);
+  view(`<div class="page-head"><div><h1>Трансферы</h1><p class="sub">Как в Uber: подтверждённая бронь с трансфером сразу предлагается всем, кто водит; первый «Беру» получает заказ. Никто не взял за ${30} мин или до подачи меньше 3 ч — придёт сигнал, назначьте вручную.</p></div></div>
+    <div class="row" style="margin-bottom:12px"><div class="tabs scroll">${TR_TABS.map(t => `<button class="${t === tab ? 'active' : ''}" data-tab="${t[0]}">${t[1]} · ${items.filter(inTab(t)).length}</button>`).join('')}</div>${unpaid ? `<span class="chip amber">к выплате водителям: ${money(unpaid)}</span>` : ''}</div>
+    <div class="card">${rows.length ? `<div class="table-wrap"><table class="t tr-table"><thead><tr><th>Когда</th><th>Маршрут</th><th>Гость</th><th>Водитель</th><th>Статус</th><th>Водителю</th></tr></thead><tbody>
+    ${rows.map(x => `<tr class="click" data-open="tr:${x.id}:${x.transferId}"><td style="white-space:nowrap"><b>${fmtDay(x.date)}, ${x.time}</b><div class="muted small">${DIR[x.direction]}${x.flight ? ' · ' + esc(x.flight) : ''}</div></td>
+      <td><div class="small">${esc(x.from)}</div><div class="small">→ ${esc(x.to)}</div></td><td>${esc(x.guestName || '—')}<div class="muted small">${x.pax} пасс.${x.bookingNumber ? ` · бронь №${x.bookingNumber}` : ''}</div></td>
+      <td>${esc(x.driverName || '—')}</td><td>${badge(TR_ST, x.status)}</td><td style="white-space:nowrap">${x.payoutKzt != null ? money(x.payoutKzt) : '—'}${x.paid ? '<div class="muted small">оплачено</div>' : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Здесь пусто</div>'}</div>
+    ${legend()}`);
+  $('#view').onclick = (e) => {
+    const t = e.target.closest('[data-tab]'); if (t) { S.trTab = t.dataset.tab; return renderTransfers(); }
+    const o = e.target.closest('[data-open]'); if (o) openItem(o.dataset.open);
+  };
+  if (openId) transferCard(openId).catch(err => toast(err.message, true));
+}
+
 // ---------------- старт ----------------
-api('/api/auth/session').then(me => { if (!me.authenticated || !['owner', 'admin'].includes(me.role)) return showLogin(); start(me); api('/api/admin/bookings?status=request').then(r => { S.reqCount = r.length; renderNav(); }).catch(() => {}); api('/api/admin/repairs').then(r => { S.wrCount = r.filter(x => x.pendingEstimate || x.pendingExtras).length; renderNav(); }).catch(() => {}); }).catch(() => showLogin());
+api('/api/auth/session').then(me => { if (!me.authenticated || !['owner', 'admin'].includes(me.role)) return showLogin(); start(me); api('/api/admin/bookings?status=request').then(r => { S.reqCount = r.length; renderNav(); }).catch(() => {}); api('/api/admin/repairs').then(r => { S.wrCount = r.filter(x => x.pendingEstimate || x.pendingExtras).length; renderNav(); }).catch(() => {}); api('/api/admin/transfer-jobs?status=UNASSIGNED').then(r => { S.trCount = r.items.length; renderNav(); }).catch(() => {}); }).catch(() => showLogin());

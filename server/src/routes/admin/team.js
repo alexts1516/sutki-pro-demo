@@ -1,7 +1,7 @@
 // Команда: сотрудники аккаунта и привязка их Telegram.
 //   GET  /api/admin/team                         — список
 //   POST /api/admin/team                         — добавить сотрудника { name, email|phone, password, role }
-//   PATCH /api/admin/team/:userId                — { active } — включить/отключить доступ
+//   PATCH /api/admin/team/:userId                — { active, canDrive, vehicle } — доступ; «Водит» (получает заказы на трансфер) и машина
 //   POST /api/admin/team/:userId/telegram-invite — ссылка t.me/<бот>?start=i_<код> (действует 7 дней)
 import { Router } from 'express';
 import { z } from 'zod';
@@ -14,16 +14,16 @@ import { deepLink } from '../../telegram/linking.js';
 export default function teamRouter({ config }) {
   const r = Router();
   // админ может управлять только клинингом и мастерами; владелец — всеми, кроме других владельцев
-  const canManage = (actorRole, targetRole) => actorRole === 'owner' ? targetRole !== 'owner' : ['cleaning', 'master'].includes(targetRole);
+  const canManage = (actorRole, targetRole) => actorRole === 'owner' ? targetRole !== 'owner' : ['cleaning', 'master', 'driver'].includes(targetRole);
 
   r.get('/team', async (req, res) => {
     const list = await prisma.membership.findMany({ where: { accountId: req.accountId }, include: { user: true }, orderBy: { createdAt: 'asc' } });
-    res.json(list.map(m => ({ userId: m.userId, name: m.user.name, email: m.user.email, phone: m.user.phone, role: m.role, active: m.active, telegramLinked: !!m.user.telegramId })));
+    res.json(list.map(m => ({ userId: m.userId, name: m.user.name, email: m.user.email, phone: m.user.phone, role: m.role, active: m.active, canDrive: m.canDrive || m.role === 'driver', vehicle: m.vehicle, telegramLinked: !!m.user.telegramId })));
   });
   r.post('/team', async (req, res) => {
     const d = parse(z.object({
       name: z.string().min(2).max(80), email: z.string().email().optional(), phone: z.string().min(6).max(20).optional(),
-      password: z.string().min(8, 'Пароль — минимум 8 символов'), role: z.enum(['admin', 'cleaning', 'master']), locale: z.enum(['ru', 'en']).default('ru'),
+      password: z.string().min(8, 'Пароль — минимум 8 символов'), role: z.enum(['admin', 'cleaning', 'master', 'driver']), canDrive: z.boolean().optional(), vehicle: z.string().max(120).optional(), locale: z.enum(['ru', 'en']).default('ru'),
     }).refine(x => x.email || x.phone, { message: 'Укажите email или телефон' }), req.body);
     if (!canManage(req.role, d.role)) throw forbidden('Эту роль может добавить только владелец');
     const email = d.email?.toLowerCase(), phone = d.phone?.replace(/[^\d+]/g, '');
@@ -31,17 +31,21 @@ export default function teamRouter({ config }) {
     if (!user) user = await prisma.user.create({ data: { name: d.name, email, phone, locale: d.locale, passwordHash: await hashPassword(d.password) } });
     const exists = await prisma.membership.findUnique({ where: { userId_accountId: { userId: user.id, accountId: req.accountId } } });
     if (exists) throw new HttpError(409, 'Этот человек уже в команде');
-    await prisma.membership.create({ data: { userId: user.id, accountId: req.accountId, role: d.role } });
-    res.status(201).json({ userId: user.id, name: user.name, email: user.email, phone: user.phone, role: d.role, active: true });
+    const canDrive = d.canDrive ?? ['admin', 'driver'].includes(d.role);   // админ и водитель — в списке водителей по умолчанию
+    await prisma.membership.create({ data: { userId: user.id, accountId: req.accountId, role: d.role, canDrive, vehicle: d.vehicle } });
+    res.status(201).json({ userId: user.id, name: user.name, email: user.email, phone: user.phone, role: d.role, active: true, canDrive, vehicle: d.vehicle || null });
   });
   r.patch('/team/:userId', async (req, res) => {
-    const { active } = parse(z.object({ active: z.boolean() }), req.body);
+    const d = parse(z.object({ active: z.boolean().optional(), canDrive: z.boolean().optional(), vehicle: z.string().max(120).nullable().optional() }), req.body);
     const m = await prisma.membership.findUnique({ where: { userId_accountId: { userId: req.params.userId, accountId: req.accountId } } });
     if (!m) throw notFound('Сотрудник не найден');
-    if (m.userId === req.user.id) throw badRequest('Нельзя отключить самого себя');
-    if (!canManage(req.role, m.role)) throw forbidden();
-    await prisma.membership.update({ where: { id: m.id }, data: { active } });
-    res.json({ ok: true, active });
+    const self = m.userId === req.user.id;
+    if (self && d.active === false) throw badRequest('Нельзя отключить самого себя');
+    if (d.active !== undefined && !canManage(req.role, m.role)) throw forbidden();
+    if ((d.canDrive !== undefined || d.vehicle !== undefined) && !self && !canManage(req.role, m.role)) throw forbidden();   // себя в водители — можно всегда
+    if (m.role === 'driver' && d.canDrive === false) throw badRequest('У роли «Водитель» флаг «Водит» всегда включён');
+    const u = await prisma.membership.update({ where: { id: m.id }, data: d });
+    res.json({ ok: true, active: u.active, canDrive: u.canDrive || u.role === 'driver', vehicle: u.vehicle });
   });
   r.post('/team/:userId/telegram-invite', async (req, res) => {
     const m = await prisma.membership.findUnique({ where: { userId_accountId: { userId: req.params.userId, accountId: req.accountId } } });

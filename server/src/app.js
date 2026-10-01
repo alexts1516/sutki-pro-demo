@@ -19,10 +19,16 @@ import paymentsRouter from './routes/payments.js';
 import workRequestsRouter from './routes/admin/workRequests.js';
 import taskLinkRouter from './routes/taskLink.js';
 import { createWorkflow } from './services/workRequests.js';
+import transfersRouter from './routes/admin/transfers.js';
+import calendarRouter from './routes/admin/calendar.js';
+import staffTransfersRouter from './routes/staffTransfers.js';
+import transferLinkRouter from './routes/transferLink.js';
+import { createTransferDispatch } from './services/transferJobs.js';
 
 export function createApp({ config = defaultConfig, events, storage, payments = null, telegramWebhook = null, logger = console }) {
   const app = express();
   const workflow = createWorkflow({ events });
+  const dispatch = createTransferDispatch({ events, config });
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
 
@@ -55,17 +61,21 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
   });
 
   app.use('/api/auth', authRoutes);
-  app.use('/api/public/:slug', publicRouter({ events, payments, config }));
+  app.use('/api/public/:slug', publicRouter({ events, payments, config, dispatch }));
   const admin = express.Router();
   admin.use(authenticate, requireRole(...MANAGERS));
   admin.use(apartmentsRouter({ storage, config }));
   admin.use(siteRouter({ storage, config }));
-  admin.use(operationsRouter({ events }));
+  admin.use(operationsRouter({ events, dispatch }));
+  admin.use(transfersRouter({ dispatch, config }));
+  admin.use(calendarRouter());
   admin.use(teamRouter({ config }));
   admin.use(workRequestsRouter({ workflow, storage, config }));
   app.use('/api/admin', admin);
+  app.use('/api/staff/transfers', authenticate, staffTransfersRouter({ dispatch }));
   app.use('/api/staff', authenticate, staffRouter({ events, workflow, storage, config }));
   app.use('/api/task-link', taskLinkRouter({ workflow, storage, config }));
+  app.use('/api/transfer-link', transferLinkRouter({ dispatch }));
 
   // файлы и админка
   if (storage.driver === 'local') app.use('/uploads', express.static(storage.uploadDir, { maxAge: '7d', fallthrough: false }));
@@ -76,6 +86,7 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
 
   // 404 и ошибки — всегда JSON для /api
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Нет такого адреса API')));
+  app.locals.dispatch = dispatch;   // диспетчер трансферов — для расписания и тестов
   app.use((err, req, res, _next) => {
     let status = err.status || err.statusCode || 500;
     let message = err.message;

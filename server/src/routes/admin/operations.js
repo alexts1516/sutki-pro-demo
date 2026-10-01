@@ -1,4 +1,4 @@
-// Брони, трансферы, уборки, журнал уведомлений (владелец и администратор). Заявки мастерам — workRequests.js.
+// Брони, уборки, журнал уведомлений (владелец и администратор). Заявки мастерам — workRequests.js, трансферы — transfers.js.
 // Финансы, платежи и курсы валют — только владелец.
 import { Router } from 'express';
 import { z } from 'zod';
@@ -7,11 +7,12 @@ import { requireRole } from '../../auth/middleware.js';
 import { notFound, badRequest, HttpError, parse } from '../../lib/errors.js';
 import { bookingOut } from '../../lib/serialize.js';
 import { parseDay, isoDay, addDays, todayIn } from '../../lib/dates.js';
-import { confirmBooking } from '../../services/bookings.js';
+import { confirmBooking, isAvailable } from '../../services/bookings.js';
 import { loadCurrency } from '../../site/config.js';
 
-export default function operationsRouter({ events }) {
+export default function operationsRouter({ events, dispatch }) {
   const r = Router();
+  const actorOf = (req) => ({ type: req.role, id: req.user.id, name: req.user.name });
   const day = (s, fallback) => (s ? parseDay(s) : null) || fallback;
 
   // ---------- брони ----------
@@ -25,28 +26,48 @@ export default function operationsRouter({ events }) {
     res.json(list.map(bookingOut));
   });
   r.get('/bookings/:id', async (req, res) => {
-    const b = await prisma.booking.findFirst({ where: { id: req.params.id, accountId: req.accountId }, include: { apartment: true, guest: true, transfers: true } });
+    const b = await prisma.booking.findFirst({ where: { id: req.params.id, accountId: req.accountId }, include: { apartment: true, guest: true, transfers: { include: { job: { select: { id: true, status: true, driverName: true } } } }, cleanings: { include: { assignee: { select: { name: true } } } } } });
     if (!b) throw notFound('Бронь не найдена');
-    res.json({ ...bookingOut(b), transfers: b.transfers });
+    res.json({
+      ...bookingOut(b), apartmentId: b.apartmentId,
+      transfers: b.transfers.map(t => ({ id: t.id, direction: t.direction, place: t.place, date: isoDay(t.date), time: t.time, flight: t.flight, pax: t.pax, priceKzt: t.priceKzt, status: t.status, driverName: t.driverName, job: t.job })),
+      cleanings: b.cleanings.map(c => ({ id: c.id, date: isoDay(c.date), status: c.status, assignee: c.assignee?.name || null })),
+    });
   });
   r.post('/bookings/:id/confirm', async (req, res) => {
-    const b = await confirmBooking({ accountId: req.accountId, bookingId: req.params.id, events });
+    const b = await confirmBooking({ accountId: req.accountId, bookingId: req.params.id, events, dispatch, actor: actorOf(req) });
     res.json(bookingOut(b));
   });
   r.post('/bookings/:id/cancel', async (req, res) => {
     const b = await prisma.booking.findFirst({ where: { id: req.params.id, accountId: req.accountId } });
     if (!b) throw notFound('Бронь не найдена');
     const u = await prisma.booking.update({ where: { id: b.id }, data: { status: 'cancelled' }, include: { apartment: true, guest: true } });
+    await dispatch.cancelForBooking({ accountId: req.accountId, bookingId: b.id, actor: actorOf(req), reason: 'Бронь отменена' });   // водитель получит «заказ отменён»
+    await prisma.cleaningTask.deleteMany({ where: { bookingId: b.id, status: 'assigned' } });
     res.json(bookingOut(u));
   });
   r.patch('/bookings/:id', async (req, res) => {
     const data = parse(z.object({
       paymentStatus: z.enum(['unpaid', 'prepaid', 'paid', 'refunded']).optional(), note: z.string().max(2000).optional().nullable(),
       checkInTime: z.string().regex(/^\d{2}:\d{2}$/).optional(), checkOutTime: z.string().regex(/^\d{2}:\d{2}$/).optional(),
+      checkIn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), checkOut: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
     }), req.body);
     const b = await prisma.booking.findFirst({ where: { id: req.params.id, accountId: req.accountId } });
     if (!b) throw notFound('Бронь не найдена');
-    res.json(bookingOut(await prisma.booking.update({ where: { id: b.id }, data, include: { apartment: true, guest: true } })));
+    // смена дат: проверяем, что квартира свободна, пересчитываем сумму, сдвигаем уборку и трансферы
+    if (data.checkIn || data.checkOut) {
+      const ci = data.checkIn ? parseDay(data.checkIn) : b.checkIn, co = data.checkOut ? parseDay(data.checkOut) : b.checkOut;
+      if (!ci || !co || co <= ci) throw badRequest('Проверьте даты заезда и выезда');
+      if (['request', 'confirmed'].includes(b.status) && !(await isAvailable(req.accountId, b.apartmentId, ci, co, b.id))) throw new HttpError(409, 'Эти даты уже заняты');
+      const n = Math.round((co - ci) / 86400000);
+      Object.assign(data, { checkIn: ci, checkOut: co, totalKzt: b.nightlyKzt * n + b.petFeeKzt });
+    }
+    const u = await prisma.booking.update({ where: { id: b.id }, data, include: { apartment: true, guest: true } });
+    if (data.checkIn || data.checkOut) {
+      await prisma.cleaningTask.updateMany({ where: { bookingId: b.id, status: { not: 'done' } }, data: { date: u.checkOut } });
+      await dispatch.syncBookingDates({ accountId: req.accountId, booking: u, actor: actorOf(req) });
+    }
+    res.json(bookingOut(u));
   });
 
   // ---------- день: заезды / выезды / уборки (как в прототипе) ----------
@@ -65,22 +86,6 @@ export default function operationsRouter({ events }) {
       departures: { count: departures.length, guests: sum(departures), items: departures.map(bookingOut) },
       cleanings: { count: cleanings.length, done: cleanings.filter(c => c.status === 'done').length, items: cleanings.map(c => ({ id: c.id, apartment: c.apartment.title, assignee: c.assignee?.name || null, status: c.status, fromTime: c.fromTime, toTime: c.toTime })) },
     });
-  });
-
-  // ---------- трансферы ----------
-  r.get('/transfers', async (req, res) => {
-    const today = todayIn(req.account.timezone);
-    const list = await prisma.transfer.findMany({ where: { accountId: req.accountId, date: { gte: day(req.query.from, addDays(today, -3)) } }, include: { booking: { select: { number: true } } }, orderBy: [{ date: 'asc' }, { time: 'asc' }], take: 500 });
-    res.json(list);
-  });
-  r.patch('/transfers/:id', async (req, res) => {
-    const data = parse(z.object({ status: z.enum(['requested', 'planned', 'driver', 'done', 'cancelled']).optional(), driverName: z.string().max(80).optional().nullable() }), req.body);
-    const t = await prisma.transfer.findFirst({ where: { id: req.params.id, accountId: req.accountId } });
-    if (!t) throw notFound('Трансфер не найден');
-    if (data.driverName && !data.status) data.status = 'driver';
-    const u = await prisma.transfer.update({ where: { id: t.id }, data });
-    if (u.status === 'driver' && u.driverName && u.driverName !== t.driverName) events.emit('transfer.assigned', { accountId: req.accountId, transferId: u.id });
-    res.json(u);
   });
 
   // ---------- уборки ----------
@@ -110,10 +115,11 @@ export default function operationsRouter({ events }) {
   r.get('/finance', requireRole('owner'), async (req, res) => {
     const m = /^\d{4}-\d{2}$/.test(String(req.query.month)) ? String(req.query.month) : isoDay(todayIn(req.account.timezone)).slice(0, 7);
     const from = parseDay(m + '-01'); const to = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, 1));
-    const [bookings, repairs, aptCount] = await Promise.all([
+    const [bookings, repairs, aptCount, transferJobs] = await Promise.all([
       prisma.booking.findMany({ where: { accountId: req.accountId, status: { in: ['confirmed', 'completed'] }, checkIn: { lt: to }, checkOut: { gt: from } } }),
       prisma.repairTask.findMany({ where: { accountId: req.accountId, date: { gte: from, lt: to }, costKzt: { gt: 0 } } }),
       prisma.apartment.count({ where: { accountId: req.accountId, active: true } }),
+      prisma.transferJob.findMany({ where: { accountId: req.accountId, status: 'DONE', pickupAt: { gte: from, lt: to } }, include: { transfer: { select: { priceKzt: true } } } }),
     ]);
     let revenue = 0, nights = 0;
     for (const b of bookings) {
@@ -122,7 +128,11 @@ export default function operationsRouter({ events }) {
     }
     const days = Math.round((to - from) / 86400000);
     const repairsKzt = repairs.reduce((s, x) => s + (x.costKzt || 0), 0);
-    res.json({ month: m, revenueKzt: revenue, nights, occupancy: aptCount ? nights / (aptCount * days) : 0, adrKzt: nights ? Math.round(revenue / nights) : 0, repairsKzt, bookings: bookings.length });
+    // трансферы: выплаты водителям (расход, как ремонты) и что заплатили гости за выполненные поездки
+    const transfersKzt = transferJobs.reduce((s, j) => s + (j.payoutKzt || 0), 0);
+    const transfersUnpaidKzt = transferJobs.filter(j => !j.paid).reduce((s, j) => s + (j.payoutKzt || 0), 0);
+    const transfersRevenueKzt = transferJobs.reduce((s, j) => s + (j.transfer?.priceKzt || 0), 0);
+    res.json({ month: m, revenueKzt: revenue, nights, occupancy: aptCount ? nights / (aptCount * days) : 0, adrKzt: nights ? Math.round(revenue / nights) : 0, repairsKzt, transfersKzt, transfersUnpaidKzt, transfersRevenueKzt, transfers: transferJobs.length, bookings: bookings.length });
   });
   r.get('/payments', requireRole('owner'), async (req, res) => {
     res.json(await prisma.payment.findMany({ where: { accountId: req.accountId }, orderBy: { createdAt: 'desc' }, take: 200, select: { id: true, bookingId: true, provider: true, providerPaymentId: true, amountKzt: true, currency: true, amount: true, status: true, createdAt: true } }));

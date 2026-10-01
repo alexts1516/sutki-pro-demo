@@ -35,6 +35,13 @@ export const config = {
     username: (env.TELEGRAM_BOT_USERNAME || '').replace(/^@/, ''),
     mode: env.TELEGRAM_MODE === 'webhook' ? 'webhook' : 'polling',
   },
+  // Трансферы «как в Uber»: сколько ждём, пока кто-то возьмёт заказ, и когда звать хозяина/админа
+  transfers: {
+    offerTimeoutMin: Number(env.TRANSFER_OFFER_TIMEOUT_MIN || 30),        // никто не взял за N минут → эскалация
+    escalateBeforeHours: Number(env.TRANSFER_ESCALATE_BEFORE_HOURS || 3), // или до подачи осталось меньше X часов
+    reminderBeforeMin: Number(env.TRANSFER_REMINDER_BEFORE_MIN || 120),   // напоминание водителю перед подачей
+    driverShare: Number(env.TRANSFER_DRIVER_SHARE || 1),                  // доля цены трансфера водителю по умолчанию (1 = вся сумма)
+  },
   payments: {
     provider: (env.PAYMENTS_PROVIDER || '').toLowerCase(),
     cloudpayments: { publicId: env.CLOUDPAYMENTS_PUBLIC_ID || '', apiSecret: env.CLOUDPAYMENTS_API_SECRET || '' },

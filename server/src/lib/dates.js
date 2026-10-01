@@ -13,3 +13,15 @@ export const todayIn = (tz = 'Asia/Almaty', now = new Date()) => {
   const s = new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
   return parseDay(s);
 };
+/** Смещение часового пояса tz в минутах для момента date (Asia/Almaty → +300) */
+export function tzOffsetMin(tz = 'Asia/Almaty', date = new Date()) {
+  const p = new Intl.DateTimeFormat('en-US', { timeZone: tz, hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(date);
+  const g = (k) => +p.find(x => x.type === k).value;
+  return Math.round((Date.UTC(g('year'), g('month') - 1, g('day'), g('hour'), g('minute'), g('second')) - date.getTime()) / 60000);
+}
+/** Момент времени: день (полночь UTC) + «ЧЧ:ММ» по местному времени аккаунта */
+export function atLocal(day, hm = '12:00', tz = 'Asia/Almaty') {
+  const [h, m] = String(hm).split(':').map(Number);
+  const guess = new Date(new Date(day).getTime() + ((h || 0) * 60 + (m || 0)) * 60000);
+  return new Date(guess.getTime() - tzOffsetMin(tz, guess) * 60000);
+}

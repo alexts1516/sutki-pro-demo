@@ -9,7 +9,7 @@
 //   POST   /api/admin/repairs/:id/link               — новая ссылка на задачу без входа (старая перестаёт работать)
 //   POST   /api/admin/estimates/:id/approve|reject   — решение по смете { reason } (reason обязателен при отказе)
 //   POST   /api/admin/extras/:id/approve|reject      — решение по доп. расходу { note } (note обязателен при отказе)
-//   GET    /api/admin/contractors · POST /api/admin/contractors · PATCH /api/admin/contractors/:id  — подрядчики (userId — их вход)
+//   GET    /api/admin/contractors · POST /api/admin/contractors · PATCH /api/admin/contractors/:id  — подрядчики (userId — их вход; canDrive — внешний водитель для трансферов, note — машина)
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db.js';
@@ -100,7 +100,7 @@ export default function workRequestsRouter({ workflow, storage, config }) {
   });
 
   // ---------- подрядчики ----------
-  const ContractorSchema = z.object({ name: z.string().min(2).max(100), type: z.enum(TYPES), phone: z.string().max(40).optional().nullable(), note: z.string().max(500).optional().nullable(), regular: z.boolean().optional(), userId: z.string().optional().nullable() });
+  const ContractorSchema = z.object({ name: z.string().min(2).max(100), type: z.enum(TYPES), phone: z.string().max(40).optional().nullable(), note: z.string().max(500).optional().nullable(), regular: z.boolean().optional(), canDrive: z.boolean().optional(), userId: z.string().optional().nullable() });
   const checkUser = async (req, userId) => {
     if (userId && !(await prisma.membership.findFirst({ where: { accountId: req.accountId, userId, role: 'master', active: true } }))) throw badRequest('Вход подрядчика: нужен пользователь с ролью «Мастер» в этом аккаунте');
   };

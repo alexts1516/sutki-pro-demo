@@ -36,6 +36,7 @@ npm run dev       # http://localhost:3000/admin/
 | Гульнара / Айгерим / Динара / Светлана | `gulnara@…`, `aigerim@…`, `dinara@…`, `svetlana@…` | клининг |
 | Марат / Ерлан | `marat@…`, `erlan@…` | мастер (команда) |
 | Master Electric | `electric@astanastay.example` | мастер — внешний подрядчик-электрик (демо: по заявке в каждом статусе) |
+| Руслан / Бауыржан / Канат | `ruslan@…`, `bauyrzhan@…`, `kanat@…` | водитель (получают заказы на трансфер; демо: заказы во всех статусах) |
 | Второй аккаунт (для проверки изоляции) | `owner@demo-b.example` | владелец другого клиента |
 
 Пароль демо-пользователей можно задать при заполнении: `SEED_PASSWORD=... npm run db:seed`.
@@ -77,6 +78,10 @@ npm run dev       # http://localhost:3000/admin/
 | `PAYMENTS_PROVIDER` | нет | пусто — оплата выключена; `cloudpayments` или `paylink` |
 | `CLOUDPAYMENTS_PUBLIC_ID`, `CLOUDPAYMENTS_API_SECRET` | для CloudPayments | из личного кабинета CloudPayments |
 | `PAYLINK_SHOP_ID`, `PAYLINK_SECRET_KEY`, `PAYLINK_PUBLIC_KEY`, `PAYLINK_TEST_MODE` | для PayLink | из кабинета PayLink |
+| `TRANSFER_OFFER_TIMEOUT_MIN` | нет | через сколько минут без «Беру» трансфер считается «никто не взял», по умолчанию 30 |
+| `TRANSFER_ESCALATE_BEFORE_HOURS` | нет | «никто не взял», если до подачи меньше стольких часов, по умолчанию 3 |
+| `TRANSFER_REMINDER_BEFORE_MIN` | нет | напоминание водителю за столько минут до подачи, по умолчанию 120 |
+| `TRANSFER_DRIVER_SHARE` | нет | доля цены трансфера водителю по умолчанию (1 = вся сумма) |
 
 ---
 
@@ -122,6 +127,9 @@ npm run dev       # http://localhost:3000/admin/
 Заявки мастерам: новая заявка (исполнителю), мастер просит выезд, смета ждёт одобрения, доп. расход ждёт решения,
 работа выполнена (владельцу и админу); смета одобрена/отклонена, доп. расход одобрен/отклонён, заявка отменена,
 изменилось «кто будет в квартире» (исполнителю). Подрядчик без входа в приложение — уведомление только в журнал.
+Трансферы: новый заказ (всем, кто водит), водитель взял (владельцу и админу; гостю — имя водителя, машина, табличка),
+никто не взял / срочно за час до подачи (владельцу и админу), водитель отказался (владельцу и админу), назначен / передан другому /
+изменилось время / отменён / напоминание перед подачей (водителю), водитель выехал и «водитель на месте» (гостю).
 
 ---
 
@@ -180,6 +188,8 @@ npm run dev       # http://localhost:3000/admin/
 
 **Главное правило (проверяется на сервере):** перейти в `IN_PROGRESS` можно только из `APPROVED` с одобренной сметой.
 Ни админка, ни приложение мастера, ни ссылка это не обходят — ответ `409 «Нельзя начать работу без одобренной хозяином сметы»`.
+
+> Открытый вопрос: одобрять сметы может только владелец или владелец и админ — решение за хозяином, в коде пока без изменений.
 
 **Исключение — простая работа (`quickJob`)**, например заменить лампочку. Флаг ставит владелец/админ при создании.
 Мастер всё равно отмечает приезд (без этого — 409), может начать сразу без сметы, а при завершении обязан указать итоговую цену.
@@ -257,6 +267,118 @@ npm run dev       # http://localhost:3000/admin/
 
 ---
 
+## Трансферы «как в Uber»
+
+Гость заказывает трансфер на сайте вместе с бронью (`POST /api/public/:slug/transfers` с `bookingToken`).
+Когда владелец или админ **подтверждает бронь**, система сама создаёт заказ водителю (`TransferJob`) и предлагает его
+**всем, кто может водить**. Кто свободен — нажимает «Беру»; заказ получает **первый** (одна условная запись в базе:
+`UPDATE … WHERE status IN (OFFERED, UNASSIGNED) AND водитель не назначен`), остальные получают 409 «Заказ уже взял другой водитель»
+и видят его как «занят» — без данных гостя. Трансфер, добавленный к уже подтверждённой брони, уходит водителям сразу;
+трансфер без брони хозяин/админ отправляет кнопкой «Отправить водителям сейчас».
+
+**Кто может водить.** Флаг «Водит» (`Membership.canDrive`) в разделе «Команда»: у владельца и админа включён по умолчанию
+(можно выключить), у роли «Водитель» (`driver`, новая роль — видит только трансферы) включён всегда, любому сотруднику
+(клининг, мастер) его можно включить. Там же — машина водителя (`vehicle`), её увидит гость. Внешний водитель без входа —
+подрядчик с `canDrive` (`/api/admin/contractors`): его назначают вручную, он отмечает шаги по ссылке.
+
+### Статусы
+
+| Статус | По-русски | Цвет |
+|---|---|---|
+| — | Ждёт подтверждения брони (заказа ещё нет) | фиолетовый |
+| `OFFERED` | Ищем водителя (предложено всем) | жёлтый |
+| `UNASSIGNED` | Никто не взял — сигнал владельцу/админу | красный |
+| `ACCEPTED` | Водитель назначен | синий |
+| `EN_ROUTE` | Водитель в пути (с ETA) | синий |
+| `ARRIVED` | Водитель на месте (идёт бесплатное ожидание) | синий |
+| `PICKED_UP` | Гость в машине | синий |
+| `DONE` | Выполнен | зелёный |
+| `CANCELLED` | Отменён | серый |
+
+Переходы (проверяются на сервере, `src/services/transferJobs.js`):
+
+```
+бронь подтверждена ─► OFFERED ─ никто не взял за N мин или до подачи < X ч ─► UNASSIGNED
+OFFERED / UNASSIGNED ─ «Беру» (первый) или назначение владельцем/админом ─► ACCEPTED
+ACCEPTED ─ выехал ─► EN_ROUTE ─ на месте ─► ARRIVED ─ гость в машине ─► PICKED_UP ─ завершить ─► DONE
+   (вперёд можно перескакивать: из ACCEPTED сразу «на месте» или «гость в машине»; завершить — только после посадки)
+ACCEPTED ─ водитель отказался (только до выезда) ─► OFFERED (снова всем, кроме отказавшегося; владельцу/админу — уведомление)
+любой незавершённый ─ отмена владельцем/админом или отмена брони ─► CANCELLED
+```
+
+- **Эскалация.** Планировщик раз в 5 минут: `OFFERED` дольше `TRANSFER_OFFER_TIMEOUT_MIN` (30 мин) **или** до подачи меньше
+  `TRANSFER_ESCALATE_BEFORE_HOURS` (3 ч) → `UNASSIGNED` и сообщение «Никто не взял — назначьте вручную»; за час до подачи без водителя —
+  повторное «Срочно». Взять `UNASSIGNED` водитель всё ещё может. Без повторов (ключи в журнале уведомлений).
+- **Назначить / переназначить** владелец или админ может до посадки гостя; прежний водитель получает «передан другому».
+  «Снять водителя и предложить всем» — до выезда.
+- **Отмена брони** отменяет её заказы (водитель получает «отменён»), трансферы неподтверждённой заявки и незапущенную уборку.
+  **Перенос дат брони** (`PATCH /api/admin/bookings/:id` с `checkIn`/`checkOut`, с проверкой занятости) сдвигает встречу на новый
+  день заезда, проводы — на день выезда, время сохраняется; водитель остаётся и получает «изменилось: было → стало».
+- **Рейс задержался.** Водитель или владелец/админ меняет время подачи (`/time` или `PATCH`) — второй стороне уходит уведомление.
+- **Напоминание водителю** за `TRANSFER_REMINDER_BEFORE_MIN` (120 мин) до подачи: телефон гостя, табличка, «проверьте рейс».
+- **Деньги.** Цена для гостя — в `Transfer.priceKzt`; выплата водителю — `TransferJob.payoutKzt` (по умолчанию цена × `TRANSFER_DRIVER_SHARE`,
+  по умолчанию 1 — вся сумма; правится в карточке). После `DONE` — флаг «Оплачено водителю». В `GET /api/admin/finance`:
+  `transfersKzt` (выплаты водителям за выполненные поездки месяца), `transfersUnpaidKzt`, `transfersRevenueKzt` (сколько заплатили гости).
+- **Бесплатное ожидание** (показывается водителю и гостю): аэропорт 60 мин, вокзал 30, адрес (проводы) 15.
+
+### Что видит водитель
+
+| | Открытый заказ (до «Беру») | Свой заказ в работе | Чужой заказ |
+|---|---|---|---|
+| Время, дата, откуда → куда, рейс, где встречать, табличка | ✓ | ✓ | только время и место, «занят» |
+| Имя гостя, пассажиры, багаж, детское кресло, заметки | ✓ | ✓ | — |
+| Адрес и номер квартиры | ✓ | ✓ | — |
+| Выплата водителю | ✓ | ✓ | — |
+| **Телефон гостя** | **—** | ✓ (только `ACCEPTED`…`PICKED_UP`) | — |
+
+Сотрудники без «Водит» (клининг, мастер) предложений не видят (403). Цена для гостя водителю не показывается.
+
+### Адреса API
+
+| Метод | Путь | Кто |
+|---|---|---|
+| GET | `/api/admin/calendar?from=&days=` | владелец, админ — шахматка: брони, уборки, заявки мастерам, трансферы |
+| GET | `/api/admin/transfers` | владелец, админ — заявки гостей на трансфер (+ заказ) |
+| POST | `/api/admin/transfers/:id/dispatch` | владелец, админ — отправить водителям трансфер без брони |
+| GET | `/api/admin/transfer-jobs?from=&to=&status=` | владелец, админ — заказы + счётчики по статусам |
+| GET | `/api/admin/transfer-jobs/:id` | владелец, админ — карточка с телефоном гостя и журналом |
+| PATCH | `/api/admin/transfer-jobs/:id` | владелец, админ — `{ date, time, flight, place, address, pax, bags, childSeats, sign, guestPhone, meetingPoint, notes, payoutKzt }` |
+| POST | `/api/admin/transfer-jobs/:id/assign` | владелец, админ — `{ driverUserId }` или `{ driverContractorId }` |
+| POST | `/api/admin/transfer-jobs/:id/offer` | владелец, админ — снять водителя и предложить всем |
+| POST | `/api/admin/transfer-jobs/:id/status` | владелец, админ — `{ action: en-route\|arrived\|picked-up\|done }` за водителя |
+| POST | `/api/admin/transfer-jobs/:id/cancel` | владелец, админ — `{ reason }` |
+| POST | `/api/admin/transfer-jobs/:id/paid` | владелец, админ — `{ paid }` (после `DONE`) |
+| POST | `/api/admin/transfer-jobs/:id/link` | владелец, админ — новая ссылка внешнему водителю |
+| GET | `/api/admin/drivers` | владелец, админ — кто может водить (команда + внешние) |
+| PATCH | `/api/admin/team/:userId` | `{ canDrive, vehicle }` — владелец/админ; себя в водители — каждый |
+| GET | `/api/staff/transfers` | все, кто водит — `{ eligible, offers, mine, taken }` |
+| GET | `/api/staff/transfers/:id` | водитель (без «Водит» — 403) |
+| POST | `/api/staff/transfers/:id/accept` | кто водит — `{ vehicle? }`, первый получает заказ, остальным 409 |
+| POST | `/api/staff/transfers/:id/release` | водитель заказа — `{ reason }`, только до выезда |
+| POST | `/api/staff/transfers/:id/en-route` · `/arrived` · `/picked-up` · `/done` | водитель заказа (`etaMinutes` для «выехал») |
+| POST | `/api/staff/transfers/:id/time` | водитель заказа — `{ time, date?, note }` |
+| GET / POST | `/api/transfer-link/:token` (+ `/en-route`, `/arrived`, `/picked-up`, `/done`, `/time`) | внешний водитель без входа; после `DONE`/`CANCELLED` — 410 |
+
+### Что подсмотрели у конкурентов
+
+- **Задача «группе» — берёт первый, у остальных она пропадает; автозадачи от подтверждённой брони, отмена вместе с бронью;
+  руководителю — уведомление, когда задачу взяли.** Guesty ([Managing tasks](https://help.guesty.com/hc/en-gb/articles/9370553270941-Managing-tasks),
+  [Automate tasks](https://www.guesty.com/blog/automate-tasks-with-guesty/)), Hostaway ([cleaning automation](https://www.hostaway.com/blog/improve-coordination-among-cleaning-teams/)).
+- **Бесплатное ожидание по месту подачи:** Welcome Pickups — аэропорт 60, вокзал/порт 30, другое место 20 мин
+  ([Help Center](https://support.welcomepickups.com/en/articles/4698590-how-long-will-my-driver-wait-for-me)); GetTransfer — 60 / 30 / 15
+  ([FAQ](https://gettransfer.com/en/faq)); KiwiTaxi — 90 мин в аэропорту ([help](https://support.kiwitaxi.com/en/articles/8536081-will-i-have-to-pay-extra-for-waiting));
+  Booking.com Taxi — 45 мин после посадки, 15 при подаче не в аэропорту ([booking.com/taxi](https://www.booking.com/taxi/)). Взяли 60 / 30 / 15.
+- **Отслеживание рейса и сдвиг времени подачи водителем:** Welcome Pickups, KiwiTaxi, Booking.com Taxi. У нас — номер рейса,
+  ссылка «проверить рейс», смена времени водителем с уведомлением владельцу/админу (автоматического трекинга пока нет).
+- **Табличка с именем гостя (meet & greet) и точка встречи:** KiwiTaxi ([FAQ](https://kiwitaxi.com/en/help)),
+  Booking.com Taxi API Meeting Points ([docs](https://connect.taxi.booking.com/meeting-points/getting-started/)) — поля `sign` и `meetingPoint`.
+- **Кнопки водителя «я на месте» → «встретил» → «завершить»:** Welcome Drivers Academy ([Transfer flow](https://academy.welcomepickups.com/web-stories/transfer-flow/)) —
+  у нас `ARRIVED` → `PICKED_UP` → `DONE`, плюс «выехал» с ETA.
+- **Данные водителя гостю заранее (имя, машина):** Welcome Pickups ([Help Center](https://support.welcomepickups.com/en/articles/4698590-how-long-will-my-driver-wait-for-me)) —
+  гость получает имя водителя, машину и табличку, когда заказ взят; «водитель выехал» и «водитель на месте».
+
+---
+
 ## Фото и хранилище
 
 По умолчанию фото сохраняются в папку `server/uploads/` и отдаются по адресу `/uploads/...`.
@@ -327,18 +449,20 @@ window.APP_CONFIG = { API_BASE_URL: '', ACCOUNT_SLUG: 'astana-stay' };
 
 **Сайт гостей** `/api/public/:slug` (без входа): `GET /site` (тексты, бренд, логотип), `GET /apartments`,
 `GET /apartments/:id`, `GET /apartments/:id/availability`, `POST /bookings` (заявка), `GET /bookings/:token`,
-`POST /bookings/:token/pay`, `POST /transfers`.
+`POST /bookings/:token/pay`, `POST /transfers` (к подтверждённой брони — сразу заказ водителям).
 
 **Админка** `/api/admin` (владелец/админ): квартиры `apartments` (CRUD), фото
 (`POST /apartments/:id/photos`, `PUT /apartments/:id/photos/order`, `PATCH|DELETE /photos/:id`,
 `POST /photos/:id/cover`), `site-texts`, `brand`, `brand/logo`, `team` (+ `telegram-invite`),
-`bookings` (+ confirm/cancel), `day/:date`, `transfers`, `cleaning-tasks`, заявки мастерам `repairs` (см. раздел ниже),
+`bookings` (+ confirm/cancel, PATCH с переносом дат), `calendar`, `day/:date`, `transfers`, `transfer-jobs`, `drivers` (см. «Трансферы»), `cleaning-tasks`, заявки мастерам `repairs` (см. раздел выше),
 `estimates/:id/approve|reject`, `extras/:id/approve|reject`, `contractors`, `notifications`, `finance`, `payments`, `currency`, `account`.
 
-**Сотрудники** `/api/staff` (клининг/мастер): `GET /tasks`, уборки `cleaning/:id` (+ status),
-заявки мастеру `repairs/:id` (+ request-visit, arrive, inspect, estimate, start, extras, complete, photos).
+**Сотрудники** `/api/staff` (клининг/мастер/водитель): `GET /tasks`, уборки `cleaning/:id` (+ status),
+заявки мастеру `repairs/:id` (+ request-visit, arrive, inspect, estimate, start, extras, complete, photos),
+трансферы `transfers` (+ accept, release, en-route, arrived, picked-up, done, time) — для всех, у кого «Водит».
 
 **Задача по ссылке** `/api/task-link/:token` (без входа): те же шаги мастера по одной заявке.
+**Трансфер по ссылке** `/api/transfer-link/:token` (без входа): шаги внешнего водителя по одному заказу.
 
 **Вебхуки**: `/api/payments/cloudpayments/{check,pay,fail}`, `/api/payments/paylink/notify`,
 `/api/telegram/webhook`.
@@ -347,13 +471,16 @@ window.APP_CONFIG = { API_BASE_URL: '', ACCOUNT_SLUG: 'astana-stay' };
 
 ## Тесты
 
-`npm test` — создаёт отдельную SQLite-базу `prisma/test.db`, прогоняет 48 проверок:
+`npm test` — создаёт отдельную SQLite-базу `prisma/test.db`, прогоняет 57 проверок:
 вход и изоляция аккаунтов, роли, загрузка/порядок/обложка/удаление фото, тексты сайта и логотип,
 уведомления (без Telegram — в журнал, без повторов), привязка Telegram по ссылкам, подписи CloudPayments и PayLink,
 заявки мастерам (`tests/work-requests.test.js`): смета без выезда с материалами, путь с выездом, смета по фото и «по фото → нужен выезд»,
 запрет начала работ без одобрения, исключение quickJob, доп. расходы (одобрение/отказ, суммы, блокировка оплаты),
 «кто будет в квартире» (владелец и админ правят, побеждает последнее изменение, мастер только читает, «Как попасть» — только при EMPTY),
-изоляция исполнителей и аккаунтов, мастер видит только адрес и номер квартиры, ссылка на задачу.
+изоляция исполнителей и аккаунтов, мастер видит только адрес и номер квартиры, ссылка на задачу;
+трансферы (`tests/transfers.test.js`): заказ создаётся при подтверждении брони и уходит только тем, кто водит; гонка «Беру» — побеждает ровно один;
+телефон гостя скрыт до «Беру»; чужой заказ — «занят» без данных гостя; эскалация по времени и «до подачи < 3 ч» без дублей; ручное назначение и замена;
+отмена брони отменяет заказ, перенос дат сдвигает трансфер; шаги водителя, смена времени, выплата и финансы; отказ водителя; внешний водитель по ссылке (410 после выполнения); календарь.
 
 ## Структура
 
@@ -361,12 +488,12 @@ window.APP_CONFIG = { API_BASE_URL: '', ACCOUNT_SLUG: 'astana-stay' };
 server/
   prisma/          schema.prisma, миграции, seed.js (демо-данные из прототипа)
   src/
-    index.js       запуск: сервер, бот, планировщик напоминаний
+    index.js       запуск: сервер, бот, планировщик напоминаний и диспетчер трансферов (раз в 5 мин)
     app.js         Express: маршруты, CORS, ошибки
     config.js      чтение .env
     auth/          пароли (bcrypt), токены входа, роли
-    routes/        auth, public (сайт), admin/* (в т.ч. workRequests), staff, workActions (шаги мастера), taskLink, payments
-    services/      брони, трансферы, заявки мастерам (workRequests.js — статусы и правила переходов)
+    routes/        auth, public (сайт), admin/* (в т.ч. workRequests, transfers, calendar), staff, staffTransfers, workActions (шаги мастера), taskLink, transferLink, payments
+    services/      брони, цены трансферов, заявки мастерам (workRequests.js), заказы водителям (transferJobs.js) — статусы и правила переходов
     notifications/ события, шаблоны RU/EN, отправка, планировщик
     telegram/      бот (grammY), привязка по ссылкам
     payments/      CloudPayments, PayLink
@@ -389,6 +516,16 @@ server/
 | ![Уведомления](docs/screenshots/08-notifications.png) | ![Телефон](docs/screenshots/09-mobile-photos.png) |
 | ![Заявки мастерам](docs/screenshots/10-work-requests.png) | ![Смета ждёт решения](docs/screenshots/11-work-request-estimate.png) |
 | ![Доп. расходы](docs/screenshots/12-work-request-extras.png) | ![Новая заявка](docs/screenshots/13-work-request-new.png) |
+| ![Календарь](docs/screenshots/15-calendar.png) | ![Карточка трансфера: водитель в пути](docs/screenshots/16-transfer-card.png) |
+| ![Никто не взял — назначить вручную](docs/screenshots/17-transfer-unassigned.png) | ![Карточка брони с трансфером](docs/screenshots/18-booking-card.png) |
+| ![Трансферы](docs/screenshots/19-transfers.png) | ![Команда: кто водит](docs/screenshots/20-team-drivers.png) |
+| ![Телефон: по дням](docs/screenshots/21-mobile-calendar.png) | ![Телефон: карточка трансфера](docs/screenshots/22-mobile-transfer-card.png) |
+| ![Телефон: шахматка](docs/screenshots/23-mobile-grid.png) | |
+
+Цвета во всей админке одни и те же: фиолетовый — новое, жёлтый — ждёт решения / ищем исполнителя, красный — срочно / проблема,
+синий — в работе, зелёный — готово / подтверждено, серый — закрыто. Легенда — над календарём и списком трансферов.
+Календарь открывается первым: сверху «требует внимания» (никто не взял трансфер, ищем водителя, заявки на бронь, сметы),
+любой элемент открывает карточку одним нажатием, на телефоне — режим «По дням» и карточка снизу.
 
 ## Что пока заглушка
 
@@ -400,4 +537,8 @@ server/
 - приложения мастера на сервере пока нет (только API): шаги мастера делаются через `/api/staff/...` или `/api/task-link/...`;
   страница для «задачи по ссылке» — следующий шаг (в статическом демо это `task.html`, он к серверу не подключён);
 - фото проблем в демо-заявках Master Electric — рисованные заглушки;
+- приложения водителя на сервере пока нет (только API `/api/staff/transfers` и `/api/transfer-link/...`), страницы для ссылки внешнего водителя — тоже;
+- автоматического отслеживания рейсов нет (нужен платный API, например AeroDataBox/FlightAware): время подачи меняют водитель или админ, в карточке — ссылка на Flightradar24;
+- живой геолокации водителя нет — есть «выехал» с ETA и «на месте»;
+- старые скриншоты 00–14 сняты до появления календаря (в меню ещё нет «Календаря» и «Трансферов»).
 - `npm audit`: 3 предупреждения high в `deepmerge-ts` внутри CLI Prisma (`@prisma/config`, читает конфиг при миграциях) — в запросы к серверу не попадает; исправится обновлением Prisma, `audit fix --force` откатывает Prisma и не нужен.

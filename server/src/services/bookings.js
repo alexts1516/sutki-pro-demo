@@ -57,8 +57,8 @@ export async function createBookingRequest({ accountId, apartment, checkIn, chec
   }
 }
 
-/** Подтвердить заявку: статус confirmed + уборка в день выезда + уведомление гостю */
-export async function confirmBooking({ accountId, bookingId, events }) {
+/** Подтвердить заявку: статус confirmed + уборка в день выезда + уведомление гостю + заказы водителям на трансферы брони */
+export async function confirmBooking({ accountId, bookingId, events, dispatch = null, actor = null }) {
   const b = await prisma.booking.findFirst({ where: { id: bookingId, accountId } });
   if (!b) throw new HttpError(404, 'Бронь не найдена');
   if (b.status === 'confirmed') return b;
@@ -67,5 +67,6 @@ export async function confirmBooking({ accountId, bookingId, events }) {
   const hasCleaning = await prisma.cleaningTask.findFirst({ where: { bookingId: b.id } });
   if (!hasCleaning) await prisma.cleaningTask.create({ data: { accountId, apartmentId: b.apartmentId, bookingId: b.id, date: b.checkOut, fromTime: b.checkOutTime, status: 'assigned' } });
   events?.emit('booking.confirmed', { accountId, bookingId: b.id });
+  if (dispatch) await dispatch.createForBooking({ accountId, bookingId: b.id, actor });   // трансфер «как в Uber» — сразу всем водителям
   return updated;
 }
