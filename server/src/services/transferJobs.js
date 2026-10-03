@@ -14,6 +14,8 @@ import { HttpError, badRequest, forbidden, notFound } from '../lib/errors.js';
 import { randomToken } from '../lib/tokens.js';
 import { atLocal, isoDay, parseDay } from '../lib/dates.js';
 import { config as defaultConfig } from '../config.js';
+import { getSettings } from './settings.js';
+import { computePayout } from './payouts.js';
 
 export const STATUSES = ['OFFERED', 'UNASSIGNED', 'ACCEPTED', 'EN_ROUTE', 'ARRIVED', 'PICKED_UP', 'DONE', 'CANCELLED'];
 export const STATUS_RU = {
@@ -53,11 +55,21 @@ export function aptLine(a) {
   const no = a.code && !/кв\.?\s*\d/i.test(a.address || '') ? `, кв. ${a.code}` : '';
   return `${a.address || a.title}${no}`;
 }
-/** Откуда → куда: встреча — от аэропорта/вокзала к квартире, проводы — наоборот */
-export function route(job) {
+/** Адрес без квартиры: «пр. Кошкарбаева, 10/1, блок G-1, кв. 12» → «пр. Кошкарбаева, 10/1, блок G-1» */
+export const stripUnit = (s) => String(s || '').replace(/[,;]?\s*(кв\.?|квартира|apt\.?|apartment|flat|офис|оф\.)\s*№?\s*[\w\-/]+.*$/i, '').trim();
+/** Дом без номера квартиры — это водитель видит до «Беру»: «ЖК Хайвил, пр. Кошкарбаева, 10/1, блок G-1 (Сарайшык)» */
+export function buildingLine(a) {
+  if (!a) return null;
+  const street = stripUnit(a.address);
+  const head = a.complex && !street.toLowerCase().includes(a.complex.toLowerCase()) ? `${a.complex}, ${street}` : street;
+  return `${head || a.complex || 'адрес уточнить'}${a.district ? ` (${a.district})` : ''}`;
+}
+/** Откуда → куда: встреча — от аэропорта/вокзала к квартире, проводы — наоборот.
+ *  hideUnit — до «Беру»: только дом/ЖК и район, без номера квартиры. */
+export function route(job, { hideUnit = false } = {}) {
   const t = job.transfer;
   const place = PLACE_RU[t.place] || t.place;
-  const home = aptLine(job.apartment) || t.address || 'адрес уточнить';
+  const home = (hideUnit ? buildingLine(job.apartment) : aptLine(job.apartment)) || (hideUnit ? stripUnit(t.address) : t.address) || 'адрес уточнить';
   const station = t.place === 'station' && t.address && !job.apartment ? t.address : place;
   return t.direction === 'out' ? { from: home, to: place } : { from: station, to: home };
 }
@@ -72,11 +84,11 @@ export function driverActions(job, userId, eligible) {
   }[job.status] || [];
 }
 
-function tripOut(job) {
+function tripOut(job, { hideUnit = false } = {}) {
   const t = job.transfer;
   return {
     direction: t.direction, place: t.place, placeLabel: PLACE_RU[t.place] || t.place, date: isoDay(t.date), time: t.time, pickupAt: job.pickupAt,
-    flight: t.flight, ...route(job), meetingPoint: job.meetingPoint, sign: t.sign || t.guestName, guestName: t.guestName,
+    flight: t.flight, flightStatus: job.flightStatus || null, flightEta: job.flightEta || null, ...route(job, { hideUnit }), meetingPoint: job.meetingPoint, sign: t.sign || t.guestName, guestName: t.guestName,
     pax: t.pax, bags: t.bags, childSeats: t.childSeats, carClass: t.carClass, notes: job.notes, freeWaitMin: job.freeWaitMin,
   };
 }
@@ -87,26 +99,45 @@ export const eventOut = (e) => ({ id: e.id, type: e.type, actorType: e.actorType
  * Что видит водитель. Открытый заказ — всё для решения «беру/не беру», кроме телефона гостя.
  * Свой заказ в работе — плюс телефон. Заказ, который взял другой, — только «занят», без данных гостя.
  */
-export function jobForDriver(job, userId, { eligible = false } = {}) {
+/** Квартира для водителя: до «Беру» — только дом/ЖК и район; после — полный адрес и номер квартиры */
+function apartmentFor(job, unlocked) {
+  const a = job.apartment;
+  if (!a) return job.transfer.address ? { building: unlocked ? job.transfer.address : stripUnit(job.transfer.address), address: unlocked ? job.transfer.address : undefined } : null;
+  return unlocked
+    ? { building: buildingLine(a), address: aptLine(a), apartmentNumber: a.code || null }
+    : { building: buildingLine(a), district: a.district || null };
+}
+
+/**
+ * Что видит водитель. Открытый заказ — всё для решения «беру/не беру», кроме телефона гостя и номера квартиры
+ * (только дом/ЖК и район). Свой заказ в работе — плюс телефон и номер квартиры. Заказ, который взял другой, — только «занят».
+ * Денег бизнеса водитель не видит: только свою выплату. viewer — { membership, settings } для расчёта его выплаты в предложении.
+ */
+export function jobForDriver(job, userId, { eligible = false, viewer = null } = {}) {
   const mine = isJobDriver(job, userId);
   if (!OPEN.includes(job.status) && !mine) {
     return { id: job.id, status: 'TAKEN', statusLabel: job.status === 'CANCELLED' ? 'Отменён' : 'Взял другой водитель', date: isoDay(job.transfer.date), time: job.transfer.time, placeLabel: PLACE_RU[job.transfer.place] || job.transfer.place, direction: job.transfer.direction };
   }
   if (OPEN.includes(job.status) && !eligible) throw forbidden('Вы не в списке водителей');
+  const unlocked = mine && ACTIVE.includes(job.status);   // после «Беру» и пока заказ в работе
+  const unlockedDone = mine && job.status === 'DONE';
+  let payoutKzt = job.payoutKzt;
+  if (!mine && viewer?.settings && !job.payoutManual) payoutKzt = computePayout({ priceKzt: job.transfer.priceKzt, settings: viewer.settings, driver: viewer.membership }).payoutKzt;
   return {
-    id: job.id, status: job.status, statusLabel: STATUS_RU[job.status], mine, ...tripOut(job),
-    apartment: job.apartment ? { address: job.apartment.address, apartmentNumber: job.apartment.code || null } : null,
-    guestPhone: mine && ACTIVE.includes(job.status) ? job.transfer.guestPhone : undefined,   // телефон — только после «Беру»
-    payoutKzt: job.payoutKzt, vehicle: mine ? job.vehicle : undefined, ...(mine ? timeline(job) : {}),
+    id: job.id, status: job.status, statusLabel: STATUS_RU[job.status], mine, ...tripOut(job, { hideUnit: !(unlocked || unlockedDone) }),
+    apartment: apartmentFor(job, unlocked || unlockedDone),
+    guestPhone: unlocked ? job.transfer.guestPhone : undefined,   // телефон — только после «Беру» и до завершения
+    payoutKzt, paid: mine ? job.paid : undefined, vehicle: mine ? job.vehicle : undefined, ...(mine ? timeline(job) : {}),
     actions: driverActions(job, userId, eligible),
   };
 }
-/** Для внешнего водителя по ссылке: свой заказ, телефон — пока заказ в работе */
+/** Для внешнего водителя по ссылке (ссылка есть только у назначенного): то же правило — квартира и телефон, пока заказ в работе */
 export function jobForLink(job) {
+  const unlocked = ACTIVE.includes(job.status);
   return {
-    id: job.id, status: job.status, statusLabel: STATUS_RU[job.status], ...tripOut(job), driverName: job.driverName,
-    apartment: job.apartment ? { address: job.apartment.address, apartmentNumber: job.apartment.code || null } : null,
-    guestPhone: ACTIVE.includes(job.status) ? job.transfer.guestPhone : undefined, payoutKzt: job.payoutKzt, ...timeline(job),
+    id: job.id, status: job.status, statusLabel: STATUS_RU[job.status], ...tripOut(job, { hideUnit: !unlocked }), driverName: job.driverName,
+    apartment: apartmentFor(job, unlocked),
+    guestPhone: unlocked ? job.transfer.guestPhone : undefined, payoutKzt: job.payoutKzt, ...timeline(job),
     actions: ({ ACCEPTED: ['en-route', 'arrived', 'picked-up', 'time'], EN_ROUTE: ['arrived', 'picked-up', 'time'], ARRIVED: ['picked-up'], PICKED_UP: ['done'] })[job.status] || [],
   };
 }
@@ -119,8 +150,10 @@ export function jobForManager(job, { publicUrl = '' } = {}) {
     apartment: job.apartment ? { id: job.apartment.id, title: job.apartment.title, address: job.apartment.address, apartmentNumber: job.apartment.code || null } : null,
     driver: job.driverUserId ? { kind: 'user', id: job.driverUserId, name: job.driverName || job.driverUser?.name, phone: job.driverUser?.phone || null }
       : job.driverContractorId ? { kind: 'contractor', id: job.driverContractorId, name: job.driverName || job.driverContractor?.name, phone: job.driverContractor?.phone || null } : null,
-    vehicle: job.vehicle, payoutKzt: job.payoutKzt, paid: job.paid, paidAt: job.paidAt, offerRound: job.offerRound,
-    link: job.linkToken ? { token: job.linkToken, url: `${publicUrl}/api/transfer-link/${job.linkToken}` } : null,
+    vehicle: job.vehicle, payoutKzt: job.payoutKzt, commissionKzt: job.commissionKzt ?? (job.payoutKzt != null ? (t.priceKzt || 0) - job.payoutKzt : null),
+    payoutRule: job.payoutRule || null, payoutManual: !!job.payoutManual, paid: job.paid, paidAt: job.paidAt, offerRound: job.offerRound,
+    flightStatus: job.flightStatus || null, flightEta: job.flightEta || null, flightCheckedAt: job.flightCheckedAt || null,
+    link: job.linkToken ? { token: job.linkToken, url: `${publicUrl}/link/${job.linkToken}` } : null,
     ...timeline(job), cancelReason: job.cancelReason, events: (job.events || []).map(eventOut), createdAt: job.createdAt,
   };
 }
@@ -128,13 +161,13 @@ export function jobListItem(job) {
   const t = job.transfer;
   return {
     id: job.id, transferId: t.id, status: job.status, statusLabel: STATUS_RU[job.status], direction: t.direction, place: t.place, date: isoDay(t.date), time: t.time,
-    pickupAt: job.pickupAt, flight: t.flight, guestName: t.guestName, pax: t.pax, ...route(job), driverName: job.driverName, payoutKzt: job.payoutKzt, paid: job.paid,
+    pickupAt: job.pickupAt, flight: t.flight, guestName: t.guestName, pax: t.pax, ...route(job), driverName: job.driverName, priceKzt: t.priceKzt, payoutKzt: job.payoutKzt, commissionKzt: job.commissionKzt, paid: job.paid,
     apartmentId: job.apartmentId, apartmentTitle: job.apartment?.title || null, bookingNumber: job.booking?.number || null,
   };
 }
 
 export function createTransferDispatch({ events, config = defaultConfig } = {}) {
-  const cfg = { offerTimeoutMin: 30, escalateBeforeHours: 3, reminderBeforeMin: 120, driverShare: 1, ...(config.transfers || {}) };
+  const cfg = { offerTimeoutMin: 30, escalateBeforeHours: 3, reminderBeforeMin: 120, ...(config.transfers || {}) };
   const emit = (name, payload) => events?.emit(name, payload);
   const log = (job, actor, type, note = null, data = null) => prisma.transferEvent.create({
     data: { accountId: job.accountId, jobId: job.id, type, actorType: actor?.type || 'system', actorId: actor?.id || null, actorName: actor?.name || null, note, data },
@@ -142,7 +175,14 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
   const syncTransfer = (job, extra = {}) => prisma.transfer.update({ where: { id: job.transferId }, data: { status: TRANSFER_STATUS[job.status], driverName: job.driverName || null, ...extra } });
   const reload = (id) => loadJob({ id });
   async function tz(accountId) { return (await prisma.account.findUnique({ where: { id: accountId }, select: { timezone: true } }))?.timezone || 'Asia/Almaty'; }
-  const defaultPayout = (price) => Math.round((price * cfg.driverShare) / 100) * 100;
+  /** Выплата водителю и комиссия по правилам (если выплату не задали вручную). driver — Membership/Contractor или null. */
+  async function payoutFields(job, priceKzt, driver = null) {
+    if (job?.payoutManual) return { commissionKzt: priceKzt - (job.payoutKzt || 0) };
+    const p = computePayout({ priceKzt, settings: await getSettings(job?.accountId), driver });
+    return { payoutKzt: p.payoutKzt, commissionKzt: p.commissionKzt, payoutRule: p.rule };
+  }
+  let flights = null;
+  const setFlightTracker = (t) => { flights = t; };
 
   /** Создать заказ для трансфера (если ещё нет) и предложить всем водителям */
   async function createForTransfer({ accountId, transferId, actor = null }) {
@@ -156,7 +196,7 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
       job = await prisma.transferJob.create({
         data: {
           accountId, transferId: t.id, bookingId: t.bookingId, apartmentId: t.apartmentId, status: 'OFFERED', offeredAt: new Date(),
-          pickupAt: atLocal(t.date, t.time, await tz(accountId)), freeWaitMin: freeWaitFor(t), payoutKzt: defaultPayout(t.priceKzt),
+          pickupAt: atLocal(t.date, t.time, await tz(accountId)), freeWaitMin: freeWaitFor(t), ...(await payoutFields({ accountId }, t.priceKzt)),
           notes: t.childSeats ? `Детских кресел: ${t.childSeats}` : null,
         },
       });
@@ -179,9 +219,12 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
     const m = await driverMembership(accountId, user.id);
     if (!m) throw forbidden('Вы не в списке водителей');
     const now = new Date();
+    const cur = await prisma.transferJob.findFirst({ where: { id: jobId, accountId }, include: { transfer: { select: { priceKzt: true } } } });
+    if (!cur) throw notFound('Заказ не найден');
+    const pay = await payoutFields(cur, cur.transfer.priceKzt, m);
     const r = await prisma.transferJob.updateMany({
       where: { id: jobId, accountId, status: { in: OPEN }, driverUserId: null, driverContractorId: null },
-      data: { status: 'ACCEPTED', driverUserId: user.id, driverName: user.name, vehicle: vehicle || m.vehicle || null, acceptedAt: now },
+      data: { status: 'ACCEPTED', driverUserId: user.id, driverName: user.name, vehicle: vehicle || m.vehicle || null, acceptedAt: now, ...pay },
     });
     const job = await reload(jobId);
     if (!job || job.accountId !== accountId) throw notFound('Заказ не найден');
@@ -199,7 +242,7 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
   async function release({ job, user, reason }) {
     if (!isJobDriver(job, user.id)) throw forbidden('Это не ваш заказ');
     need(job, ['ACCEPTED'], 'Отказаться можно только до выезда — дальше звоните хозяину/админу');
-    const u = await prisma.transferJob.update({ where: { id: job.id }, data: { status: 'OFFERED', driverUserId: null, driverName: null, vehicle: null, acceptedAt: null, offerRound: { increment: 1 }, offeredAt: new Date(), escalatedAt: null } });
+    const u = await prisma.transferJob.update({ where: { id: job.id }, data: { status: 'OFFERED', driverUserId: null, driverName: null, vehicle: null, acceptedAt: null, offerRound: { increment: 1 }, offeredAt: new Date(), escalatedAt: null, ...(await payoutFields(job, job.transfer.priceKzt)) } });
     await syncTransfer(u);
     await log(u, { type: 'driver', id: user.id, name: user.name }, 'released', reason || null);
     emit('transfer.released', { accountId: job.accountId, jobId: job.id, byName: user.name, reason: reason || null });
@@ -232,7 +275,7 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
   }
 
   /** Новое время подачи (рейс задержался): водитель или хозяин/админ */
-  async function reschedule({ job, actor, date, time, note }) {
+  async function reschedule({ job, actor, date, time, note, reason = null }) {
     if (TERMINAL.includes(job.status) || job.status === 'PICKED_UP') throw conflict('Время уже не изменить');
     const d = date ? parseDay(date) : job.transfer.date;
     if (!d) throw badRequest('Дата в формате ГГГГ-ММ-ДД');
@@ -242,7 +285,8 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
     await prisma.transferJob.update({ where: { id: job.id }, data: { pickupAt } });
     const after = `${isoDay(d)} ${time || job.transfer.time}`;
     await log(job, actor, 'time_changed', note || null, { before, after });
-    emit('transfer.updated', { accountId: job.accountId, jobId: job.id, before, after, byName: actor?.name, notifyManagers: actor?.type === 'driver' || actor?.type === 'link' });
+    const byDriver = actor?.type === 'driver' || actor?.type === 'link';
+    emit('transfer.updated', { accountId: job.accountId, jobId: job.id, before, after, byName: actor?.name, reason, notifyManagers: byDriver || actor?.type === 'flight', notifyDriver: !byDriver });
     return reload(job.id);
   }
 
@@ -250,11 +294,24 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
   async function update({ job, actor, data }) {
     const tData = {}, jData = {};
     for (const k of ['flight', 'pax', 'bags', 'childSeats', 'sign', 'guestPhone', 'address', 'place']) if (data[k] !== undefined) tData[k] = data[k];
-    for (const k of ['meetingPoint', 'notes', 'payoutKzt']) if (data[k] !== undefined) jData[k] = data[k];
+    for (const k of ['meetingPoint', 'notes']) if (data[k] !== undefined) jData[k] = data[k];
     const tripChange = Object.keys(tData).length > 0;
-    if (TERMINAL.includes(job.status) && (tripChange || data.date || data.time)) throw conflict('Заказ закрыт — можно менять только выплату');
+    if (TERMINAL.includes(job.status) && (tripChange || data.date || data.time)) throw conflict('Заказ закрыт — можно менять только цену и выплату');
+    if (job.status === 'CANCELLED' && (data.priceKzt !== undefined || data.payoutKzt !== undefined || data.payoutAuto)) throw conflict('Заказ отменён');
+    if (job.paid && (data.payoutKzt !== undefined || data.payoutAuto)) throw conflict('Выплата уже отмечена как оплаченная — сначала снимите отметку');
+    // деньги: цена для гостя, выплата водителю вручную или «по правилам»
+    const price = data.priceKzt !== undefined ? data.priceKzt : job.transfer.priceKzt;
+    if (data.priceKzt !== undefined && data.priceKzt !== job.transfer.priceKzt) tData.priceKzt = data.priceKzt;
+    if (data.payoutKzt !== undefined && data.payoutKzt !== null) Object.assign(jData, { payoutKzt: data.payoutKzt, payoutManual: true, payoutRule: 'manual', commissionKzt: price - data.payoutKzt });
+    else if (data.payoutAuto || data.payoutKzt === null || tData.priceKzt !== undefined) {
+      const driver = job.driverUserId ? await prisma.membership.findFirst({ where: { accountId: job.accountId, userId: job.driverUserId } })
+        : job.driverContractorId ? await prisma.contractor.findUnique({ where: { id: job.driverContractorId } }) : null;
+      // уже выплачено — сумму водителю не трогаем, меняется только комиссия; ручная выплата держится до «По правилам»
+      const manual = job.paid || (!(data.payoutAuto || data.payoutKzt === null) && job.payoutManual);
+      Object.assign(jData, manual ? { commissionKzt: price - (job.payoutKzt || 0) } : { ...(await payoutFields({ accountId: job.accountId }, price, driver)), payoutManual: false });
+    }
     if (tData.place) jData.freeWaitMin = freeWaitFor({ ...job.transfer, ...tData });
-    if (tripChange) await prisma.transfer.update({ where: { id: job.transferId }, data: tData });
+    if (Object.keys(tData).length) await prisma.transfer.update({ where: { id: job.transferId }, data: tData });
     if (Object.keys(jData).length) await prisma.transferJob.update({ where: { id: job.id }, data: jData });
     if (Object.keys(tData).length || Object.keys(jData).length) await log(job, actor, 'updated', null, { ...tData, ...jData });
     let u = await reload(job.id);
@@ -270,11 +327,11 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
     if (driverUserId) {
       const m = await prisma.membership.findFirst({ where: { ...driverWhere(job.accountId), userId: driverUserId }, include: { user: true } });
       if (!m) throw badRequest('Этот человек не в списке водителей — включите «Водит» в разделе «Команда»');
-      data = { driverUserId, driverContractorId: null, driverName: m.user.name, vehicle: m.vehicle || null, linkToken: null };
+      data = { driverUserId, driverContractorId: null, driverName: m.user.name, vehicle: m.vehicle || null, linkToken: null, ...(await payoutFields(job, job.transfer.priceKzt, m)) };
     } else if (driverContractorId) {
       const c = await prisma.contractor.findFirst({ where: { id: driverContractorId, accountId: job.accountId, canDrive: true } });
       if (!c) throw badRequest('Внешний водитель не найден (нужен подрядчик с отметкой «водитель»)');
-      data = { driverUserId: null, driverContractorId: c.id, driverName: c.name, vehicle: c.note || null, linkToken: job.driverContractorId === c.id && job.linkToken ? job.linkToken : randomToken(12) };
+      data = { driverUserId: null, driverContractorId: c.id, driverName: c.name, vehicle: c.note || null, linkToken: job.driverContractorId === c.id && job.linkToken ? job.linkToken : randomToken(18), ...(await payoutFields(job, job.transfer.priceKzt, c)) };
     } else throw badRequest('Выберите водителя');
     if ((data.driverUserId && data.driverUserId === job.driverUserId) || (data.driverContractorId && data.driverContractorId === job.driverContractorId)) return job;
     const prev = { userId: job.driverUserId, contractorId: job.driverContractorId, name: job.driverName };
@@ -289,7 +346,7 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
   async function offerAgain({ job, actor }) {
     need(job, ['OFFERED', 'UNASSIGNED', 'ACCEPTED'], 'Снова предложить можно только до выезда водителя');
     const prev = { userId: job.driverUserId, contractorId: job.driverContractorId };
-    const u = await prisma.transferJob.update({ where: { id: job.id }, data: { status: 'OFFERED', driverUserId: null, driverContractorId: null, driverName: null, vehicle: null, linkToken: null, acceptedAt: null, offerRound: { increment: 1 }, offeredAt: new Date(), escalatedAt: null } });
+    const u = await prisma.transferJob.update({ where: { id: job.id }, data: { status: 'OFFERED', driverUserId: null, driverContractorId: null, driverName: null, vehicle: null, linkToken: null, acceptedAt: null, offerRound: { increment: 1 }, offeredAt: new Date(), escalatedAt: null, ...(await payoutFields(job, job.transfer.priceKzt)) } });
     await syncTransfer(u);
     await log(u, actor, 'offered', null, { round: u.offerRound });
     if (prev.userId || prev.contractorId) emit('transfer.driver_removed', { accountId: job.accountId, jobId: job.id, userId: prev.userId, contractorId: prev.contractorId });
@@ -336,7 +393,7 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
   }
   async function newLink({ job, actor }) {
     if (!job.driverContractorId) throw conflict('Ссылка нужна только внешнему водителю');
-    await prisma.transferJob.update({ where: { id: job.id }, data: { linkToken: randomToken(12) } });
+    await prisma.transferJob.update({ where: { id: job.id }, data: { linkToken: randomToken(18) } });
     await log(job, actor, 'link');
     return reload(job.id);
   }
@@ -364,8 +421,42 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
     for (const j of urgent) { emit('transfer.unassigned', { accountId: j.accountId, jobId: j.id, urgent: true, reason: 'до подачи меньше часа', dedupe: `${j.id}:${j.offerRound}:urgent` }); res.urgent++; }
     const soon = await prisma.transferJob.findMany({ where: { status: { in: ['ACCEPTED', 'EN_ROUTE'] }, pickupAt: { gt: now, lte: new Date(now.getTime() + cfg.reminderBeforeMin * 60000) } }, select: { id: true, accountId: true, driverUserId: true, driverContractorId: true } });
     for (const j of soon) { emit('transfer.reminder', { accountId: j.accountId, jobId: j.id, dedupe: `${j.id}:${j.driverUserId || j.driverContractorId}` }); res.reminders++; }
+    if (flights) res.flights = await checkFlights({ now });
     return res;
   }
 
-  return { createForTransfer, createForBooking, accept, release, step, reschedule, update, assign, offerAgain, cancel, cancelForBooking, syncBookingDates, markPaid, newLink, runDispatch, config: cfg };
+  /**
+   * Слежение за рейсами (только если подключён адаптер, например AeroDataBox, и владелец не выключил в настройках).
+   * Встречи в аэропорту на ближайшие 12 часов, проверка не чаще раза в 20 минут. Если ожидаемое время прилёта
+   * отличается от подачи на 15+ минут — сдвигаем подачу, пишем в журнал, водителю и менеджерам — уведомление.
+   */
+  async function checkFlights({ now = new Date() } = {}) {
+    const out = { checked: 0, moved: 0 };
+    const list = await prisma.transferJob.findMany({
+      where: {
+        status: { in: ['OFFERED', 'UNASSIGNED', 'ACCEPTED', 'EN_ROUTE'] }, pickupAt: { gt: new Date(now.getTime() - 3600000), lt: new Date(now.getTime() + 12 * 3600000) },
+        transfer: { direction: 'in', place: 'airport', flight: { not: null } },
+        OR: [{ flightCheckedAt: null }, { flightCheckedAt: { lt: new Date(now.getTime() - 20 * 60000) } }],
+      }, include: jobInclude, take: 50,
+    });
+    for (const job of list) {
+      if (!(await getSettings(job.accountId)).flightTracking) continue;
+      let info = null;
+      try { info = await flights.arrival({ flight: job.transfer.flight, date: isoDay(job.transfer.date) }); }
+      catch (e) { await prisma.transferJob.update({ where: { id: job.id }, data: { flightCheckedAt: now } }); continue; }
+      out.checked++;
+      await prisma.transferJob.update({ where: { id: job.id }, data: { flightCheckedAt: now, flightStatus: info?.status || 'нет данных', flightEta: info?.expectedAt || null } });
+      if (!info?.expectedAt || info.cancelled) continue;
+      const diffMin = Math.round((info.expectedAt - job.pickupAt) / 60000);
+      if (Math.abs(diffMin) < 15) continue;
+      const zone = await tz(job.accountId);
+      const day = info.expectedAt.toLocaleDateString('en-CA', { timeZone: zone });
+      const time = info.expectedAt.toLocaleTimeString('en-GB', { timeZone: zone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+      await reschedule({ job, actor: { type: 'flight', name: 'Слежение за рейсом' }, date: day, time, note: `рейс ${job.transfer.flight}: ${info.status}`, reason: `Рейс ${job.transfer.flight} ${diffMin > 0 ? 'задерживается' : 'прилетает раньше'} — новое время подачи ${time}` });
+      out.moved++;
+    }
+    return out;
+  }
+
+  return { setFlightTracker, checkFlights, payoutFields, createForTransfer, createForBooking, accept, release, step, reschedule, update, assign, offerAgain, cancel, cancelForBooking, syncBookingDates, markPaid, newLink, runDispatch, config: cfg };
 }

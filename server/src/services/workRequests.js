@@ -16,7 +16,7 @@ import { randomToken } from '../lib/tokens.js';
 
 export const STATUSES = ['NEW', 'VISIT_INSPECTION', 'AWAITING_OWNER_APPROVAL', 'REJECTED', 'APPROVED', 'IN_PROGRESS', 'DONE', 'CANCELLED'];
 export const STATUS_RU = {
-  NEW: 'Новая', VISIT_INSPECTION: 'Выезд / осмотр', AWAITING_OWNER_APPROVAL: 'Ожидает подтверждения хозяина', REJECTED: 'Смета отклонена',
+  NEW: 'Новая', VISIT_INSPECTION: 'Выезд / осмотр', AWAITING_OWNER_APPROVAL: 'Ждёт одобрения сметы', REJECTED: 'Смета отклонена',
   APPROVED: 'Смета одобрена', IN_PROGRESS: 'В работе', DONE: 'Выполнена', CANCELLED: 'Отменена',
 };
 export const METHODS = ['REMOTE', 'PHOTOS', 'VISIT'];
@@ -304,7 +304,7 @@ export function taskForManager(t, { publicUrl = '' } = {}) {
     occupancy: occupancyOut(t, true), accessMode: t.accessMode, accessNote: t.accessNote,
     costKzt: t.costKzt, payableKzt: payable(t), paid: t.paid, paidAt: t.paidAt,
     pendingEstimate: (t.estimates || []).some(e => e.status === 'pending'), pendingExtras: pendingExtras(t).length,
-    link: t.linkToken ? { token: t.linkToken, api: `${publicUrl}/api/task-link/${t.linkToken}` } : null,
+    link: t.linkToken ? { token: t.linkToken, url: `${publicUrl}/link/${t.linkToken}`, api: `${publicUrl}/api/task-link/${t.linkToken}` } : null,
   };
 }
 /** Короткая строка для списков */

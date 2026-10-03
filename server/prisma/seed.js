@@ -152,10 +152,10 @@ async function main() {
     const job = await prisma.transferJob.create({
       data: {
         accountId: acc.id, transferId: tr.id, bookingId: tr.bookingId, apartmentId: tr.apartmentId, status: x.status, pickupAt,
-        freeWaitMin: tr.direction === 'out' ? 15 : (tr.place === 'station' ? 30 : 60), payoutKzt: tr.priceKzt, notes: x.notes || null,
+        freeWaitMin: tr.direction === 'out' ? 15 : (tr.place === 'station' ? 30 : 60), payoutKzt: tr.priceKzt, commissionKzt: 0, payoutRule: 'account', notes: x.notes || null,
         meetingPoint: tr.direction === 'in' && tr.place === 'airport' ? 'Зал прилёта, у выхода из зоны выдачи багажа, с табличкой' : null,
         driverUserId: driver?.id || null, driverContractorId: x.ext ? extDriver.id : null, driverName: x.ext ? extDriver.name : driver?.name || null,
-        vehicle: x.ext ? extDriver.note : driver?.vehicle || null, linkToken: x.ext ? randomToken(12) : null,
+        vehicle: x.ext ? extDriver.note : driver?.vehicle || null, linkToken: x.ext ? randomToken(18) : null,
         offeredAt: x.offeredAt, escalatedAt: x.escalatedAt || null, acceptedAt: x.acceptedAt || null, enRouteAt: x.enRouteAt || null, etaAt: x.etaAt || null,
         arrivedAt: x.arrivedAt || null, pickedUpAt: x.pickedUpAt || null, doneAt: x.doneAt || null, cancelledAt: x.cancelledAt || null, cancelReason: x.cancelReason || null,
         paid: !!x.paid, paidAt: x.paid ? x.doneAt : null,

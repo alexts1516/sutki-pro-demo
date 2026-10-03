@@ -5,6 +5,8 @@ import { render } from './templates.js';
 import { consoleTransport } from './transports.js';
 import { nights } from '../lib/dates.js';
 import { route, driverWhere, PLACE_RU } from '../services/transferJobs.js';
+import { managerRoles, getSettings } from '../services/settings.js';
+import { computePayout } from '../services/payouts.js';
 import { config } from '../config.js';
 
 export const EVENTS = ['booking.requested', 'booking.confirmed', 'checkin.upcoming', 'guest.checkin_instructions', 'transfer.requested',
@@ -17,13 +19,13 @@ export function createNotificationService({ prisma, transport = null, logger = c
   const fallback = consoleTransport({ quiet });
 
   /** Отправить одно сообщение и записать в журнал */
-  async function deliver({ accountId, event, recipientType, recipientId = null, recipientName = '', chatId = null, lang = 'ru', data, dedupeKey = null }) {
+  async function deliver({ accountId, event, recipientType, recipientId = null, recipientName = '', chatId = null, lang = 'ru', data, dedupeKey = null, buttons = null }) {
     if (dedupeKey && await prisma.notificationLog.findUnique({ where: { dedupeKey } })) return { status: 'duplicate' };
     const text = render(event, lang, data);
     let status, channel, error = null;
     if (transport && chatId) {
       channel = 'telegram';
-      try { await transport.send(chatId, text); status = 'sent'; }
+      try { await transport.send(chatId, text, buttons ? { buttons } : undefined); status = 'sent'; }
       catch (e) { status = 'failed'; error = String(e.message || e).slice(0, 500); logger.warn(`[notify] ${event} → ${chatId}: ${error}`); }
     } else if (recipientType === 'guest' && !chatId) {
       channel = 'console'; status = 'skipped'; error = 'Гость не подключил Telegram';
@@ -38,8 +40,11 @@ export function createNotificationService({ prisma, transport = null, logger = c
     return { status, channel, text };
   }
 
-  /** Всем владельцам и админам аккаунта (у каждого свой язык) */
-  async function toManagers(accountId, event, data, { roles = ['owner', 'admin'], dedupeKey = null } = {}) {
+  /** Владельцу и/или админам — кому именно, решает настройка «Кому уведомления» (владелец / админ / оба).
+   *  roles — задать явно (например, оплаты — только владельцу); alsoOwner — владелец получит в любом случае (сметы при «одобряет только владелец»). */
+  async function toManagers(accountId, event, data, { roles = null, alsoOwner = false, dedupeKey = null } = {}) {
+    roles = roles || await managerRoles(accountId, prisma);
+    if (alsoOwner && !roles.includes('owner')) roles = [...roles, 'owner'];
     const members = await prisma.membership.findMany({ where: { accountId, active: true, role: { in: roles } }, include: { user: true } });
     const out = [];
     for (const m of members) {
@@ -66,7 +71,7 @@ export function createNotificationService({ prisma, transport = null, logger = c
 
   // ---------- трансферы ----------
   const loadJob = (accountId, id) => prisma.transferJob.findFirst({ where: { id, accountId }, include: { transfer: { include: { guest: true, booking: { include: { guest: true } } } }, apartment: true, booking: { select: { number: true } }, driverUser: true, driverContractor: true } });
-  const jobData = (j, extra = {}) => ({ job: j, transfer: j.transfer, trip: { ...route(j), placeLabel: PLACE_RU[j.transfer.place] }, booking: j.booking, ...extra });
+  const jobData = (j, extra = {}, { hideUnit = false } = {}) => ({ job: j, transfer: j.transfer, trip: { ...route(j, { hideUnit }), placeLabel: PLACE_RU[j.transfer.place] }, booking: j.booking, ...extra });
   /** Водителю заказа: из команды — в Telegram; внешнему — в журнал (ему отправляют ссылку вручную) */
   async function toDriver(j, event, extra = {}, dedupeKey = null, who = null) {
     const user = who?.userId !== undefined ? (who.userId ? await prisma.user.findUnique({ where: { id: who.userId } }) : null) : j.driverUser;
@@ -112,10 +117,15 @@ export function createNotificationService({ prisma, transport = null, logger = c
     async 'transfer.offered'({ accountId, jobId, round = 1, exceptUserId = null }) {
       const j = await loadJob(accountId, jobId); if (!j || !['OFFERED', 'UNASSIGNED'].includes(j.status)) return;
       const drivers = await prisma.membership.findMany({ where: driverWhere(accountId), include: { user: true } });
+      const settings = await getSettings(accountId, prisma);
       const out = [];
       for (const m of drivers) {
         if (m.userId === exceptUserId) continue;
-        out.push(await deliver({ accountId, event: 'transfer.offered', recipientType: 'driver', recipientId: m.userId, recipientName: m.user.name, chatId: m.user.telegramId, lang: m.user.locale, data: jobData(j), dedupeKey: `transfer.offered:${j.id}:${round}:${m.userId}` }));
+        // до «Беру»: без номера квартиры и телефона гостя; выплата — по ставке этого водителя; цена для гостя не показывается
+        const payoutKzt = j.payoutManual ? j.payoutKzt : computePayout({ priceKzt: j.transfer.priceKzt, settings, driver: m }).payoutKzt;
+        const data = jobData({ ...j, payoutKzt }, {}, { hideUnit: true });
+        out.push(await deliver({ accountId, event: 'transfer.offered', recipientType: 'driver', recipientId: m.userId, recipientName: m.user.name, chatId: m.user.telegramId, lang: m.user.locale, data,
+          dedupeKey: `transfer.offered:${j.id}:${round}:${m.userId}`, buttons: [[{ text: m.user.locale === 'en' ? '✋ Take it' : '✋ Беру', data: `tj:acc:${j.id}` }]] }));
       }
       return out;
     },
@@ -127,7 +137,7 @@ export function createNotificationService({ prisma, transport = null, logger = c
     },
     async 'transfer.driver_assigned'({ accountId, jobId, previousUserId = null, previousContractorId = null }) {
       const j = await loadJob(accountId, jobId); if (!j) return;
-      await toDriver(j, 'transfer.driver_assigned', { link: j.linkToken ? `${config.publicUrl}/api/transfer-link/${j.linkToken}` : null });
+      await toDriver(j, 'transfer.driver_assigned', { link: j.linkToken ? `${config.publicUrl}/link/${j.linkToken}` : null });
       if (previousUserId || previousContractorId) await toDriver(j, 'transfer.driver_removed', {}, null, { userId: previousUserId, contractorId: previousContractorId });
       return toGuest(accountId, jobGuest(j), 'transfer.assigned', { transfer: j.transfer, job: j }, `transfer.assigned:${j.transferId}:${j.driverName || ''}`);
     },
@@ -144,11 +154,12 @@ export function createNotificationService({ prisma, transport = null, logger = c
       const j = await loadJob(accountId, jobId); if (!j) return;
       return toManagers(accountId, 'transfer.released', jobData(j, { byName, reason }));
     },
-    async 'transfer.updated'({ accountId, jobId, before = null, after = null, byName = null, notifyManagers = false }) {
+    /** Изменилось время/детали: водителю (если менял не он) и менеджерам (если менял водитель или трекинг рейса) */
+    async 'transfer.updated'({ accountId, jobId, before = null, after = null, byName = null, notifyManagers = false, notifyDriver = !notifyManagers, reason = null }) {
       const j = await loadJob(accountId, jobId); if (!j) return;
-      const extra = { before, after, byName };
+      const extra = { before, after, byName, reason };
       if (notifyManagers) await toManagers(accountId, 'transfer.updated', jobData(j, extra));
-      else if (j.driverUserId || j.driverContractorId) await toDriver(j, 'transfer.updated', extra);
+      if (notifyDriver && (j.driverUserId || j.driverContractorId)) await toDriver(j, 'transfer.updated', extra);
     },
     async 'transfer.cancelled'({ accountId, jobId }) {
       const j = await loadJob(accountId, jobId); if (!j) return;
@@ -184,7 +195,8 @@ export function createNotificationService({ prisma, transport = null, logger = c
     async 'repair.occupancy_changed'({ accountId, taskId }) { return toExecutor(accountId, taskId, 'repair.occupancy_changed'); },
     async 'estimate.submitted'({ accountId, estimateId }) {
       const est = await prisma.repairEstimate.findFirst({ where: { id: estimateId, accountId }, include: { repairTask: { include: { apartment: true } } } }); if (!est) return;
-      return toManagers(accountId, 'estimate.submitted', { estimate: est, task: est.repairTask, apartment: est.repairTask.apartment });
+      const { approvalBy } = await getSettings(accountId, prisma);
+      return toManagers(accountId, 'estimate.submitted', { estimate: est, task: est.repairTask, apartment: est.repairTask.apartment }, { alsoOwner: approvalBy === 'OWNER_ONLY' });
     },
     async 'estimate.decided'({ accountId, estimateId }) {
       const est = await prisma.repairEstimate.findFirst({ where: { id: estimateId, accountId } }); if (!est) return;
@@ -192,7 +204,8 @@ export function createNotificationService({ prisma, transport = null, logger = c
     },
     async 'extra.submitted'({ accountId, extraId }) {
       const x = await prisma.extraExpense.findFirst({ where: { id: extraId, accountId }, include: { repairTask: { include: { apartment: true } } } }); if (!x) return;
-      return toManagers(accountId, 'extra.submitted', { extra: x, task: x.repairTask, apartment: x.repairTask.apartment });
+      const { approvalBy } = await getSettings(accountId, prisma);
+      return toManagers(accountId, 'extra.submitted', { extra: x, task: x.repairTask, apartment: x.repairTask.apartment }, { alsoOwner: approvalBy === 'OWNER_ONLY' });
     },
     async 'extra.decided'({ accountId, extraId }) {
       const x = await prisma.extraExpense.findFirst({ where: { id: extraId, accountId } }); if (!x) return;

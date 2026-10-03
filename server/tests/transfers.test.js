@@ -77,13 +77,19 @@ test('предложения видят только те, кто может в�
   const offer = l.body.offers.find(o => o.id === job.id);
   assert.ok(offer); assert.equal(offer.time, '15:30'); assert.equal(offer.flight, 'KC 101'); assert.equal(offer.guestName, 'Ли Мин');
   assert.equal(offer.pax, 2); assert.equal(offer.bags, 3); assert.equal(offer.childSeats, 1); assert.equal(offer.sign, 'Ли Мин');
-  assert.equal(offer.apartment.address, apt.address); assert.equal(offer.apartment.apartmentNumber, apt.code);
+  // до «Беру» — только дом/ЖК и район, без номера квартиры (ни в адресе, ни в маршруте, ни в заголовке)
+  assert.ok(offer.apartment.building.includes('Рыскулова'), offer.apartment.building);
+  assert.equal(offer.apartment.apartmentNumber, undefined); assert.equal(offer.apartment.address, undefined);
+  assert.equal(/кв\.?\s*\d/.test(JSON.stringify(offer)), false, 'номер квартиры не должен попасть в предложение: ' + JSON.stringify(offer));
   assert.equal(offer.guestPhone, undefined); assert.deepEqual(offer.actions, ['accept']);
   assert.equal(JSON.stringify(offer).includes('222 33 44'), false);
+  assert.equal(offer.priceKzt, undefined); assert.equal(offer.commissionKzt, undefined);
   // берёт — телефон появляется
   const a = await request(app).post(`/api/staff/transfers/${job.id}/accept`).set(ruslan.auth).send({});
   assert.equal(a.status, 200, JSON.stringify(a.body));
   assert.equal(a.body.status, 'ACCEPTED'); assert.equal(a.body.guestPhone, '+7 701 222 33 44'); assert.ok(a.body.vehicle.includes('Hyundai'));
+  assert.equal(a.body.apartment.apartmentNumber, apt.code); assert.equal(a.body.apartment.address, apt.address);
+  assert.ok(a.body.to.includes(`кв. ${apt.code}`), 'после «Беру» — адрес с номером квартиры');
   // другой водитель видит «занят» без данных гостя
   const other = await request(app).get(`/api/staff/transfers/${job.id}`).set(kanat.auth);
   assert.equal(other.status, 200); assert.equal(other.body.status, 'TAKEN');

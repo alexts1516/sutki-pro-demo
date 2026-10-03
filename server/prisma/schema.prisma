@@ -54,6 +54,23 @@ model Account {
   extraExpenses  ExtraExpense[]
   transferJobs   TransferJob[]
   transferEvents TransferEvent[]
+  settings       AccountSettings?
+}
+
+/// Настройки владельца: комиссия с трансферов, кому слать уведомления менеджерам, кто одобряет сметы.
+model AccountSettings {
+  id                       String    @id @default(cuid())
+  accountId                String    @unique
+  transferPayoutMode       String    @default("PERCENT") /// PERCENT (бизнес оставляет ownerCommissionPercent от цены) | FIXED (водителю фиксированно driverFixedKzt)
+  ownerCommissionPercent   Float? /// 0–100; пусто — не настроено (считается 0%: водителю вся цена)
+  driverFixedKzt           Int? /// фиксированная ставка водителю за поездку (режим FIXED)
+  commissionConfiguredAt   DateTime? /// когда владелец впервые задал комиссию (пусто — в настройках подсказка «не настроено»)
+  managerNotify            String    @default("BOTH") /// кому уведомления «для менеджера»: OWNER (только владельцу) | ADMIN (только админам) | BOTH
+  approvalBy               String    @default("OWNER_AND_ADMIN") /// кто одобряет сметы и доп. расходы: OWNER_ONLY | OWNER_AND_ADMIN
+  flightTracking           Boolean   @default(true) /// следить за рейсами (работает, только если на сервере задан ключ AeroDataBox)
+  updatedAt                DateTime  @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 }
 
 /// Сотрудник или владелец (гости — отдельная таблица Guest). Один человек может состоять в нескольких аккаунтах.
@@ -86,6 +103,8 @@ model Membership {
   active    Boolean  @default(true)
   canDrive  Boolean  @default(false) /// в списке водителей: получает предложения трансферов (владелец/админ — по умолчанию да, роль driver — всегда)
   vehicle   String? /// машина водителя для гостя: «Toyota Camry, белая, 123 ABC 01»
+  payoutPercent  Float? /// своя ставка водителя: бизнес оставляет столько % от цены трансфера (перекрывает настройку аккаунта)
+  payoutFixedKzt Int? /// или своя фиксированная сумма за поездку (важнее процента)
   createdAt DateTime @default(now())
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -285,7 +304,13 @@ model TransferJob {
   driverContractorId String? /// внешний водитель без входа — работает по ссылке linkToken
   driverName         String?
   vehicle            String?
-  payoutKzt          Int? /// сколько платим водителю (уходит в финансы после DONE)
+  payoutKzt          Int? /// сколько платим водителю (уходит в финансы после DONE) = цена для гостя − комиссия бизнеса
+  commissionKzt      Int? /// сколько оставляет бизнес (цена для гостя − выплата водителю)
+  payoutRule         String? /// откуда взялась выплата: account (настройка аккаунта) | driver (ставка водителя) | manual (вручную в карточке)
+  payoutManual       Boolean   @default(false) /// выплату задали вручную — пересчёт по правилам не трогает
+  flightStatus       String? /// по данным трекинга рейса (AeroDataBox): «задержан», «по расписанию», «приземлился»
+  flightEta          DateTime? /// ожидаемое время прилёта (UTC) по данным трекинга
+  flightCheckedAt    DateTime?
   paid               Boolean   @default(false)
   paidAt             DateTime?
   offerRound         Int       @default(1) /// сколько раз предлагали всем (после отказа водителя — снова)
@@ -368,6 +393,8 @@ model Contractor {
   note      String?
   regular   Boolean  @default(false)
   canDrive  Boolean  @default(false) /// внешний водитель: можно назначить на трансфер (работает по ссылке)
+  payoutPercent  Float? /// своя комиссия бизнеса с этого водителя, %
+  payoutFixedKzt Int? /// или фиксированная сумма водителю за поездку
   userId    String? /// пользователь с ролью master, под которым подрядчик входит в приложение команды
   createdAt DateTime @default(now())
 

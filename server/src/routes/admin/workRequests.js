@@ -13,11 +13,12 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db.js';
-import { notFound, badRequest, parse } from '../../lib/errors.js';
+import { notFound, badRequest, forbidden, parse } from '../../lib/errors.js';
 import { parseDay, todayIn } from '../../lib/dates.js';
 import { randomToken } from '../../lib/tokens.js';
 import { imageUpload } from '../../lib/upload.js';
 import { makeKey, looksLikeImage } from '../../storage/index.js';
+import { canApprove } from '../../services/settings.js';
 import { loadTask, taskForManager, taskListItem, STATUSES, OCCUPANCY } from '../../services/workRequests.js';
 
 const TYPES = ['plumb', 'elec', 'appl', 'furn', 'build', 'paint', 'other'];
@@ -27,7 +28,12 @@ export default function workRequestsRouter({ workflow, storage, config }) {
   const upload = imageUpload({ maxMb: config.storage.maxUploadMb, maxFiles: 20 });
   const actorOf = (req) => ({ type: req.role, id: req.user.id, name: req.user.name });
   const find = async (req, id = req.params.id) => { const t = await loadTask({ id, accountId: req.accountId }); if (!t) throw notFound('Заявка не найдена'); return t; };
-  const out = async (res, id, status = 200) => res.status(status).json(taskForManager(await loadTask({ id }), { publicUrl: config.publicUrl }));
+  const out = async (res, id, status = 200) => {
+    const t = await loadTask({ id });
+    res.status(status).json({ ...taskForManager(t, { publicUrl: config.publicUrl }), canDecide: await canApprove(t.accountId, res.req.role) });
+  };
+  // кто решает по сметам и доп. расходам — настройка владельца (по умолчанию владелец и админ)
+  const mayDecide = async (req) => { if (!(await canApprove(req.accountId, req.role))) throw forbidden('Сметы и доп. расходы одобряет только владелец (см. «Настройки»)'); };
 
   r.get('/repairs', async (req, res) => {
     const where = { accountId: req.accountId };
@@ -82,6 +88,7 @@ export default function workRequestsRouter({ workflow, storage, config }) {
 
   r.post('/estimates/:id/:decision', async (req, res) => {
     if (!['approve', 'reject'].includes(req.params.decision)) throw notFound('Нет такого действия');
+    await mayDecide(req);
     const est = await prisma.repairEstimate.findFirst({ where: { id: req.params.id, accountId: req.accountId } });
     if (!est) throw notFound('Смета не найдена');
     const t = await find(req, est.repairTaskId);
@@ -91,6 +98,7 @@ export default function workRequestsRouter({ workflow, storage, config }) {
   });
   r.post('/extras/:id/:decision', async (req, res) => {
     if (!['approve', 'reject'].includes(req.params.decision)) throw notFound('Нет такого действия');
+    await mayDecide(req);
     const x = await prisma.extraExpense.findFirst({ where: { id: req.params.id, accountId: req.accountId } });
     if (!x) throw notFound('Расход не найден');
     const t = await find(req, x.repairTaskId);
@@ -100,18 +108,20 @@ export default function workRequestsRouter({ workflow, storage, config }) {
   });
 
   // ---------- подрядчики ----------
-  const ContractorSchema = z.object({ name: z.string().min(2).max(100), type: z.enum(TYPES), phone: z.string().max(40).optional().nullable(), note: z.string().max(500).optional().nullable(), regular: z.boolean().optional(), canDrive: z.boolean().optional(), userId: z.string().optional().nullable() });
+  const ContractorSchema = z.object({ name: z.string().min(2).max(100), type: z.enum(TYPES), phone: z.string().max(40).optional().nullable(), note: z.string().max(500).optional().nullable(), regular: z.boolean().optional(), canDrive: z.boolean().optional(), userId: z.string().optional().nullable(),
+    payoutPercent: z.number().min(0).max(100).nullable().optional(), payoutFixedKzt: z.number().int().min(0).max(10000000).nullable().optional() });
+  const ownerMoney = (req, d) => { if ((d.payoutPercent !== undefined || d.payoutFixedKzt !== undefined) && req.role !== 'owner') throw forbidden('Ставку водителя меняет только владелец'); };
   const checkUser = async (req, userId) => {
     if (userId && !(await prisma.membership.findFirst({ where: { accountId: req.accountId, userId, role: 'master', active: true } }))) throw badRequest('Вход подрядчика: нужен пользователь с ролью «Мастер» в этом аккаунте');
   };
   r.get('/contractors', async (req, res) => res.json(await prisma.contractor.findMany({ where: { accountId: req.accountId }, orderBy: { name: 'asc' } })));
   r.post('/contractors', async (req, res) => {
-    const data = parse(ContractorSchema, req.body); await checkUser(req, data.userId);
+    const data = parse(ContractorSchema, req.body); ownerMoney(req, data); await checkUser(req, data.userId);
     res.status(201).json(await prisma.contractor.create({ data: { ...data, accountId: req.accountId } }));
   });
   r.patch('/contractors/:id', async (req, res) => {
     const c = await prisma.contractor.findFirst({ where: { id: req.params.id, accountId: req.accountId } }); if (!c) throw notFound('Подрядчик не найден');
-    const data = parse(ContractorSchema.partial(), req.body); await checkUser(req, data.userId);
+    const data = parse(ContractorSchema.partial(), req.body); ownerMoney(req, data); await checkUser(req, data.userId);
     res.json(await prisma.contractor.update({ where: { id: c.id }, data }));
   });
   return r;

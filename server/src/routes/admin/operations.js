@@ -117,7 +117,7 @@ export default function operationsRouter({ events, dispatch }) {
     const from = parseDay(m + '-01'); const to = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, 1));
     const [bookings, repairs, aptCount, transferJobs] = await Promise.all([
       prisma.booking.findMany({ where: { accountId: req.accountId, status: { in: ['confirmed', 'completed'] }, checkIn: { lt: to }, checkOut: { gt: from } } }),
-      prisma.repairTask.findMany({ where: { accountId: req.accountId, date: { gte: from, lt: to }, costKzt: { gt: 0 } } }),
+      prisma.repairTask.findMany({ where: { accountId: req.accountId, date: { gte: from, lt: to }, costKzt: { gt: 0 }, status: { not: 'CANCELLED' } } }),
       prisma.apartment.count({ where: { accountId: req.accountId, active: true } }),
       prisma.transferJob.findMany({ where: { accountId: req.accountId, status: 'DONE', pickupAt: { gte: from, lt: to } }, include: { transfer: { select: { priceKzt: true } } } }),
     ]);
@@ -132,7 +132,14 @@ export default function operationsRouter({ events, dispatch }) {
     const transfersKzt = transferJobs.reduce((s, j) => s + (j.payoutKzt || 0), 0);
     const transfersUnpaidKzt = transferJobs.filter(j => !j.paid).reduce((s, j) => s + (j.payoutKzt || 0), 0);
     const transfersRevenueKzt = transferJobs.reduce((s, j) => s + (j.transfer?.priceKzt || 0), 0);
-    res.json({ month: m, revenueKzt: revenue, nights, occupancy: aptCount ? nights / (aptCount * days) : 0, adrKzt: nights ? Math.round(revenue / nights) : 0, repairsKzt, transfersKzt, transfersUnpaidKzt, transfersRevenueKzt, transfers: transferJobs.length, bookings: bookings.length });
+    const transfersMarginKzt = transfersRevenueKzt - transfersKzt;   // сколько осталось бизнесу (комиссия)
+    const repairsUnpaidKzt = repairs.filter(x => !x.paid).reduce((s, x) => s + (x.costKzt || 0), 0);
+    res.json({
+      month: m, revenueKzt: revenue, nights, occupancy: aptCount ? nights / (aptCount * days) : 0, adrKzt: nights ? Math.round(revenue / nights) : 0,
+      repairsKzt, repairsUnpaidKzt, repairs: repairs.length,
+      transfersRevenueKzt, transfersKzt, transfersPayoutKzt: transfersKzt, transfersUnpaidKzt, transfersMarginKzt, transfers: transferJobs.length,
+      netKzt: revenue + transfersRevenueKzt - repairsKzt - transfersKzt, bookings: bookings.length,
+    });
   });
   r.get('/payments', requireRole('owner'), async (req, res) => {
     res.json(await prisma.payment.findMany({ where: { accountId: req.accountId }, orderBy: { createdAt: 'desc' }, take: 200, select: { id: true, bookingId: true, provider: true, providerPaymentId: true, amountKzt: true, currency: true, amount: true, status: true, createdAt: true } }));

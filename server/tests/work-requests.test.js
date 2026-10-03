@@ -37,7 +37,7 @@ test('смета без выезда с материалами → одобре�
   assert.equal(t.status, 'NEW'); assert.equal(t.statusLabel, 'Новая');
   const e = await st(electric, t.id, 'estimate', { method: 'REMOTE', labourKzt: 10000, materialsIncluded: true, materialsKzt: 4000, maxKzt: 16000, items: 'Бра, дюбели', comment: 'Если стена бетон — ближе к верхней цене' });
   assert.equal(e.status, 201);
-  assert.equal(e.body.status, 'AWAITING_OWNER_APPROVAL'); assert.equal(e.body.statusLabel, 'Ожидает подтверждения хозяина');
+  assert.equal(e.body.status, 'AWAITING_OWNER_APPROVAL'); assert.equal(e.body.statusLabel, 'Ждёт одобрения сметы');
   const est = lastEstimate(e.body);
   assert.deepEqual([est.method, est.labourKzt, est.materialsKzt, est.totalKzt, est.maxKzt, est.materialsIncluded, est.preliminary], ['REMOTE', 10000, 4000, 14000, 16000, true, true]);
   // материалы без флага — ошибка; материалы необязательны
@@ -288,6 +288,6 @@ test('админка: список с русскими статусами и ф�
   for (const s of ['NEW', 'VISIT_INSPECTION', 'AWAITING_OWNER_APPROVAL', 'REJECTED', 'APPROVED', 'IN_PROGRESS', 'DONE', 'CANCELLED']) assert.ok(statuses.has(s), s);
   assert.ok(all.body.every(x => x.statusLabel));
   const aw = await A().get('/api/admin/repairs?status=AWAITING_OWNER_APPROVAL').set(admin.auth);
-  assert.ok(aw.body.length > 0 && aw.body.every(x => x.status === 'AWAITING_OWNER_APPROVAL' && x.statusLabel === 'Ожидает подтверждения хозяина'));
+  assert.ok(aw.body.length > 0 && aw.body.every(x => x.status === 'AWAITING_OWNER_APPROVAL' && x.statusLabel === 'Ждёт одобрения сметы'));
   assert.ok(aw.body.some(x => x.pendingEstimate));
 });

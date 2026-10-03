@@ -3,7 +3,8 @@
 //   POST /api/admin/transfers/:id/dispatch        — отправить водителям трансфер без брони / по неподтверждённой брони
 //   GET  /api/admin/transfer-jobs                 — заказы ?from=&to=&status=OFFERED,UNASSIGNED
 //   GET  /api/admin/transfer-jobs/:id             — карточка: маршрут, гость (с телефоном), водитель, выплата, журнал
-//   PATCH /api/admin/transfer-jobs/:id            — { date, time, flight, place, address, pax, bags, childSeats, sign, guestPhone, meetingPoint, notes, payoutKzt }
+//   PATCH /api/admin/transfer-jobs/:id            — { date, time, flight, place, address, pax, bags, childSeats, sign, guestPhone, meetingPoint, notes,
+//                                                    priceKzt (цена для гостя), payoutKzt (выплата вручную; null — снова по правилам), payoutAuto: true }
 //   POST /api/admin/transfer-jobs/:id/assign      — { driverUserId } или { driverContractorId } назначить / переназначить
 //   POST /api/admin/transfer-jobs/:id/offer       — снять водителя и снова предложить всем
 //   POST /api/admin/transfer-jobs/:id/status      — { action: en-route|arrived|picked-up|done } за водителя (если он позвонил)
@@ -62,6 +63,7 @@ export default function transfersRouter({ dispatch, config }) {
       address: z.string().max(200).nullable().optional(), pax: z.number().int().min(1).max(20).optional(), bags: z.number().int().min(0).max(20).optional(),
       childSeats: z.number().int().min(0).max(4).optional(), sign: z.string().max(80).nullable().optional(), guestPhone: z.string().max(30).nullable().optional(),
       meetingPoint: z.string().max(300).nullable().optional(), notes: z.string().max(1000).nullable().optional(), payoutKzt: z.number().int().min(0).max(10000000).nullable().optional(),
+      priceKzt: z.number().int().min(0).max(10000000).optional(), payoutAuto: z.literal(true).optional(),
     }), req.body);
     res.json(out(await dispatch.update({ job: await job(req), actor: actorOf(req), data })));
   });
@@ -94,8 +96,8 @@ export default function transfersRouter({ dispatch, config }) {
     ]);
     const load = Object.fromEntries(busy.map(b => [b.driverUserId, b._count]));
     res.json({
-      team: team.map(m => ({ userId: m.userId, name: m.user.name, role: m.role, phone: m.user.phone, vehicle: m.vehicle, telegramLinked: !!m.user.telegramId, activeJobs: load[m.userId] || 0 })),
-      external: external.map(c => ({ contractorId: c.id, name: c.name, phone: c.phone, note: c.note })),
+      team: team.map(m => ({ userId: m.userId, name: m.user.name, role: m.role, phone: m.user.phone, vehicle: m.vehicle, telegramLinked: !!m.user.telegramId, activeJobs: load[m.userId] || 0, payoutPercent: m.payoutPercent, payoutFixedKzt: m.payoutFixedKzt })),
+      external: external.map(c => ({ contractorId: c.id, name: c.name, phone: c.phone, note: c.note, payoutPercent: c.payoutPercent, payoutFixedKzt: c.payoutFixedKzt })),
     });
   });
   return r;

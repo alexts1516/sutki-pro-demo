@@ -13,6 +13,7 @@ import { z } from 'zod';
 import { prisma } from '../db.js';
 import { forbidden, notFound, parse } from '../lib/errors.js';
 import { loadJob, jobForDriver, jobInclude, driverMembership, isJobDriver, OPEN } from '../services/transferJobs.js';
+import { getSettings } from '../services/settings.js';
 
 export default function staffTransfersRouter({ dispatch }) {
   const r = Router();
@@ -22,22 +23,23 @@ export default function staffTransfersRouter({ dispatch }) {
     const [job, m] = await Promise.all([loadJob({ id: req.params.id, accountId: req.accountId }), driverMembership(req.accountId, req.user.id)]);
     if (!job) throw notFound('Заказ не найден');
     if (!m && !isJobDriver(job, req.user.id)) throw forbidden('Вы не в списке водителей');
-    return { job, eligible: !!m };
+    return { job, eligible: !!m, viewer: { membership: m, settings: await getSettings(req.accountId) } };
   }
   const mineOnly = (req, job) => { if (!isJobDriver(job, req.user.id)) throw forbidden('Это не ваш заказ'); };
-  const view = async (req, id, eligible) => jobForDriver(await loadJob({ id }), req.user.id, { eligible });
+  const view = async (req, id, eligible, viewer) => jobForDriver(await loadJob({ id }), req.user.id, { eligible, viewer });
 
   r.get('/', async (req, res) => {
     const m = await driverMembership(req.accountId, req.user.id);
+    const viewer = { membership: m, settings: await getSettings(req.accountId) };
     const since = new Date(Date.now() - 3600000), recent = new Date(Date.now() - 86400000);
     const [offers, mine, taken] = await Promise.all([
       m ? prisma.transferJob.findMany({ where: { accountId: req.accountId, status: { in: OPEN }, pickupAt: { gt: since } }, include: jobInclude, orderBy: { pickupAt: 'asc' } }) : [],
       prisma.transferJob.findMany({ where: { accountId: req.accountId, driverUserId: req.user.id, status: { not: 'CANCELLED' }, pickupAt: { gt: recent } }, include: jobInclude, orderBy: { pickupAt: 'asc' } }),
       m ? prisma.transferJob.findMany({ where: { accountId: req.accountId, status: { in: ['ACCEPTED', 'EN_ROUTE', 'ARRIVED', 'PICKED_UP'] }, NOT: { driverUserId: req.user.id }, pickupAt: { gt: since } }, include: jobInclude, orderBy: { pickupAt: 'asc' }, take: 20 }) : [],
     ]);
-    res.json({ eligible: !!m, offers: offers.map(j => jobForDriver(j, req.user.id, { eligible: true })), mine: mine.map(j => jobForDriver(j, req.user.id, { eligible: !!m })), taken: taken.map(j => jobForDriver(j, req.user.id, { eligible: true })) });
+    res.json({ eligible: !!m, offers: offers.map(j => jobForDriver(j, req.user.id, { eligible: true, viewer })), mine: mine.map(j => jobForDriver(j, req.user.id, { eligible: !!m })), taken: taken.map(j => jobForDriver(j, req.user.id, { eligible: true })) });
   });
-  r.get('/:id', async (req, res) => { const { job, eligible } = await ctx(req); res.json(jobForDriver(job, req.user.id, { eligible })); });
+  r.get('/:id', async (req, res) => { const { job, eligible, viewer } = await ctx(req); res.json(jobForDriver(job, req.user.id, { eligible, viewer })); });
   r.post('/:id/accept', async (req, res) => {
     const { vehicle } = parse(z.object({ vehicle: z.string().max(120).optional() }), req.body || {});
     const j = await dispatch.accept({ accountId: req.accountId, jobId: req.params.id, user: req.user, vehicle });
@@ -45,9 +47,9 @@ export default function staffTransfersRouter({ dispatch }) {
   });
   r.post('/:id/release', async (req, res) => {
     const { reason } = parse(z.object({ reason: z.string().max(500).optional() }), req.body || {});
-    const { job, eligible } = await ctx(req);
+    const { job, eligible, viewer } = await ctx(req);
     await dispatch.release({ job, user: req.user, reason });
-    res.json(await view(req, job.id, eligible));
+    res.json(await view(req, job.id, eligible, viewer));
   });
   for (const action of ['en-route', 'arrived', 'picked-up', 'done']) {
     r.post(`/:id/${action}`, async (req, res) => {
