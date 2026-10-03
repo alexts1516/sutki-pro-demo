@@ -1,0 +1,646 @@
+// СГЕНЕРИРОВАНО scripts/pg-schema.js из prisma/schema.prisma — не правьте вручную.
+// Та же схема для PostgreSQL. Миграции — в prisma/postgres/migrations.
+// =====================================================================
+//  Схема базы данных Сутки·Pro (демо-клиент — The Address · Apart Hotel) (Prisma ORM)
+//  Сейчас — SQLite (один файл dev.db, ничего устанавливать не нужно).
+//  Переход на PostgreSQL: поменять provider = "postgresql" и DATABASE_URL,
+//  затем `npx prisma migrate dev` (подробно — в README_SERVER.md).
+//
+//  Правило мультиаккаунтности: почти у каждой таблицы есть accountId —
+//  это «арендный бизнес» (владелец со своей командой и квартирами).
+//  Все запросы в API фильтруются по accountId текущего пользователя.
+//  Значения-«перечисления» хранятся строками (список допустимых — в комментарии).
+// =====================================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// Аккаунт = один арендный бизнес (владелец). Поля тарифа — заготовка под биллинг.
+model Account {
+  id           String    @id @default(cuid())
+  name         String
+  slug         String    @unique /// адрес сайта для гостей: /api/public/<slug>/...
+  plan         String    @default("trial") /// trial | start | pro
+  status       String    @default("active") /// active | past_due | suspended | cancelled
+  trialEndsAt  DateTime?
+  billingEmail String?
+  timezone     String    @default("Asia/Almaty")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  memberships    Membership[]
+  invites        Invite[]
+  guests         Guest[]
+  apartments     Apartment[]
+  photos         ApartmentPhoto[]
+  bookings       Booking[]
+  transfers      Transfer[]
+  cleaningTasks  CleaningTask[]
+  repairTasks    RepairTask[]
+  estimates      RepairEstimate[]
+  contractors    Contractor[]
+  rates          ExchangeRate[]
+  currency       CurrencySettings?
+  siteTexts      SiteText[]
+  brand          Brand?
+  notifications  NotificationLog[]
+  payments       Payment[]
+  repairEvents   RepairEvent[]
+  repairPhotos   RepairPhoto[]
+  extraExpenses  ExtraExpense[]
+  transferJobs   TransferJob[]
+  transferEvents TransferEvent[]
+  settings       AccountSettings?
+}
+
+/// Настройки владельца: комиссия с трансферов, кому слать уведомления менеджерам, кто одобряет сметы.
+model AccountSettings {
+  id                       String    @id @default(cuid())
+  accountId                String    @unique
+  transferPayoutMode       String    @default("PERCENT") /// PERCENT (бизнес оставляет ownerCommissionPercent от цены) | FIXED (водителю фиксированно driverFixedKzt)
+  ownerCommissionPercent   Float? /// 0–100; пусто — не настроено (считается 0%: водителю вся цена)
+  driverFixedKzt           Int? /// фиксированная ставка водителю за поездку (режим FIXED)
+  commissionConfiguredAt   DateTime? /// когда владелец впервые задал комиссию (пусто — в настройках подсказка «не настроено»)
+  managerNotify            String    @default("BOTH") /// кому уведомления «для менеджера»: OWNER (только владельцу) | ADMIN (только админам) | BOTH
+  approvalBy               String    @default("OWNER_AND_ADMIN") /// кто одобряет сметы и доп. расходы: OWNER_ONLY | OWNER_AND_ADMIN
+  flightTracking           Boolean   @default(true) /// следить за рейсами (работает, только если на сервере задан ключ AeroDataBox)
+  updatedAt                DateTime  @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+/// Сотрудник или владелец (гости — отдельная таблица Guest). Один человек может состоять в нескольких аккаунтах.
+model User {
+  id           String   @id @default(cuid())
+  email        String?  @unique
+  phone        String?  @unique
+  name         String
+  passwordHash String
+  telegramId   String?  @unique /// chat id в Telegram после привязки через /start <код>
+  locale       String   @default("ru") /// ru | en
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships    Membership[]
+  cleaningTasks  CleaningTask[] @relation("CleaningAssignee")
+  repairTasks    RepairTask[]   @relation("RepairAssignee")
+  occupancyEdits RepairTask[]   @relation("OccupancyUpdatedBy")
+  invites        Invite[]
+  contractorOf   Contractor[]   @relation("ContractorUser") /// вход внешнего подрядчика (например, Master Electric)
+  transferJobs   TransferJob[]  @relation("TransferDriver")
+}
+
+/// Роль пользователя в конкретном аккаунте.
+model Membership {
+  id        String   @id @default(cuid())
+  userId    String
+  accountId String
+  role      String /// owner | admin | cleaning | master | driver
+  active    Boolean  @default(true)
+  canDrive  Boolean  @default(false) /// в списке водителей: получает предложения трансферов (владелец/админ — по умолчанию да, роль driver — всегда)
+  vehicle   String? /// машина водителя для гостя: «Toyota Camry, белая, 123 ABC 01»
+  payoutPercent  Float? /// своя ставка водителя: бизнес оставляет столько % от цены трансфера (перекрывает настройку аккаунта)
+  payoutFixedKzt Int? /// или своя фиксированная сумма за поездку (важнее процента)
+  createdAt DateTime @default(now())
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, accountId])
+  @@index([accountId])
+}
+
+/// Одноразовый код для привязки Telegram сотрудника: t.me/<бот>?start=i_<code>
+model Invite {
+  id        String    @id @default(cuid())
+  accountId String
+  userId    String
+  code      String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// Гость (не сотрудник). Telegram привязывается по ссылке из подтверждения брони.
+model Guest {
+  id             String   @id @default(cuid())
+  accountId      String
+  name           String
+  phone          String?
+  email          String?
+  telegramChatId String?
+  locale         String   @default("ru")
+  createdAt      DateTime @default(now())
+
+  account   Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  bookings  Booking[]
+  transfers Transfer[]
+
+  @@index([accountId])
+}
+
+model Apartment {
+  id            String   @id @default(cuid())
+  accountId     String
+  code          String? /// номер квартиры, например «45» — его (и адрес) видит мастер по своей заявке
+  title         String
+  titleEn       String?
+  complex       String?
+  address       String
+  district      String
+  rooms         String /// «Студия», «1-комн.», «2-комн.», «3-комн.»
+  maxGuests     Int
+  areaM2        Int?
+  basePriceKzt  Int
+  description   String?
+  descriptionEn String?
+  petsAllowed   Boolean  @default(false)
+  petFeeKzt     Int      @default(0)
+  petNote       String?
+  // доступ в квартиру — видят владелец, админ, клининг по своей уборке и гость в день заезда.
+  // Мастерам/подрядчикам эти поля НЕ отдаются: они видят только адрес и номер квартиры (code).
+  lockCode      String?
+  keyboxCode    String?
+  intercom      String?
+  entrance      String?
+  floor         Int?
+  wifiName      String?
+  wifiPassword  String?
+  accessNote    String?
+  active        Boolean  @default(true)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  account       Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  photos        ApartmentPhoto[]
+  bookings      Booking[]
+  cleaningTasks CleaningTask[]
+  repairTasks   RepairTask[]
+  transfers     Transfer[]
+  transferJobs  TransferJob[]
+
+  @@index([accountId])
+}
+
+/// Фото квартиры — без ограничения по количеству; подпись («Вид», «Кухня», «Ванная»…), порядок, обложка.
+model ApartmentPhoto {
+  id          String   @id @default(cuid())
+  accountId   String
+  apartmentId String
+  url         String /// публичный адрес картинки
+  storageKey  String /// ключ в хранилище (локальная папка uploads или S3)
+  caption     String   @default("")
+  captionEn   String   @default("")
+  sortOrder   Int      @default(0)
+  isCover     Boolean  @default(false)
+  mimeType    String?
+  sizeBytes   Int?
+  createdAt   DateTime @default(now())
+
+  account   Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+
+  @@index([apartmentId, sortOrder])
+}
+
+model Booking {
+  id            String    @id @default(cuid())
+  accountId     String
+  apartmentId   String
+  guestId       String?
+  number        Int /// номер брони для людей (1040, 1041…), уникален в аккаунте
+  token         String    @unique /// секрет для ссылки гостя: t.me/<бот>?start=b_<token>
+  source        String /// site | airbnb | booking | telegram | whatsapp | direct
+  status        String    @default("request") /// request | confirmed | cancelled | completed
+  checkIn       DateTime /// дата заезда (00:00 UTC этого дня)
+  checkOut      DateTime /// дата выезда
+  checkInTime   String    @default("14:00")
+  checkOutTime  String    @default("12:00")
+  guestsCount   Int
+  nightlyKzt    Int
+  totalKzt      Int
+  currencyShown String    @default("KZT") /// валюта, в которой гость видел цену: KZT | RUB | USD | EUR
+  amountShown   Float? /// сумма в этой валюте на момент заявки
+  paymentMethod String? /// card | cash | kaspi | telegram | transfer
+  paymentStatus String    @default("unpaid") /// unpaid | prepaid | paid | refunded
+  pets          Boolean   @default(false)
+  petFeeKzt     Int       @default(0)
+  note          String?
+  cleanerName   String? /// кто уберёт после выезда (демо-данные)
+  confirmedAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  account      Account        @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  apartment    Apartment      @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  guest        Guest?         @relation(fields: [guestId], references: [id], onDelete: SetNull)
+  transfers    Transfer[]
+  cleanings    CleaningTask[]
+  payments     Payment[]
+  transferJobs TransferJob[]
+
+  @@unique([accountId, number])
+  @@index([accountId, checkIn])
+  @@index([apartmentId, checkIn])
+}
+
+model Transfer {
+  id          String   @id @default(cuid())
+  accountId   String
+  bookingId   String?
+  guestId     String?
+  apartmentId String?
+  direction   String /// in (встреча) | out (проводы)
+  place       String   @default("airport") /// airport | station
+  date        DateTime
+  time        String
+  flight      String?
+  pax         Int      @default(1)
+  bags        Int      @default(1)
+  childSeats  Int      @default(0)
+  carClass    String   @default("standard") /// standard | minivan
+  priceKzt    Int
+  status      String   @default("requested") /// requested | planned | driver | done | cancelled — зеркало статуса TransferJob для гостя
+  driverName  String?
+  sign        String?
+  address     String?
+  guestName   String?
+  guestPhone  String?
+  paid        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  account   Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  booking   Booking?     @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  guest     Guest?       @relation(fields: [guestId], references: [id], onDelete: SetNull)
+  apartment Apartment?   @relation(fields: [apartmentId], references: [id], onDelete: SetNull)
+  job       TransferJob?
+
+  @@index([accountId, date])
+}
+
+/// Заказ-наряд на трансфер «как в Uber»: создаётся, когда хозяин/админ подтвердил бронь с трансфером,
+/// предлагается всем, кто может водить; первый «Беру» получает заказ. Детали поездки (дата, время, рейс,
+/// пассажиры, телефон гостя) живут в Transfer; здесь — диспетчерская часть. Статусы — src/services/transferJobs.js.
+model TransferJob {
+  id                 String    @id @default(cuid())
+  accountId          String
+  transferId         String    @unique
+  bookingId          String?
+  apartmentId        String?
+  status             String    @default("OFFERED") /// OFFERED | UNASSIGNED | ACCEPTED | EN_ROUTE | ARRIVED | PICKED_UP | DONE | CANCELLED
+  pickupAt           DateTime /// момент подачи (UTC) — из даты и времени трансфера в часовом поясе аккаунта
+  meetingPoint       String? /// где встречать: «зал прилёта, выход 3, у кофейни»
+  notes              String? /// багаж, детское кресло, особые просьбы
+  freeWaitMin        Int       @default(60) /// бесплатное ожидание: аэропорт 60, вокзал 30, адрес 15 мин
+  driverUserId       String? /// водитель из команды (владелец/админ/сотрудник с canDrive)
+  driverContractorId String? /// внешний водитель без входа — работает по ссылке linkToken
+  driverName         String?
+  vehicle            String?
+  payoutKzt          Int? /// сколько платим водителю (уходит в финансы после DONE) = цена для гостя − комиссия бизнеса
+  commissionKzt      Int? /// сколько оставляет бизнес (цена для гостя − выплата водителю)
+  payoutRule         String? /// откуда взялась выплата: account (настройка аккаунта) | driver (ставка водителя) | manual (вручную в карточке)
+  payoutManual       Boolean   @default(false) /// выплату задали вручную — пересчёт по правилам не трогает
+  flightStatus       String? /// по данным трекинга рейса (AeroDataBox): «задержан», «по расписанию», «приземлился»
+  flightEta          DateTime? /// ожидаемое время прилёта (UTC) по данным трекинга
+  flightCheckedAt    DateTime?
+  paid               Boolean   @default(false)
+  paidAt             DateTime?
+  offerRound         Int       @default(1) /// сколько раз предлагали всем (после отказа водителя — снова)
+  offeredAt          DateTime?
+  escalatedAt        DateTime? /// никто не взял — хозяину/админу ушло «назначьте вручную»
+  acceptedAt         DateTime?
+  enRouteAt          DateTime?
+  etaAt              DateTime? /// водитель указал, когда будет на месте
+  arrivedAt          DateTime? /// «Я на месте» — с этого момента идёт бесплатное ожидание
+  pickedUpAt         DateTime?
+  doneAt             DateTime?
+  cancelledAt        DateTime?
+  cancelReason       String?
+  linkToken          String?   @unique
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  account          Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  transfer         Transfer        @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  booking          Booking?        @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  apartment        Apartment?      @relation(fields: [apartmentId], references: [id], onDelete: SetNull)
+  driverUser       User?           @relation("TransferDriver", fields: [driverUserId], references: [id], onDelete: SetNull)
+  driverContractor Contractor?     @relation(fields: [driverContractorId], references: [id], onDelete: SetNull)
+  events           TransferEvent[]
+
+  @@index([accountId, pickupAt])
+  @@index([accountId, status])
+  @@index([driverUserId])
+}
+
+/// Журнал заказа на трансфер: предложено, взял, отказался, назначен, выехал, на месте, гость в машине, завершён, отменён, эскалация, изменение времени.
+model TransferEvent {
+  id        String   @id @default(cuid())
+  accountId String
+  jobId     String
+  type      String
+  actorType String /// system | owner | admin | driver | link
+  actorId   String?
+  actorName String?
+  note      String?
+  data      Json?
+  createdAt DateTime @default(now())
+
+  account Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  job     TransferJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+
+  @@index([jobId, createdAt])
+}
+
+model CleaningTask {
+  id          String    @id @default(cuid())
+  accountId   String
+  apartmentId String
+  bookingId   String?
+  assigneeId  String?
+  date        DateTime
+  fromTime    String    @default("12:00")
+  toTime      String    @default("18:00")
+  status      String    @default("assigned") /// assigned | enroute | progress | done
+  checklist   Json? /// [{label, done}]
+  report      String?
+  doneAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  account   Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  booking   Booking?  @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  assignee  User?     @relation("CleaningAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+
+  @@index([accountId, date])
+  @@index([assigneeId])
+}
+
+model Contractor {
+  id        String   @id @default(cuid())
+  accountId String
+  name      String
+  type      String /// plumb | elec | appl | furn | other
+  phone     String?
+  note      String?
+  regular   Boolean  @default(false)
+  canDrive  Boolean  @default(false) /// внешний водитель: можно назначить на трансфер (работает по ссылке)
+  payoutPercent  Float? /// своя комиссия бизнеса с этого водителя, %
+  payoutFixedKzt Int? /// или фиксированная сумма водителю за поездку
+  userId    String? /// пользователь с ролью master, под которым подрядчик входит в приложение команды
+  createdAt DateTime @default(now())
+
+  account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  user         User?         @relation("ContractorUser", fields: [userId], references: [id], onDelete: SetNull)
+  repairTasks  RepairTask[]
+  transferJobs TransferJob[]
+
+  @@index([userId])
+}
+
+/// Заявка мастеру/подрядчику (сантехник, электрик, строитель, маляр…). Статусы и переходы — src/services/workRequests.js.
+model RepairTask {
+  id                   String    @id @default(cuid())
+  accountId            String
+  apartmentId          String
+  title                String
+  description          String?
+  type                 String    @default("other") /// plumb | elec | appl | furn | other
+  priority             String    @default("medium") /// low | medium | high
+  status               String    @default("NEW") /// NEW | VISIT_INSPECTION | AWAITING_OWNER_APPROVAL | REJECTED | APPROVED | IN_PROGRESS | DONE | CANCELLED
+  quickJob             Boolean   @default(false) /// простая работа (заменить лампочку): можно начать на месте без сметы, но приезд и итог фиксируются
+  assigneeId           String? /// мастер из команды
+  contractorId         String? /// или внешний подрядчик
+  assigneeLabel        String? /// подпись исполнителя, если нет ни мастера, ни подрядчика («Администратор»)
+  date                 DateTime
+  accessMode           String    @default("code") /// code | keys | presence
+  accessNote           String?
+  timeWindow           String?
+  costKzt              Int? /// сумма для финансов: итог (или одобренная смета) + одобренные доп. расходы
+  finalCostKzt         Int? /// итоговая цена основной работы от мастера (без доп. расходов)
+  paid                 Boolean   @default(false)
+  paidAt               DateTime?
+  linkToken            String?   @unique /// ссылка на одну задачу без входа: /api/task-link/<token>
+  visitRequestedAt     DateTime?
+  arrivedAt            DateTime?
+  inspectionNotes      String?
+  startedAt            DateTime?
+  cancelReason         String?
+  createdById          String?
+  // кто будет в квартире во время визита мастера (одно общее поле: последнее изменение побеждает)
+  occupancy            String    @default("UNKNOWN") /// OWNER_PRESENT (владелец будет) | EMPTY (квартира пустая) | UNKNOWN (пока неизвестно)
+  occupancyUpdatedById String?
+  occupancyUpdatedAt   DateTime?
+  accessInstructions   String? /// «Как попасть» — показывается мастеру только при EMPTY (значение хранится и при других статусах)
+  blockDays            Int? /// квартира закрыта на ремонт N дней
+  report               String?
+  doneAt               DateTime?
+  createdAt            DateTime  @default(now())
+
+  account            Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  apartment          Apartment        @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  assignee           User?            @relation("RepairAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  contractor         Contractor?      @relation(fields: [contractorId], references: [id], onDelete: SetNull)
+  occupancyUpdatedBy User?            @relation("OccupancyUpdatedBy", fields: [occupancyUpdatedById], references: [id], onDelete: SetNull)
+  estimates          RepairEstimate[]
+  events             RepairEvent[]
+  photos             RepairPhoto[]
+  extras             ExtraExpense[]
+
+  @@index([accountId, date])
+  @@index([assigneeId])
+}
+
+/// Смета мастера (предварительная). Ждёт одобрения владельца/админа; без одобренной сметы работу не начать.
+model RepairEstimate {
+  id                String    @id @default(cuid())
+  accountId         String
+  repairTaskId      String
+  method            String    @default("REMOTE") /// REMOTE (по описанию, без выезда) | PHOTOS (по фото) | VISIT (после осмотра)
+  workKzt           Int /// работа
+  partsKzt          Int       @default(0) /// материалы (0, если не входят)
+  materialsIncluded Boolean   @default(false) /// true — материалы входят в цену; false — покупаются отдельно
+  maxKzt            Int? /// «до» — верхняя граница, если цена диапазоном (от workKzt+partsKzt до maxKzt)
+  preliminary       Boolean   @default(true) /// смета предварительная, итог — при завершении
+  items             String? /// список материалов / работ
+  comment           String?
+  byName            String?
+  byUserId          String?
+  status            String    @default("pending") /// pending | approved | rejected
+  rejectReason      String?
+  decidedAt         DateTime?
+  decidedById       String?
+  createdAt         DateTime  @default(now())
+
+  account    Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  repairTask RepairTask @relation(fields: [repairTaskId], references: [id], onDelete: Cascade)
+}
+
+/// Журнал шагов заявки: кто и когда (создана, нужен выезд, приехал, осмотр, смета, одобрена, отклонена, начата, доп. расход, выполнена…)
+model RepairEvent {
+  id           String   @id @default(cuid())
+  accountId    String
+  repairTaskId String
+  type         String /// created | visit_requested | arrived | inspected | estimate_submitted | approved | rejected | started | extra_submitted | extra_approved | extra_rejected | completed | cancelled | paid
+  actorType    String /// owner | admin | master | link | system
+  actorId      String?
+  actorName    String?
+  note         String?
+  data         Json?
+  createdAt    DateTime @default(now())
+
+  account    Account    @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  repairTask RepairTask @relation(fields: [repairTaskId], references: [id], onDelete: Cascade)
+
+  @@index([repairTaskId, createdAt])
+}
+
+/// Фото по заявке: problem — владелец/админ показывает проблему (для сметы по фото); остальные загружает мастер.
+model RepairPhoto {
+  id           String   @id @default(cuid())
+  accountId    String
+  repairTaskId String
+  kind         String /// problem | arrival | inspection | after | receipt
+  url          String
+  storageKey   String
+  caption      String   @default("")
+  extraId      String? /// чек/фото к доп. расходу
+  uploadedBy   String /// owner | admin | master | link
+  mimeType     String?
+  createdAt    DateTime @default(now())
+
+  account    Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  repairTask RepairTask    @relation(fields: [repairTaskId], references: [id], onDelete: Cascade)
+  extra      ExtraExpense? @relation(fields: [extraId], references: [id], onDelete: SetNull)
+
+  @@index([repairTaskId])
+}
+
+/// Доп. расход во время работ, возникший не по вине мастера (скрытая проводка, сгнившая труба…). Решает владелец/админ.
+model ExtraExpense {
+  id           String    @id @default(cuid())
+  accountId    String
+  repairTaskId String
+  amountKzt    Int
+  description  String
+  reason       String /// почему возник расход (не по вине мастера)
+  status       String    @default("PENDING") /// PENDING | APPROVED | REJECTED
+  byName       String?
+  byUserId     String?
+  decisionNote String?
+  decidedAt    DateTime?
+  decidedById  String?
+  createdAt    DateTime  @default(now())
+
+  account    Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  repairTask RepairTask    @relation(fields: [repairTaskId], references: [id], onDelete: Cascade)
+  photos     RepairPhoto[]
+
+  @@index([repairTaskId])
+}
+
+/// Курс: сколько тенге стоит 1 единица валюты (например USD = 510).
+model ExchangeRate {
+  id        String   @id @default(cuid())
+  accountId String
+  code      String /// RUB | USD | EUR
+  rateKzt   Float
+  updatedAt DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, code])
+}
+
+model CurrencySettings {
+  id        String @id @default(cuid())
+  accountId String @unique
+  shown     Json /// ["KZT","RUB","USD","EUR"] — какие валюты показывать гостям
+  roundMode String @default("nearest") /// nearest | up | none
+  roundStep Json? /// {"RUB":10,"USD":1,"EUR":1}
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+/// Редактируемые тексты сайта (кнопки, заголовки) по языкам. Нет записи — берётся текст по умолчанию.
+model SiteText {
+  id        String   @id @default(cuid())
+  accountId String
+  lang      String /// ru | en
+  key       String /// например hero.title
+  value     String
+  updatedAt DateTime @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@unique([accountId, lang, key])
+}
+
+model Brand {
+  id        String  @id @default(cuid())
+  accountId String  @unique
+  name      String
+  short     String  @default("AS")
+  taglineRu String  @default("")
+  taglineEn String  @default("")
+  logoUrl   String? /// загруженный логотип; пусто — рисованная заглушка-домик
+  logoKey   String?
+  colors    Json /// {"brand":"#0b3b4a","brand2":"#0f5566","accent":"#e0a526","accent2":"#c98a0c"}
+  phone     String?
+  telegram  String?
+  whatsapp  String?
+  email     String?
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+}
+
+/// Журнал всех уведомлений (и отправленных в Telegram, и «только в лог», если бота нет).
+model NotificationLog {
+  id            String   @id @default(cuid())
+  accountId     String
+  event         String /// booking.requested, booking.confirmed, checkin.upcoming, …
+  channel       String /// telegram | console
+  recipientType String /// owner | admin | cleaning | master | guest
+  recipientId   String?
+  chatId        String?
+  lang          String   @default("ru")
+  text          String
+  status        String /// sent | logged | failed | skipped
+  error         String?
+  dedupeKey     String?  @unique /// чтобы напоминание не ушло дважды
+  createdAt     DateTime @default(now())
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, createdAt])
+}
+
+model Payment {
+  id                String   @id @default(cuid())
+  accountId         String
+  bookingId         String?
+  provider          String /// cloudpayments | paylink | manual
+  providerPaymentId String?
+  amountKzt         Int
+  currency          String   @default("KZT")
+  amount            Float
+  status            String   @default("created") /// created | pending | succeeded | failed | refunded
+  raw               Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  account Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  booking Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+
+  @@index([accountId])
+}
