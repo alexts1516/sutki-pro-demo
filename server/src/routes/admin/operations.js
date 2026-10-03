@@ -119,7 +119,7 @@ export default function operationsRouter({ events, dispatch }) {
       prisma.booking.findMany({ where: { accountId: req.accountId, status: { in: ['confirmed', 'completed'] }, checkIn: { lt: to }, checkOut: { gt: from } } }),
       prisma.repairTask.findMany({ where: { accountId: req.accountId, date: { gte: from, lt: to }, costKzt: { gt: 0 }, status: { not: 'CANCELLED' } } }),
       prisma.apartment.count({ where: { accountId: req.accountId, active: true } }),
-      prisma.transferJob.findMany({ where: { accountId: req.accountId, status: 'DONE', pickupAt: { gte: from, lt: to } }, include: { transfer: { select: { priceKzt: true } } } }),
+      prisma.transferJob.findMany({ where: { accountId: req.accountId, status: 'DONE', pickupAt: { gte: from, lt: to } }, include: { transfer: { select: { priceKzt: true, guestPaymentStatus: true } }, payoutRecord: true } }),
     ]);
     let revenue = 0, nights = 0;
     for (const b of bookings) {
@@ -128,16 +128,25 @@ export default function operationsRouter({ events, dispatch }) {
     }
     const days = Math.round((to - from) / 86400000);
     const repairsKzt = repairs.reduce((s, x) => s + (x.costKzt || 0), 0);
-    // трансферы: выплаты водителям (расход, как ремонты) и что заплатили гости за выполненные поездки
-    const transfersKzt = transferJobs.reduce((s, j) => s + (j.payoutKzt || 0), 0);
-    const transfersUnpaidKzt = transferJobs.filter(j => !j.paid).reduce((s, j) => s + (j.payoutKzt || 0), 0);
-    const transfersRevenueKzt = transferJobs.reduce((s, j) => s + (j.transfer?.priceKzt || 0), 0);
-    const transfersMarginKzt = transfersRevenueKzt - transfersKzt;   // сколько осталось бизнесу (комиссия)
+    // трансферы (выполненные за месяц): вся цена — выручка бизнеса (гость платит бизнесу),
+    // выплаты водителям — долги DriverPayout (есть только если выплата > 0; везёт владелец — долга нет, маржа 100%)
+    const sum = (list, f) => list.reduce((s, x) => s + (f(x) || 0), 0);
+    const price = (j) => j.transfer?.priceKzt;
+    const recs = transferJobs.map(j => j.payoutRecord).filter(Boolean);
+    const transfersKzt = sum(recs, r => r.amountKzt);
+    const transfersPaidOutKzt = sum(recs.filter(r => r.status === 'PAID'), r => r.amountKzt);
+    const transfersUnpaidKzt = transfersKzt - transfersPaidOutKzt;   // должны водителям
+    const transfersRevenueKzt = sum(transferJobs, price);
+    const transfersGuestPaidKzt = sum(transferJobs.filter(j => j.transfer?.guestPaymentStatus === 'PAID'), price);
+    const transfersMarginKzt = transfersRevenueKzt - transfersKzt;   // осталось бизнесу (комиссия + поездки владельца целиком)
+    const own = transferJobs.filter(j => ['owner', 'business'].includes(j.payoutRule));
     const repairsUnpaidKzt = repairs.filter(x => !x.paid).reduce((s, x) => s + (x.costKzt || 0), 0);
     res.json({
       month: m, revenueKzt: revenue, nights, occupancy: aptCount ? nights / (aptCount * days) : 0, adrKzt: nights ? Math.round(revenue / nights) : 0,
       repairsKzt, repairsUnpaidKzt, repairs: repairs.length,
-      transfersRevenueKzt, transfersKzt, transfersPayoutKzt: transfersKzt, transfersUnpaidKzt, transfersMarginKzt, transfers: transferJobs.length,
+      transfersRevenueKzt, transfersGuestPaidKzt, transfersGuestUnpaidKzt: transfersRevenueKzt - transfersGuestPaidKzt,
+      transfersKzt, transfersPayoutKzt: transfersKzt, transfersPaidOutKzt, transfersUnpaidKzt, transfersMarginKzt, transfers: transferJobs.length,
+      transfersOwnTrips: own.length, transfersOwnKzt: sum(own, price),
       netKzt: revenue + transfersRevenueKzt - repairsKzt - transfersKzt, bookings: bookings.length,
     });
   });

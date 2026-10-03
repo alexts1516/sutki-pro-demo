@@ -390,14 +390,19 @@ function drawRepair() {
 // ---------------- команда ----------------
 async function renderTeam() {
   const list = await api('/api/admin/team');
+  if (S.me.role === 'owner' && !S.settings) S.settings = await api('/api/admin/settings').catch(() => null);
   view(`<div class="page-head"><div><h1>Команда и Telegram</h1><p class="sub">Чтобы получать уведомления, каждый открывает свою ссылку-приглашение в Telegram (нужен бот — см. README_SERVER.md). «Водит» — человек получает заказы на трансфер и может нажать «Беру».</p></div></div>
     <div class="card"><div class="table-wrap"><table class="t"><thead><tr><th>Сотрудник</th><th>Роль</th><th>Доступ</th><th>Водит (трансферы)</th><th>Telegram</th><th></th></tr></thead><tbody>
     ${list.map(m => `<tr><td><b>${esc(m.name)}</b><div class="muted small">${esc(m.email || m.phone || '')}</div></td><td>${ROLE[m.role] || m.role}</td><td>${m.active ? '<span class="chip green">включён</span>' : '<span class="chip">отключён</span>'}</td>
       <td>${m.role === 'driver' ? '<span class="chip blue">🚗 водитель</span>' : `<button class="btn sm ${m.canDrive ? 'success' : ''}" data-drive="${m.userId}" data-on="${m.canDrive ? 1 : 0}">${m.canDrive ? '🚗 Водит' : 'Не водит'}</button>`}
         ${m.canDrive ? `<input class="veh" data-veh="${m.userId}" value="${esc(m.vehicle || '')}" placeholder="Машина, цвет, номер" title="Гость увидит машину, когда водитель возьмёт заказ">` : ''}
-        ${m.canDrive && S.me.role === 'owner' ? `<input class="veh" data-rate="${m.userId}" value="${m.payoutFixedKzt != null ? m.payoutFixedKzt : m.payoutPercent != null ? m.payoutPercent + '%' : ''}" placeholder="Ставка: как в настройках" title="Своя ставка водителя: «15%» — комиссия бизнеса, «7000» — фиксированно водителю за поездку. Пусто — как в «Настройках».">` : ''}</td>
+        ${m.canDrive && S.me.role === 'owner' && m.role !== 'owner' ? `<label class="check small" style="margin:6px 0 0"><input type="checkbox" data-paid-as="${m.userId}" ${m.paidAsDriver !== false ? 'checked' : ''}> платим как водителю</label>` : ''}
+        ${m.canDrive && S.me.role === 'owner' && m.role === 'owner' ? `<div class="muted small" style="margin-top:6px">${S.settings?.ownerDrivesKeepsAll === false ? 'ваши поездки — по ставке, как у водителей' : 'ваши поездки — без выплаты, вся сумма бизнесу'}</div>` : ''}
+        ${m.canDrive && S.me.role === 'owner' && m.role !== 'owner' && m.paidAsDriver !== false ? `<input class="veh" data-rate="${m.userId}" value="${m.payoutFixedKzt != null ? m.payoutFixedKzt : m.payoutPercent != null ? m.payoutPercent + '%' : ''}" placeholder="Ставка: как в настройках" title="Своя ставка водителя: «15%» — комиссия бизнеса, «7000» — фиксированно водителю за поездку. Пусто — как в «Настройках».">` : ''}</td>
       <td>${m.telegramLinked ? '<span class="chip green">подключён</span>' : '<span class="chip amber">не подключён</span>'}</td><td><button class="btn sm" data-invite="${m.userId}">Ссылка для Telegram</button><div class="muted small" id="inv-${m.userId}"></div></td></tr>`).join('')}</tbody></table></div></div>`);
   $('#view').onchange = guard(async (e) => {
+    const pa = e.target.closest('[data-paid-as]');
+    if (pa) { await api(`/api/admin/team/${pa.dataset.paidAs}`, { method: 'PATCH', body: { paidAsDriver: pa.checked } }); toast(pa.checked ? 'Платим как водителю — выплата по ставке' : 'Без выплаты — вся сумма его поездок остаётся бизнесу'); return renderTeam(); }
     const rt = e.target.closest('[data-rate]');
     if (rt) {
       const raw = rt.value.trim().replace(/\s/g, ''); let body;
@@ -432,8 +437,9 @@ async function renderSettings() {
       <div class="opt-in"><input name="ownerCommissionPercent" type="number" min="0" max="100" step="1" value="${st.ownerCommissionPercent ?? ''}" placeholder="0" ${ro}><span class="muted">% бизнесу</span></div>
       ${radio('transferPayoutMode', 'FIXED', 'Фиксированная сумма водителю за поездку', 'Бизнесу — всё, что сверху')}
       <div class="opt-in"><input name="driverFixedKzt" type="number" min="0" step="500" value="${st.driverFixedKzt ?? ''}" placeholder="6000" ${ro}><span class="muted">₸ водителю</span></div>
+      <label class="check" style="margin-top:6px"><input type="checkbox" name="ownerDrivesKeepsAll" ${st.ownerDrivesKeepsAll ? 'checked' : ''} ${ro}> Везёт сам владелец — выплаты нет, вся сумма остаётся бизнесу</label>
       <div class="muted small" id="stPreview"></div>
-      <div class="muted small" style="margin-top:6px">Своя ставка для отдельного водителя — в «Команде»; для одной поездки — в карточке трансфера («Задать вручную»). Водители видят только свою выплату.</div></div></div>
+      <div class="muted small" style="margin-top:6px">Все деньги идут через бизнес: гость платит бизнесу, бизнес — водителю (долг появляется после поездки). Своя ставка водителя и «без выплаты» для своих людей (например, совладельца) — в «Команде»; для одной поездки — в карточке трансфера. Водители видят только свою выплату.</div></div></div>
     <div class="card"><div class="card-h"><h2>🔔 Кому уведомления «для менеджера»</h2></div><div class="card-b">
       <div class="muted small" style="margin-bottom:6px">Новые заявки, «никто не взял трансфер», водитель взял/отказался, сметы и отчёты мастеров. Гостям, водителям и мастерам уведомления приходят как обычно; оплаты — всегда владельцу.</div>
       ${radio('managerNotify', 'BOTH', 'Владельцу и администраторам')}${radio('managerNotify', 'OWNER', 'Только владельцу')}${radio('managerNotify', 'ADMIN', 'Только администраторам', 'если активных админов нет — владельцу')}</div></div>
@@ -464,7 +470,8 @@ async function renderSettings() {
     const mode = f.querySelector('[name=transferPayoutMode]:checked').value;
     const num = (n) => f.elements[n].value === '' ? null : Number(f.elements[n].value);
     const body = { transferPayoutMode: mode, ownerCommissionPercent: mode === 'PERCENT' ? (num('ownerCommissionPercent') ?? 0) : num('ownerCommissionPercent'), driverFixedKzt: num('driverFixedKzt'),
-      managerNotify: f.querySelector('[name=managerNotify]:checked').value, approvalBy: f.querySelector('[name=approvalBy]:checked').value, flightTracking: f.elements.flightTracking.checked };
+      managerNotify: f.querySelector('[name=managerNotify]:checked').value, approvalBy: f.querySelector('[name=approvalBy]:checked').value, flightTracking: f.elements.flightTracking.checked,
+      ownerDrivesKeepsAll: f.elements.ownerDrivesKeepsAll.checked };
     S.settings = await api('/api/admin/settings', { method: 'PUT', body }); toast('Настройки сохранены. Новая комиссия — для новых заказов и при смене водителя'); renderSettings();
   });
 }
@@ -480,7 +487,7 @@ async function renderFinance(month) {
   view(`<div class="page-head"><div><h1>Финансы</h1><p class="sub">Только владелец. Трансферы — по выполненным поездкам месяца, ремонты — по дате заявки (без отменённых).</p></div>
       <div class="row"><button class="btn sm" data-m="${shift(-1)}">←</button><b style="min-width:120px;text-align:center">${MONTHS[mm - 1]} ${y}</b><button class="btn sm" data-m="${shift(1)}">→</button></div></div>
     <h3 class="fin-h">Проживание</h3><div class="fin-grid">${tile('Выручка', money(f.revenueKzt), `${f.bookings} брон.`)}${tile('Ночей продано', f.nights, `загрузка ${Math.round(f.occupancy * 100)}%`)}${tile('Средняя цена ночи', money(f.adrKzt))}</div>
-    <h3 class="fin-h">Трансферы · ${f.transfers} поездок</h3><div class="fin-grid">${tile('Заплатили гости', money(f.transfersRevenueKzt))}${tile('Водителям', money(f.transfersPayoutKzt), f.transfersUnpaidKzt ? `ещё не выплачено ${money(f.transfersUnpaidKzt)}` : 'всё выплачено', f.transfersUnpaidKzt ? 'amber' : '')}${tile('Осталось бизнесу (комиссия)', money(f.transfersMarginKzt), '', 'green')}</div>
+    <h3 class="fin-h">Трансферы · ${f.transfers} поездок${f.transfersOwnTrips ? ` (вёз владелец / свои: ${f.transfersOwnTrips})` : ''}</h3><div class="fin-grid">${tile('Выручка (цена для гостей)', money(f.transfersRevenueKzt), f.transfersGuestUnpaidKzt ? `гости ещё не оплатили ${money(f.transfersGuestUnpaidKzt)}` : 'всё оплачено', f.transfersGuestUnpaidKzt ? 'amber' : '')}${tile('Выплаты водителям', money(f.transfersPayoutKzt), f.transfersUnpaidKzt ? `должны ${money(f.transfersUnpaidKzt)} · выплачено ${money(f.transfersPaidOutKzt)}` : 'всё выплачено', f.transfersUnpaidKzt ? 'amber' : '')}${tile('Осталось бизнесу', money(f.transfersMarginKzt), f.transfersOwnKzt ? `в т.ч. поездки владельца/своих целиком: ${money(f.transfersOwnKzt)}` : '', 'green')}</div>
     <h3 class="fin-h">Ремонты и мастера · ${f.repairs}</h3><div class="fin-grid">${tile('Расходы', money(f.repairsKzt))}${tile('Не оплачено мастерам', money(f.repairsUnpaidKzt), '', f.repairsUnpaidKzt ? 'amber' : '')}</div>
     <h3 class="fin-h">Итого</h3><div class="fin-grid">${tile('Проживание + трансферы − водителям − ремонты', money(f.netKzt), '', f.netKzt >= 0 ? 'green' : 'red')}</div>`);
   $('#view').onclick = (e) => { const b = e.target.closest('[data-m]'); if (b) guard(renderFinance)(b.dataset.m); };
@@ -508,7 +515,8 @@ const TR_ST = { REQUESTED: ['violet', 'Ждёт подтверждения бр�
   EN_ROUTE: ['blue', 'Водитель в пути'], ARRIVED: ['blue', 'Водитель на месте'], PICKED_UP: ['blue', 'Гость в машине'], DONE: ['green', 'Выполнен'], CANCELLED: ['', 'Отменён'] };
 const TR_EV = { offered: 'Предложен всем водителям', escalated: 'Никто не взял — сигнал хозяину/админу', accepted: 'Водитель взял заказ', assigned: 'Назначен водитель', reassigned: 'Водитель заменён',
   released: 'Водитель отказался', en_route: 'Водитель выехал', arrived: 'Водитель на месте', picked_up: 'Гость в машине', done: 'Выполнен', cancelled: 'Отменён', time_changed: 'Изменено время подачи',
-  updated: 'Изменены детали', paid: 'Оплачено водителю', unpaid: 'Снята отметка «оплачено»', link: 'Новая ссылка водителю' };
+  updated: 'Изменены детали', paid: 'Выплачено водителю', unpaid: 'Снята отметка «выплачено»', link: 'Новая ссылка водителю',
+  guest_paid: 'Гость оплатил бизнесу', guest_unpaid: 'Снята отметка об оплате гостя' };
 const DIR = { in: 'Встреча', out: 'Проводы' };
 const badge = (map, s) => { const [t, l] = map[s] || ['', s]; return `<span class="chip ${t}">${l}</span>`; };
 const trStatus = (t) => t.job?.status || (t.status === 'cancelled' ? 'CANCELLED' : t.status === 'done' ? 'DONE' : 'REQUESTED');
@@ -687,7 +695,8 @@ async function requestedTransferCard(transferId) {
     if (e.target.closest('[data-act=dispatch]')) { const j = await api(`/api/admin/transfers/${t.id}/dispatch`, { method: 'POST' }); toast('Заказ предложен всем водителям'); await transferCard(j.id); refresh(); }
   });
 }
-const PAY_RULE = { account: 'по настройке аккаунта', driver: 'ставка водителя', manual: 'задано вручную' };
+const PAY_RULE = { account: 'по настройке аккаунта', driver: 'ставка водителя', manual: 'задано вручную', owner: 'везёт сам владелец — вся сумма бизнесу', business: 'свой человек без выплаты — вся сумма бизнесу' };
+const GUEST_PAY = { cash: 'наличные', card: 'карта / перевод', online: 'онлайн' };
 async function transferCard(id) {
   const [j, drivers, settings] = await Promise.all([api('/api/admin/transfer-jobs/' + id), api('/api/admin/drivers'), S.settings ? Promise.resolve(S.settings) : api('/api/admin/settings')]);
   S.job = j; S.drivers = drivers; S.settings = settings; drawTransferCard();
@@ -700,6 +709,7 @@ function driverOptions(j) {
 function drawTransferCard() {
   const j = S.job; const open = !['DONE', 'CANCELLED'].includes(j.status);
   const canAssign = ['OFFERED', 'UNASSIGNED', 'ACCEPTED', 'EN_ROUTE', 'ARRIVED'].includes(j.status);
+  const gp = j.guestPayment || { status: 'UNPAID' }, pr = j.payoutRecord;   // оплата гостя бизнесу и долг водителю
   const next = { ACCEPTED: ['en-route', 'выехал'], EN_ROUTE: ['arrived', 'на месте'], ARRIVED: ['picked-up', 'гость в машине'], PICKED_UP: ['done', 'выполнен'] }[j.status];
   const flightUrl = j.flight ? `https://www.flightradar24.com/data/flights/${encodeURIComponent(j.flight.replace(/\s+/g, '').toLowerCase())}` : null;
   const body = drawer(`<div class="dh"><div class="muted small">🚗 Трансфер${j.booking ? ` · бронь №${j.booking.number}` : ''}${j.apartment ? ` · ${esc(j.apartment.title)}` : ''}</div>
@@ -716,11 +726,16 @@ function drawTransferCard() {
       ${canAssign ? `<div class="row" style="margin-top:10px"><select id="trDriver" class="grow">${driverOptions(j)}</select><button class="btn sm primary" data-act="assign">${j.driver ? 'Заменить' : 'Назначить'}</button></div>` : ''}
       <div class="row" style="margin-top:8px">${next ? `<button class="btn sm" data-act="step" data-step="${next[0]}">Отметить за водителя: ${next[1]}</button>` : ''}${['UNASSIGNED', 'ACCEPTED'].includes(j.status) ? `<button class="btn sm" data-act="offer">${j.status === 'ACCEPTED' ? 'Снять водителя и предложить всем' : 'Предложить всем ещё раз'}</button>` : ''}</div></section>
     <section class="ds"><h3>Деньги</h3>
-      <dl class="kv money-kv"><dt>Цена для гостя</dt><dd>${money(j.priceKzt)}</dd><dt>Комиссия бизнеса</dt><dd>${j.commissionKzt != null ? money(j.commissionKzt) : '—'}${j.priceKzt && j.commissionKzt != null ? ` <span class="muted small">(${Math.round(j.commissionKzt / j.priceKzt * 100)}%)</span>` : ''}</dd>
-        <dt>Водителю</dt><dd><b>${j.payoutKzt != null ? money(j.payoutKzt) : '—'}</b> <span class="muted small">${PAY_RULE[j.payoutRule] || ''}</span>${j.paid ? ' <span class="chip green">оплачено</span>' : ''}</dd></dl>
-      ${S.settings && !S.settings.commissionConfigured ? `<div class="alert amber small">Комиссия не настроена — водитель получает 100% цены. ${S.me.role === 'owner' ? '<a href="#settings">Настроить →</a>' : 'Настраивает владелец.'}</div>` : ''}
-      ${j.status !== 'CANCELLED' && !j.paid ? `<div class="row" style="margin-top:8px"><input id="trPay" type="number" min="0" step="500" value="${j.payoutKzt ?? ''}" style="max-width:130px" aria-label="Выплата водителю"><span class="muted">₸</span><button class="btn sm" data-act="pay">Задать вручную</button>${j.payoutManual ? '<button class="btn sm" data-act="auto">По правилам</button>' : ''}</div>` : ''}
-      <div class="row" style="margin-top:8px">${j.status === 'DONE' ? `<button class="btn sm ${j.paid ? '' : 'success'}" data-act="paid">${j.paid ? 'Снять «оплачено»' : 'Оплачено водителю'}</button>` : '<span class="muted small">«Оплачено» — после выполнения; выплата и комиссия попадут в финансы</span>'}</div></section>
+      <div class="muted small" style="margin-bottom:8px">Гость платит бизнесу, бизнес платит водителю. Водитель видит только свою выплату.</div>
+      <dl class="kv money-kv"><dt>Цена для гостя</dt><dd><b>${money(j.priceKzt)}</b></dd>
+        <dt>Оплата гостя → бизнес</dt><dd>${gp.status === 'PAID' ? `<span class="chip green">оплачено</span> <span class="muted small">${GUEST_PAY[gp.method] || ''}${gp.paidAt ? ' · ' + fmtTime(gp.paidAt) : ''}${gp.byName ? ' · ' + esc(gp.byName) : ''}</span>` : `<span class="chip ${j.status === 'CANCELLED' ? '' : 'amber'}">не оплачено</span>`}</dd>
+        <dt>Выплата водителю</dt><dd>${j.noPayout ? `<b>не требуется</b> <span class="muted small">— ${j.payoutRule === 'owner' ? 'вёз владелец' : 'свой человек без выплаты'}</span>`
+          : `<b>${j.payoutKzt != null ? money(j.payoutKzt) : '—'}</b> <span class="muted small">${PAY_RULE[j.payoutRule] || ''}</span>${pr ? (pr.status === 'PAID' ? ` <span class="chip green">выплачено</span> <span class="muted small">${pr.paidAt ? fmtTime(pr.paidAt) : ''}${pr.byName ? ' · ' + esc(pr.byName) : ''}</span>` : ' <span class="chip amber">должны водителю</span>') : ''}`}</dd>
+        <dt>Остаётся бизнесу</dt><dd>${j.commissionKzt != null ? money(j.commissionKzt) : '—'}${j.priceKzt && j.commissionKzt != null ? ` <span class="muted small">(${Math.round(j.commissionKzt / j.priceKzt * 100)}%)</span>` : ''}</dd></dl>
+      ${j.status !== 'CANCELLED' ? `<div class="row" style="margin-top:8px">${gp.status === 'PAID' ? '<button class="btn sm" data-act="gunpaid">Снять отметку об оплате гостя</button>' : '<span class="muted small">Гость оплатил:</span><button class="btn sm success" data-act="gpaid" data-m="cash">наличные</button><button class="btn sm success" data-act="gpaid" data-m="card">карта / перевод</button><button class="btn sm success" data-act="gpaid" data-m="online">онлайн</button>'}</div>` : ''}
+      ${S.settings && !S.settings.commissionConfigured && !j.noPayout ? `<div class="alert amber small" style="margin-top:8px">Комиссия не настроена — наёмный водитель получает 100% цены. ${S.me.role === 'owner' ? '<a href="#settings">Настроить →</a>' : 'Настраивает владелец.'}</div>` : ''}
+      ${j.status !== 'CANCELLED' && !j.paid && !j.noPayout ? `<div class="row" style="margin-top:8px"><input id="trPay" type="number" min="0" step="500" value="${j.payoutKzt ?? ''}" style="max-width:130px" aria-label="Выплата водителю"><span class="muted">₸</span><button class="btn sm" data-act="pay">Задать вручную</button>${j.payoutManual ? '<button class="btn sm" data-act="auto">По правилам</button>' : ''}</div>` : ''}
+      ${j.noPayout ? '' : `<div class="row" style="margin-top:8px">${j.status === 'DONE' && pr ? `<button class="btn sm ${j.paid ? '' : 'success'}" data-act="paid">${j.paid ? 'Снять «выплачено»' : 'Выплачено водителю'}</button>` : `<span class="muted small">${j.status === 'DONE' ? 'Выплата 0 ₸ — долга водителю нет' : 'Долг водителю появится после выполнения поездки, тогда — «Выплачено водителю»'}</span>`}</div>`}</section>
     ${open && j.status !== 'PICKED_UP' ? `<details class="ds"><summary>Изменить время, рейс, место встречи</summary><div class="grid g3" style="margin-top:10px"><label>Дата<input id="trDate" type="date" value="${j.date}"></label><label>Время<input id="trTime" type="time" value="${j.time}"></label><label>Рейс<input id="trFlight" value="${esc(j.flight || '')}"></label>
       <label style="grid-column:1/-1">Где встречать<input id="trMeet" value="${esc(j.meetingPoint || '')}" placeholder="Зал прилёта, выход 3, у кофейни"></label></div><div class="row" style="margin-top:8px"><button class="btn sm primary" data-act="save">Сохранить${j.driver ? ' — водитель получит уведомление' : ''}</button></div></details>` : ''}
     <section class="ds"><h3>Журнал</h3><ul class="wr-log">${[...j.events].reverse().map(e => `<li><b>${TR_EV[e.type] || e.type}</b>${e.actorName ? ` — ${esc(e.actorName)}` : ''}<div class="muted small">${fmtTime(e.createdAt)}${e.note ? ' · ' + esc(e.note) : ''}${e.data?.before ? ` · ${esc(e.data.before)} → ${esc(e.data.after)}` : ''}${e.data?.etaMinutes ? ` · ETA ${e.data.etaMinutes} мин` : ''}${e.data?.driver ? ` · ${esc(e.data.driver)}` : ''}</div></li>`).join('')}</ul></section>
@@ -736,7 +751,9 @@ function drawTransferCard() {
     else if (a.dataset.act === 'pay') { if ($('#trPay').value === '') return toast('Укажите сумму водителю', true); S.job = await api(url, { method: 'PATCH', body: { payoutKzt: +$('#trPay').value } }); msg = 'Выплата водителю задана вручную'; }
     else if (a.dataset.act === 'auto') { S.job = await api(url, { method: 'PATCH', body: { payoutAuto: true } }); msg = 'Выплата пересчитана по правилам'; }
     else if (a.dataset.act === 'copy') { return copyText(j.link.url); }
-    else if (a.dataset.act === 'paid') { S.job = await api(url + '/paid', { method: 'POST', body: { paid: !j.paid } }); msg = S.job.paid ? 'Отмечено: оплачено водителю' : 'Отметка снята'; }
+    else if (a.dataset.act === 'paid') { S.job = await api(url + '/paid', { method: 'POST', body: { paid: !j.paid } }); msg = S.job.paid ? 'Отмечено: выплачено водителю' : 'Отметка снята'; }
+    else if (a.dataset.act === 'gpaid') { S.job = await api(url + '/guest-payment', { method: 'POST', body: { status: 'PAID', method: a.dataset.m } }); msg = 'Оплата гостя записана в доход бизнеса'; }
+    else if (a.dataset.act === 'gunpaid') { S.job = await api(url + '/guest-payment', { method: 'POST', body: { status: 'UNPAID' } }); msg = 'Отметка об оплате гостя снята'; }
     else if (a.dataset.act === 'save') {
       const body = { date: $('#trDate').value, time: $('#trTime').value, flight: $('#trFlight').value.trim() || null, meetingPoint: $('#trMeet').value.trim() || null };
       if (body.date === j.date) delete body.date; if (body.time === j.time) delete body.time;
@@ -754,13 +771,13 @@ async function renderTransfers(openId) {
   const inTab = (t) => (x) => !t[2] || t[2].includes(x.status);
   const tab = TR_TABS.find(t => t[0] === S.trTab) || TR_TABS[items.some(inTab(TR_TABS[0])) ? 0 : 1];
   const rows = items.filter(inTab(tab));
-  const unpaid = items.filter(x => x.status === 'DONE' && !x.paid).reduce((s, x) => s + (x.payoutKzt || 0), 0);
+  const unpaid = items.filter(x => x.payoutStatus === 'PENDING').reduce((s, x) => s + (x.payoutKzt || 0), 0);
   view(`<div class="page-head"><div><h1>Трансферы</h1><p class="sub">Как в Uber: подтверждённая бронь с трансфером сразу предлагается всем, кто водит; первый «Беру» получает заказ. Никто не взял за ${30} мин или до подачи меньше 3 ч — придёт сигнал, назначьте вручную.</p></div></div>
     <div class="row" style="margin-bottom:12px"><div class="tabs scroll">${TR_TABS.map(t => `<button class="${t === tab ? 'active' : ''}" data-tab="${t[0]}">${t[1]} · ${items.filter(inTab(t)).length}</button>`).join('')}</div>${unpaid ? `<span class="chip amber">к выплате водителям: ${money(unpaid)}</span>` : ''}</div>
     <div class="card">${rows.length ? `<div class="table-wrap"><table class="t tr-table"><thead><tr><th>Когда</th><th>Маршрут</th><th>Гость</th><th>Водитель</th><th>Статус</th><th>Цена · водителю</th></tr></thead><tbody>
     ${rows.map(x => `<tr class="click" data-open="tr:${x.id}:${x.transferId}"><td style="white-space:nowrap"><b>${fmtDay(x.date)}, ${x.time}</b><div class="muted small">${DIR[x.direction]}${x.flight ? ' · ' + esc(x.flight) : ''}</div></td>
       <td><div class="small">${esc(x.from)}</div><div class="small">→ ${esc(x.to)}</div></td><td>${esc(x.guestName || '—')}<div class="muted small">${x.pax} пасс.${x.bookingNumber ? ` · бронь №${x.bookingNumber}` : ''}</div></td>
-      <td>${esc(x.driverName || '—')}</td><td>${badge(TR_ST, x.status)}</td><td style="white-space:nowrap">${x.priceKzt != null ? `<b>${money(x.priceKzt)}</b>` : '—'}<div class="muted small">водителю ${x.payoutKzt != null ? money(x.payoutKzt) : '—'}${x.paid ? ' · оплачено' : ''}</div></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Здесь пусто</div>'}</div>
+      <td>${esc(x.driverName || '—')}</td><td>${badge(TR_ST, x.status)}</td><td style="white-space:nowrap">${x.priceKzt != null ? `<b>${money(x.priceKzt)}</b>` : '—'}<div class="muted small">${x.noPayout ? 'без выплаты — вёз свой' : `водителю ${x.payoutKzt != null ? money(x.payoutKzt) : '—'}${x.payoutStatus === 'PAID' ? ' · выплачено' : x.payoutStatus === 'PENDING' ? ' · должны' : ''}`}</div><div class="muted small">гость: ${x.guestPaymentStatus === 'PAID' ? 'оплатил' : 'не оплатил'}</div></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Здесь пусто</div>'}</div>
     ${legend()}`);
   $('#view').onclick = (e) => {
     const t = e.target.closest('[data-tab]'); if (t) { S.trTab = t.dataset.tab; return renderTransfers(); }

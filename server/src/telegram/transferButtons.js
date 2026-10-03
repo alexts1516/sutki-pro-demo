@@ -17,7 +17,7 @@ export async function handleTransferAccept({ prisma, dispatch, telegramUserId, j
     const t = j.transfer, r = route(j), d = new Date(t.date);
     const details = `✅ <b>Заказ ваш</b>\n${d.getUTCDate()} ${MON[d.getUTCMonth()]} ${t.time}${t.flight ? ` · рейс ${e(t.flight)}` : ''}\n📍 ${e(r.from)} → ${e(r.to)}` +
       `${t.guestPhone ? `\n📞 Гость: ${e(t.guestPhone)}` : ''}${t.sign || t.guestName ? `\n🪧 Табличка: ${e(t.sign || t.guestName)}` : ''}` +
-      `${j.payoutKzt != null ? `\n💵 Вам: ${String(j.payoutKzt).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} ₸` : ''}\n\nШаги «выехал → на месте → гость в машине → завершить» — в приложении команды: ${publicUrl ? `${publicUrl}/app/` : '/app/'}`;
+      `${['owner', 'business'].includes(j.payoutRule) ? '\n💵 Без выплаты — вся сумма бизнесу' : j.payoutKzt != null ? `\n💵 Вам: ${String(j.payoutKzt).replace(/\B(?=(\d{3})+(?!\d))/g, ' ')} ₸` : ''}\n\nШаги «выехал → на месте → гость в машине → завершить» — в приложении команды: ${publicUrl ? `${publicUrl}/app/` : '/app/'}`;
     return { ok: true, text: 'Заказ ваш ✅', details };
   } catch (err) {
     if (err.status === 409) return { ok: false, taken: true, text: err.message === 'Заказ отменён' ? 'Заказ отменён' : 'Уже взял другой водитель' };

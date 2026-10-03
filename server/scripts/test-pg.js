@@ -22,7 +22,7 @@ try {
   run('node scripts/pg-schema.js');
   run('npx prisma generate --schema prisma/postgres/schema.prisma');
   run('node scripts/test-db.js');
-  run('node --test --test-concurrency=1 tests/');
+  run('node --test --test-force-exit --test-concurrency=1 tests/');
 } catch { code = 1; } finally {
   run('npx prisma generate');   // назад на SQLite
 }

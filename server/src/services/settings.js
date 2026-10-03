@@ -1,5 +1,5 @@
 // Настройки владельца (одна запись на аккаунт). Нет записи — действуют значения по умолчанию:
-// комиссия не настроена (водителю 100% цены), уведомления менеджерам — владельцу и админам,
+// комиссия не настроена (водителю 100% цены), везёт владелец — вся сумма бизнесу, уведомления менеджерам — владельцу и админам,
 // сметы одобряют владелец и админ, слежение за рейсами включено (работает только с ключом AeroDataBox).
 import { prisma } from '../db.js';
 
@@ -8,7 +8,7 @@ export const MANAGER_NOTIFY = ['OWNER', 'ADMIN', 'BOTH'];
 export const APPROVAL_BY = ['OWNER_ONLY', 'OWNER_AND_ADMIN'];
 export const DEFAULT_SETTINGS = {
   transferPayoutMode: 'PERCENT', ownerCommissionPercent: null, driverFixedKzt: null, commissionConfiguredAt: null,
-  managerNotify: 'BOTH', approvalBy: 'OWNER_AND_ADMIN', flightTracking: true,
+  managerNotify: 'BOTH', approvalBy: 'OWNER_AND_ADMIN', flightTracking: true, ownerDrivesKeepsAll: true,
 };
 
 export async function getSettings(accountId, db = prisma) {

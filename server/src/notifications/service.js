@@ -122,8 +122,8 @@ export function createNotificationService({ prisma, transport = null, logger = c
       for (const m of drivers) {
         if (m.userId === exceptUserId) continue;
         // до «Беру»: без номера квартиры и телефона гостя; выплата — по ставке этого водителя; цена для гостя не показывается
-        const payoutKzt = j.payoutManual ? j.payoutKzt : computePayout({ priceKzt: j.transfer.priceKzt, settings, driver: m }).payoutKzt;
-        const data = jobData({ ...j, payoutKzt }, {}, { hideUnit: true });
+        const p = computePayout({ priceKzt: j.transfer.priceKzt, settings, driver: m, manualKzt: j.payoutManual ? j.payoutKzt : null });
+        const data = jobData({ ...j, payoutKzt: p.payoutKzt, payoutRule: p.rule }, {}, { hideUnit: true });
         out.push(await deliver({ accountId, event: 'transfer.offered', recipientType: 'driver', recipientId: m.userId, recipientName: m.user.name, chatId: m.user.telegramId, lang: m.user.locale, data,
           dedupeKey: `transfer.offered:${j.id}:${round}:${m.userId}`, buttons: [[{ text: m.user.locale === 'en' ? '✋ Take it' : '✋ Беру', data: `tj:acc:${j.id}` }]] }));
       }

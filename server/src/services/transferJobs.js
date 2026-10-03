@@ -15,7 +15,7 @@ import { randomToken } from '../lib/tokens.js';
 import { atLocal, isoDay, parseDay } from '../lib/dates.js';
 import { config as defaultConfig } from '../config.js';
 import { getSettings } from './settings.js';
-import { computePayout } from './payouts.js';
+import { computePayout, noPayoutRule, NO_PAYOUT_RULES } from './payouts.js';
 
 export const STATUSES = ['OFFERED', 'UNASSIGNED', 'ACCEPTED', 'EN_ROUTE', 'ARRIVED', 'PICKED_UP', 'DONE', 'CANCELLED'];
 export const STATUS_RU = {
@@ -35,8 +35,10 @@ const need = (job, list, msg) => { if (!list.includes(job.status)) throw conflic
 
 export const jobInclude = {
   transfer: true, apartment: true, booking: { select: { id: true, number: true, status: true, checkIn: true, checkOut: true } },
-  driverUser: { select: { id: true, name: true, phone: true } }, driverContractor: true,
+  driverUser: { select: { id: true, name: true, phone: true } }, driverContractor: true, payoutRecord: true,
 };
+export const GUEST_PAY_METHODS = ['cash', 'card', 'online'];
+export const GUEST_PAY_RU = { cash: 'наличные', card: 'карта / перевод', online: 'онлайн' };
 export const fullInclude = { ...jobInclude, events: { orderBy: { createdAt: 'asc' } } };
 export const loadJob = (where, include = fullInclude) => prisma.transferJob.findFirst({ where, include });
 
@@ -121,13 +123,18 @@ export function jobForDriver(job, userId, { eligible = false, viewer = null } = 
   if (OPEN.includes(job.status) && !eligible) throw forbidden('Вы не в списке водителей');
   const unlocked = mine && ACTIVE.includes(job.status);   // после «Беру» и пока заказ в работе
   const unlockedDone = mine && job.status === 'DONE';
-  let payoutKzt = job.payoutKzt;
-  if (!mine && viewer?.settings && !job.payoutManual) payoutKzt = computePayout({ priceKzt: job.transfer.priceKzt, settings: viewer.settings, driver: viewer.membership }).payoutKzt;
+  let payoutKzt = job.payoutKzt, rule = job.payoutRule;
+  if (!mine && viewer?.settings) {
+    const p = computePayout({ priceKzt: job.transfer.priceKzt, settings: viewer.settings, driver: viewer.membership, manualKzt: job.payoutManual ? job.payoutKzt : null });
+    payoutKzt = p.payoutKzt; rule = p.rule;
+  }
+  const noPayout = NO_PAYOUT_RULES.includes(rule);   // везёт владелец / человек «от бизнеса» — выплаты нет
+  // оплату гостя (guestPayment*) и цену водителю не отдаём никогда
   return {
     id: job.id, status: job.status, statusLabel: STATUS_RU[job.status], mine, ...tripOut(job, { hideUnit: !(unlocked || unlockedDone) }),
     apartment: apartmentFor(job, unlocked || unlockedDone),
     guestPhone: unlocked ? job.transfer.guestPhone : undefined,   // телефон — только после «Беру» и до завершения
-    payoutKzt, paid: mine ? job.paid : undefined, vehicle: mine ? job.vehicle : undefined, ...(mine ? timeline(job) : {}),
+    payoutKzt: noPayout ? 0 : payoutKzt, noPayout, paid: mine && !noPayout ? job.paid : undefined, vehicle: mine ? job.vehicle : undefined, ...(mine ? timeline(job) : {}),
     actions: driverActions(job, userId, eligible),
   };
 }
@@ -152,6 +159,9 @@ export function jobForManager(job, { publicUrl = '' } = {}) {
       : job.driverContractorId ? { kind: 'contractor', id: job.driverContractorId, name: job.driverName || job.driverContractor?.name, phone: job.driverContractor?.phone || null } : null,
     vehicle: job.vehicle, payoutKzt: job.payoutKzt, commissionKzt: job.commissionKzt ?? (job.payoutKzt != null ? (t.priceKzt || 0) - job.payoutKzt : null),
     payoutRule: job.payoutRule || null, payoutManual: !!job.payoutManual, paid: job.paid, paidAt: job.paidAt, offerRound: job.offerRound,
+    noPayout: NO_PAYOUT_RULES.includes(job.payoutRule),
+    guestPayment: { status: t.guestPaymentStatus || 'UNPAID', method: t.guestPaymentMethod || null, paidAt: t.guestPaidAt || null, byName: t.guestPaidByName || null },
+    payoutRecord: job.payoutRecord ? { id: job.payoutRecord.id, amountKzt: job.payoutRecord.amountKzt, status: job.payoutRecord.status, paidAt: job.payoutRecord.paidAt, byName: job.payoutRecord.paidByName, driverName: job.payoutRecord.driverName } : null,
     flightStatus: job.flightStatus || null, flightEta: job.flightEta || null, flightCheckedAt: job.flightCheckedAt || null,
     link: job.linkToken ? { token: job.linkToken, url: `${publicUrl}/link/${job.linkToken}` } : null,
     ...timeline(job), cancelReason: job.cancelReason, events: (job.events || []).map(eventOut), createdAt: job.createdAt,
@@ -162,6 +172,7 @@ export function jobListItem(job) {
   return {
     id: job.id, transferId: t.id, status: job.status, statusLabel: STATUS_RU[job.status], direction: t.direction, place: t.place, date: isoDay(t.date), time: t.time,
     pickupAt: job.pickupAt, flight: t.flight, guestName: t.guestName, pax: t.pax, ...route(job), driverName: job.driverName, priceKzt: t.priceKzt, payoutKzt: job.payoutKzt, commissionKzt: job.commissionKzt, paid: job.paid,
+    payoutRule: job.payoutRule || null, noPayout: NO_PAYOUT_RULES.includes(job.payoutRule), payoutStatus: job.payoutRecord?.status || null, guestPaymentStatus: t.guestPaymentStatus || 'UNPAID',
     apartmentId: job.apartmentId, apartmentTitle: job.apartment?.title || null, bookingNumber: job.booking?.number || null,
   };
 }
@@ -177,9 +188,33 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
   async function tz(accountId) { return (await prisma.account.findUnique({ where: { id: accountId }, select: { timezone: true } }))?.timezone || 'Asia/Almaty'; }
   /** Выплата водителю и комиссия по правилам (если выплату не задали вручную). driver — Membership/Contractor или null. */
   async function payoutFields(job, priceKzt, driver = null) {
+    const settings = await getSettings(job?.accountId);
+    const nr = noPayoutRule(driver, settings);   // везёт владелец / «от бизнеса» — выплаты нет, даже если раньше задали вручную
+    if (nr) return { payoutKzt: 0, commissionKzt: priceKzt, payoutRule: nr, payoutManual: false };
     if (job?.payoutManual) return { commissionKzt: priceKzt - (job.payoutKzt || 0) };
-    const p = computePayout({ priceKzt, settings: await getSettings(job?.accountId), driver });
+    const p = computePayout({ priceKzt, settings, driver });
     return { payoutKzt: p.payoutKzt, commissionKzt: p.commissionKzt, payoutRule: p.rule };
+  }
+  /** Водитель заказа как «участник расчёта»: Membership (роль, paidAsDriver, ставки) или Contractor */
+  async function jobDriver(job) {
+    if (job.driverUserId) return prisma.membership.findFirst({ where: { accountId: job.accountId, userId: job.driverUserId } });
+    if (job.driverContractorId) return prisma.contractor.findUnique({ where: { id: job.driverContractorId } });
+    return null;
+  }
+  /**
+   * Долг водителю (DriverPayout) — только у выполненного заказа и только если выплата > 0.
+   * Выплаченную запись не трогаем; выплата стала 0 (везёт владелец) — неоплаченная запись удаляется.
+   */
+  async function syncPayoutRecord(jobId) {
+    const job = await prisma.transferJob.findUnique({ where: { id: jobId }, include: { payoutRecord: true } });
+    if (!job) return null;
+    const rec = job.payoutRecord;
+    if (rec?.status === 'PAID') return rec;
+    const owed = job.status === 'DONE' && (job.payoutKzt || 0) > 0;
+    if (!owed) { if (rec) await prisma.driverPayout.delete({ where: { id: rec.id } }); return null; }
+    const data = { amountKzt: job.payoutKzt, driverUserId: job.driverUserId, driverContractorId: job.driverContractorId, driverName: job.driverName };
+    return rec ? prisma.driverPayout.update({ where: { id: rec.id }, data })
+      : prisma.driverPayout.create({ data: { accountId: job.accountId, jobId: job.id, status: 'PENDING', ...data } });
   }
   let flights = null;
   const setFlightTracker = (t) => { flights = t; };
@@ -270,7 +305,7 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
     await log(u, actor, s.ev, note || null, etaMinutes ? { etaMinutes } : null);
     if (action === 'en-route') emit('transfer.en_route', { accountId: job.accountId, jobId: job.id });
     if (action === 'arrived') emit('transfer.driver_arrived', { accountId: job.accountId, jobId: job.id });
-    if (action === 'done') emit('transfer.done', { accountId: job.accountId, jobId: job.id });
+    if (action === 'done') { await syncPayoutRecord(job.id); emit('transfer.done', { accountId: job.accountId, jobId: job.id }); }
     return reload(job.id);
   }
 
@@ -299,13 +334,14 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
     if (TERMINAL.includes(job.status) && (tripChange || data.date || data.time)) throw conflict('Заказ закрыт — можно менять только цену и выплату');
     if (job.status === 'CANCELLED' && (data.priceKzt !== undefined || data.payoutKzt !== undefined || data.payoutAuto)) throw conflict('Заказ отменён');
     if (job.paid && (data.payoutKzt !== undefined || data.payoutAuto)) throw conflict('Выплата уже отмечена как оплаченная — сначала снимите отметку');
+    const driver = await jobDriver(job);
+    const noPay = noPayoutRule(driver, await getSettings(job.accountId));
+    if (noPay && data.payoutKzt != null) throw conflict(noPay === 'owner' ? 'Везёт сам владелец — выплата не требуется, вся сумма остаётся бизнесу' : 'Этот водитель «от бизнеса» — выплата не требуется (см. «Команда»)');
     // деньги: цена для гостя, выплата водителю вручную или «по правилам»
     const price = data.priceKzt !== undefined ? data.priceKzt : job.transfer.priceKzt;
     if (data.priceKzt !== undefined && data.priceKzt !== job.transfer.priceKzt) tData.priceKzt = data.priceKzt;
     if (data.payoutKzt !== undefined && data.payoutKzt !== null) Object.assign(jData, { payoutKzt: data.payoutKzt, payoutManual: true, payoutRule: 'manual', commissionKzt: price - data.payoutKzt });
     else if (data.payoutAuto || data.payoutKzt === null || tData.priceKzt !== undefined) {
-      const driver = job.driverUserId ? await prisma.membership.findFirst({ where: { accountId: job.accountId, userId: job.driverUserId } })
-        : job.driverContractorId ? await prisma.contractor.findUnique({ where: { id: job.driverContractorId } }) : null;
       // уже выплачено — сумму водителю не трогаем, меняется только комиссия; ручная выплата держится до «По правилам»
       const manual = job.paid || (!(data.payoutAuto || data.payoutKzt === null) && job.payoutManual);
       Object.assign(jData, manual ? { commissionKzt: price - (job.payoutKzt || 0) } : { ...(await payoutFields({ accountId: job.accountId }, price, driver)), payoutManual: false });
@@ -314,6 +350,7 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
     if (Object.keys(tData).length) await prisma.transfer.update({ where: { id: job.transferId }, data: tData });
     if (Object.keys(jData).length) await prisma.transferJob.update({ where: { id: job.id }, data: jData });
     if (Object.keys(tData).length || Object.keys(jData).length) await log(job, actor, 'updated', null, { ...tData, ...jData });
+    if (job.status === 'DONE' && Object.keys(jData).length) await syncPayoutRecord(job.id);
     let u = await reload(job.id);
     if (data.date || data.time) u = await reschedule({ job: u, actor, date: data.date, time: data.time });
     else if (tripChange && (job.driverUserId || job.driverContractorId)) emit('transfer.updated', { accountId: job.accountId, jobId: job.id, fields: Object.keys(tData) });
@@ -382,13 +419,27 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
     }
     return n;
   }
+  /** Выплата водителю: долг (DriverPayout) PENDING → PAID и обратно. Нет долга (везёт владелец, выплата 0) — 409. */
   async function markPaid({ job, actor, paid = true }) {
-    if (paid) {
-      need(job, ['DONE'], 'Отметить оплату водителю можно после выполнения');
-      if (!job.payoutKzt && job.payoutKzt !== 0) throw badRequest('Сначала укажите сумму водителю');
-    }
-    await prisma.transferJob.update({ where: { id: job.id }, data: { paid, paidAt: paid ? new Date() : null } });
-    await log(job, actor, paid ? 'paid' : 'unpaid', null, { payoutKzt: job.payoutKzt });
+    need(job, ['DONE'], 'Отметить выплату водителю можно после выполнения');
+    const rec = job.payoutRecord || await syncPayoutRecord(job.id);
+    if (!rec) throw conflict(NO_PAYOUT_RULES.includes(job.payoutRule) ? 'Выплата не требуется — вся сумма осталась бизнесу' : 'Выплаты водителю нет (сумма 0)');
+    const now = paid ? new Date() : null;
+    await prisma.driverPayout.update({ where: { id: rec.id }, data: { status: paid ? 'PAID' : 'PENDING', paidAt: now, paidById: paid ? actor?.id || null : null, paidByName: paid ? actor?.name || null : null } });
+    await prisma.transferJob.update({ where: { id: job.id }, data: { paid, paidAt: now } });
+    await log(job, actor, paid ? 'paid' : 'unpaid', null, { payoutKzt: rec.amountKzt });
+    return reload(job.id);
+  }
+  /** Оплата гостя бизнесу за трансфер: UNPAID | PAID (+ способ). Только владелец/админ; водителю не показывается. */
+  async function guestPayment({ job, actor, status, method }) {
+    if (status === 'PAID' && job.status === 'CANCELLED') throw conflict('Заказ отменён');
+    if (status === 'PAID' && !GUEST_PAY_METHODS.includes(method)) throw badRequest('Укажите, как заплатил гость: наличные, карта или онлайн');
+    const paid = status === 'PAID';
+    await prisma.transfer.update({ where: { id: job.transferId }, data: {
+      guestPaymentStatus: paid ? 'PAID' : 'UNPAID', guestPaymentMethod: paid ? method : null, paid,
+      guestPaidAt: paid ? new Date() : null, guestPaidById: paid ? actor?.id || null : null, guestPaidByName: paid ? actor?.name || null : null,
+    } });
+    await log(job, actor, paid ? 'guest_paid' : 'guest_unpaid', null, paid ? { method, amountKzt: job.transfer.priceKzt } : null);
     return reload(job.id);
   }
   async function newLink({ job, actor }) {
@@ -458,5 +509,5 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
     return out;
   }
 
-  return { setFlightTracker, checkFlights, payoutFields, createForTransfer, createForBooking, accept, release, step, reschedule, update, assign, offerAgain, cancel, cancelForBooking, syncBookingDates, markPaid, newLink, runDispatch, config: cfg };
+  return { setFlightTracker, checkFlights, payoutFields, createForTransfer, createForBooking, accept, release, step, reschedule, update, assign, offerAgain, cancel, cancelForBooking, syncBookingDates, markPaid, guestPayment, syncPayoutRecord, newLink, runDispatch, config: cfg };
 }

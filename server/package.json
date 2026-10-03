@@ -16,7 +16,7 @@
     "db:reset": "prisma migrate reset --force --skip-seed && node prisma/seed.js",
     "db:studio": "prisma studio",
     "setup": "node scripts/setup.js",
-    "test": "node scripts/test-db.js && node --test --test-concurrency=1 tests/",
+    "test": "node scripts/test-db.js && node --test --test-force-exit --test-concurrency=1 tests/",
     "test:pg": "node scripts/test-pg.js",
     "pg:schema": "node scripts/pg-schema.js",
     "pg:migration": "node scripts/pg-schema.js && prisma migrate dev --create-only --schema prisma/postgres/schema.prisma --name",

@@ -2,7 +2,8 @@
 //   GET /api/admin/settings   — владелец и админ (админ только смотрит): комиссия с трансферов, кому уведомления, кто одобряет сметы,
 //                               а также что подключено на сервере (Telegram, слежение за рейсами, хранилище фото)
 //   PUT /api/admin/settings   — только владелец: { transferPayoutMode: PERCENT|FIXED, ownerCommissionPercent 0–100, driverFixedKzt,
-//                               managerNotify: OWNER|ADMIN|BOTH, approvalBy: OWNER_ONLY|OWNER_AND_ADMIN, flightTracking }
+//                               managerNotify: OWNER|ADMIN|BOTH, approvalBy: OWNER_ONLY|OWNER_AND_ADMIN, flightTracking,
+//                               ownerDrivesKeepsAll — везёт владелец: выплаты нет, вся сумма бизнесу }
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireRole } from '../../auth/middleware.js';
@@ -17,7 +18,7 @@ export default function settingsRouter({ config, storage, flights = null }) {
     return {
       transferPayoutMode: s.transferPayoutMode, ownerCommissionPercent: s.ownerCommissionPercent, driverFixedKzt: s.driverFixedKzt,
       commissionConfigured: !!s.commissionConfiguredAt, commissionLabel: accountRuleLabel(s),
-      managerNotify: s.managerNotify, approvalBy: s.approvalBy, flightTracking: s.flightTracking,
+      managerNotify: s.managerNotify, approvalBy: s.approvalBy, flightTracking: s.flightTracking, ownerDrivesKeepsAll: s.ownerDrivesKeepsAll,
       canEdit: req.role === 'owner',
       server: {
         telegram: !!config.telegram.token, telegramBot: config.telegram.username || null,
@@ -31,7 +32,7 @@ export default function settingsRouter({ config, storage, flights = null }) {
       transferPayoutMode: z.enum(PAYOUT_MODES).optional(),
       ownerCommissionPercent: z.number().min(0, 'Комиссия от 0 до 100%').max(100, 'Комиссия от 0 до 100%').nullable().optional(),
       driverFixedKzt: z.number().int().min(0).max(10_000_000).nullable().optional(),
-      managerNotify: z.enum(MANAGER_NOTIFY).optional(), approvalBy: z.enum(APPROVAL_BY).optional(), flightTracking: z.boolean().optional(),
+      managerNotify: z.enum(MANAGER_NOTIFY).optional(), approvalBy: z.enum(APPROVAL_BY).optional(), flightTracking: z.boolean().optional(), ownerDrivesKeepsAll: z.boolean().optional(),
     }), req.body);
     const cur = await getSettings(req.accountId);
     const mode = d.transferPayoutMode || cur.transferPayoutMode;

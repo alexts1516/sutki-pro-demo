@@ -53,7 +53,7 @@ export function transferCard(j) {
     <div class="row between"><span class="when">${fmtDay(j.date)}, ${esc(j.time)}</span>${trBadge(j.status)}</div>
     <div class="sub">${DIR[j.direction]} · ${esc(j.placeLabel)}${j.flight ? ` · рейс ${esc(j.flight)}` : ''}</div>
     <div class="route"><div><i></i><span>${esc(j.from)}</span></div><div><i class="end"></i><span>${esc(j.to)}</span></div></div>
-    <div class="row between"><span class="sub">👤 ${esc(j.guestName || 'гость')} · ${j.pax} пасс. · багаж ${j.bags ?? 0}${j.childSeats ? ` · кресло ×${j.childSeats}` : ''}</span>${j.payoutKzt != null ? `<b>${money(j.payoutKzt)}</b>` : ''}</div>
+    <div class="row between"><span class="sub">👤 ${esc(j.guestName || 'гость')} · ${j.pax} пасс. · багаж ${j.bags ?? 0}${j.childSeats ? ` · кресло ×${j.childSeats}` : ''}</span>${j.noPayout ? '<span class="sub">без выплаты</span>' : j.payoutKzt != null ? `<b>${money(j.payoutKzt)}</b>` : ''}</div>
     ${(j.actions || []).includes('accept') ? `<button class="btn success block big" data-accept="${j.id}" style="margin-top:10px">✋ Беру</button>` : ''}
   </div>`;
 }
@@ -78,7 +78,7 @@ export function transferDetail(j) {
       <dt>Пассажиры</dt><dd>${j.pax} · багаж ${j.bags ?? 0}${j.childSeats ? ` · детское кресло ×${j.childSeats}` : ''}</dd>
       ${j.notes ? `<dt>Заметки</dt><dd>${esc(j.notes)}</dd>` : ''}
       ${j.guestPhone ? `<dt>Телефон</dt><dd><a href="${telHref(j.guestPhone)}">${esc(j.guestPhone)}</a></dd>` : ''}
-      ${j.payoutKzt != null ? `<dt>Вам за поездку</dt><dd class="money">${money(j.payoutKzt)}${j.paid ? ' <span class="chip green">оплачено</span>' : ''}</dd>` : ''}</dl>
+      ${j.noPayout ? '<dt>Выплата</dt><dd>не требуется — вся сумма бизнесу</dd>' : j.payoutKzt != null ? `<dt>Вам за поездку</dt><dd class="money">${money(j.payoutKzt)}${j.paid ? ' <span class="chip green">выплачено</span>' : ''}</dd>` : ''}</dl>
       ${j.sign && !open ? `<button class="btn block" data-sign="${esc(j.sign)}">🪧 Показать табличку «${esc(j.sign)}»</button>` : ''}</div>
     ${j.etaAt && j.status === 'EN_ROUTE' ? `<div class="sub">Вы указали, что будете около ${hm(j.etaAt)}</div>` : ''}
     <div class="steps">

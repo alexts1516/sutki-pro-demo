@@ -149,18 +149,28 @@ async function main() {
   async function seedJob(tr, x) {
     const pickupAt = at(Math.round(tr.date / DAY_MS) - offset, tr.time);
     const driver = x.driver === 'owner' ? { ...ownerUser, vehicle: 'Toyota Land Cruiser Prado, белый, 001 AZN 01' } : x.driver ? drv[x.driver] : null;
+    // везёт сам владелец — выплаты нет, вся цена бизнесу (настройка «Везёт сам владелец» включена по умолчанию)
+    const byOwner = x.driver === 'owner';
+    const payoutKzt = byOwner ? 0 : tr.priceKzt, paid = !byOwner && !!x.paid;
     const job = await prisma.transferJob.create({
       data: {
         accountId: acc.id, transferId: tr.id, bookingId: tr.bookingId, apartmentId: tr.apartmentId, status: x.status, pickupAt,
-        freeWaitMin: tr.direction === 'out' ? 15 : (tr.place === 'station' ? 30 : 60), payoutKzt: tr.priceKzt, commissionKzt: 0, payoutRule: 'account', notes: x.notes || null,
+        freeWaitMin: tr.direction === 'out' ? 15 : (tr.place === 'station' ? 30 : 60), payoutKzt, commissionKzt: tr.priceKzt - payoutKzt, payoutRule: byOwner ? 'owner' : 'account', notes: x.notes || null,
         meetingPoint: tr.direction === 'in' && tr.place === 'airport' ? 'Зал прилёта, у выхода из зоны выдачи багажа, с табличкой' : null,
         driverUserId: driver?.id || null, driverContractorId: x.ext ? extDriver.id : null, driverName: x.ext ? extDriver.name : driver?.name || null,
         vehicle: x.ext ? extDriver.note : driver?.vehicle || null, linkToken: x.ext ? randomToken(18) : null,
         offeredAt: x.offeredAt, escalatedAt: x.escalatedAt || null, acceptedAt: x.acceptedAt || null, enRouteAt: x.enRouteAt || null, etaAt: x.etaAt || null,
         arrivedAt: x.arrivedAt || null, pickedUpAt: x.pickedUpAt || null, doneAt: x.doneAt || null, cancelledAt: x.cancelledAt || null, cancelReason: x.cancelReason || null,
-        paid: !!x.paid, paidAt: x.paid ? x.doneAt : null,
+        paid, paidAt: paid ? x.doneAt : null,
       },
     });
+    // долг водителю — только за выполненную поездку и только если выплата > 0
+    if (x.status === 'DONE' && payoutKzt > 0) {
+      await prisma.driverPayout.create({ data: { accountId: acc.id, jobId: job.id, driverUserId: job.driverUserId, driverContractorId: job.driverContractorId, driverName: job.driverName, amountKzt: payoutKzt,
+        status: paid ? 'PAID' : 'PENDING', paidAt: paid ? new Date(x.doneAt.getTime() + 3600000) : null, paidById: paid ? ownerUser.id : null, paidByName: paid ? ownerUser.name : null } });
+    }
+    // оплата гостя бизнесу: часть выполненных поездок оплачена (наличными водителю → в кассу, картой/переводом)
+    if (x.guestPaid) await prisma.transfer.update({ where: { id: tr.id }, data: { guestPaymentStatus: 'PAID', guestPaymentMethod: x.guestPaid, paid: true, guestPaidAt: x.doneAt || x.offeredAt, guestPaidById: ownerUser.id, guestPaidByName: ownerUser.name } });
     const TR_ST = { OFFERED: 'planned', UNASSIGNED: 'planned', DONE: 'done', CANCELLED: 'cancelled' };
     await prisma.transfer.update({ where: { id: tr.id }, data: { status: TR_ST[x.status] || 'driver', driverName: job.driverName } });
     const D = driver ? { type: x.driver === 'owner' ? 'owner' : 'driver', id: driver.id, name: driver.name } : null;
@@ -172,7 +182,8 @@ async function main() {
     if (x.arrivedAt) evs.push(['arrived', D, x.arrivedAt]);
     if (x.pickedUpAt) evs.push(['picked_up', D, x.pickedUpAt]);
     if (x.doneAt) evs.push(['done', D, x.doneAt]);
-    if (x.paid) evs.push(['paid', OWN, new Date(x.doneAt.getTime() + 3600000), null, { payoutKzt: tr.priceKzt }]);
+    if (x.guestPaid) evs.push(['guest_paid', OWN, new Date((x.doneAt || x.offeredAt).getTime() + 1800000), null, { method: x.guestPaid, amountKzt: tr.priceKzt }]);
+    if (paid) evs.push(['paid', OWN, new Date(x.doneAt.getTime() + 3600000), null, { payoutKzt: tr.priceKzt }]);
     if (x.cancelledAt) evs.push(['cancelled', OWN, x.cancelledAt, x.cancelReason]);
     for (const [type, actor, createdAt, note, data] of evs) {
       await prisma.transferEvent.create({ data: { accountId: acc.id, jobId: job.id, type, actorType: actor?.type || 'system', actorId: actor?.id || null, actorName: actor?.name || null, note: note || null, data: data || undefined, createdAt } });
@@ -197,7 +208,7 @@ async function main() {
     const base = { offeredAt: new Date(pickup.getTime() - 3 * DAY_MS) };
     k++;
     if (pickup.getTime() < nowMs - 2 * 3600000) {
-      await seedJob(tr, { ...base, status: 'DONE', driver: drv[name] ? name : 'Руслан', acceptedAt: new Date(base.offeredAt.getTime() + 7 * 60000), enRouteAt: new Date(pickup.getTime() - 50 * 60000), arrivedAt: new Date(pickup.getTime() - 5 * 60000), pickedUpAt: new Date(pickup.getTime() + 25 * 60000), doneAt: new Date(pickup.getTime() + 70 * 60000), paid: k % 2 === 0 });
+      await seedJob(tr, { ...base, status: 'DONE', driver: k === 3 ? 'owner' : drv[name] ? name : 'Руслан', guestPaid: k % 3 === 0 ? null : (k % 3 === 1 ? 'cash' : 'card'), acceptedAt: new Date(base.offeredAt.getTime() + 7 * 60000), enRouteAt: new Date(pickup.getTime() - 50 * 60000), arrivedAt: new Date(pickup.getTime() - 5 * 60000), pickedUpAt: new Date(pickup.getTime() + 25 * 60000), doneAt: new Date(pickup.getTime() + 70 * 60000), paid: k % 2 === 0 });
     } else if (t.status === 'planned' && !cancelledOne && t.date - d.TODAY > 3) {
       cancelledOne = true;
       await seedJob(tr, { ...base, offeredAt: minutes(-26 * 60), status: 'CANCELLED', cancelledAt: minutes(-20 * 60), cancelReason: 'Гость поедет сам — передумал' });

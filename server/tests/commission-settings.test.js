@@ -14,6 +14,7 @@ before(async () => {
   [owner, admin, ruslan, kanat, master] = await Promise.all(['azamat@astanastay.example', 'alina@astanastay.example', 'ruslan@astanastay.example', 'kanat@astanastay.example', 'marat@astanastay.example'].map(e => login(app, e)));
 });
 after(async () => {
+  await events.idle();   // дождаться фоновых уведомлений, иначе после падения теста процесс может не завершиться
   // вернуть как было — другие тесты ждут «комиссия не настроена»
   await prisma.accountSettings.deleteMany({ where: { accountId: acc.id } });
   await prisma.membership.updateMany({ where: { accountId: acc.id }, data: { payoutPercent: null, payoutFixedKzt: null } });

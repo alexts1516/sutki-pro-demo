@@ -9,7 +9,8 @@
 //   POST /api/admin/transfer-jobs/:id/offer       — снять водителя и снова предложить всем
 //   POST /api/admin/transfer-jobs/:id/status      — { action: en-route|arrived|picked-up|done } за водителя (если он позвонил)
 //   POST /api/admin/transfer-jobs/:id/cancel      — { reason }
-//   POST /api/admin/transfer-jobs/:id/paid        — { paid } выплата водителю (после DONE)
+//   POST /api/admin/transfer-jobs/:id/paid        — { paid } выплата водителю (после DONE; долг DriverPayout PENDING → PAID)
+//   POST /api/admin/transfer-jobs/:id/guest-payment — { status: PAID|UNPAID, method: cash|card|online } гость заплатил бизнесу
 //   POST /api/admin/transfer-jobs/:id/link        — новая ссылка для внешнего водителя
 //   GET  /api/admin/drivers                       — кто может водить: команда (canDrive / роль driver) и внешние водители
 import { Router } from 'express';
@@ -17,7 +18,7 @@ import { z } from 'zod';
 import { prisma } from '../../db.js';
 import { notFound, badRequest, HttpError, parse } from '../../lib/errors.js';
 import { parseDay, isoDay, addDays, todayIn } from '../../lib/dates.js';
-import { loadJob, jobForManager, jobListItem, jobInclude, driverWhere, STATUSES, ACTIVE } from '../../services/transferJobs.js';
+import { loadJob, jobForManager, jobListItem, jobInclude, driverWhere, STATUSES, ACTIVE, GUEST_PAY_METHODS } from '../../services/transferJobs.js';
 
 const HM = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Время ЧЧ:ММ');
 const DAY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Дата ГГГГ-ММ-ДД');
@@ -85,6 +86,10 @@ export default function transfersRouter({ dispatch, config }) {
   r.post('/transfer-jobs/:id/paid', async (req, res) => {
     const { paid } = parse(z.object({ paid: z.boolean().default(true) }), req.body || {});
     res.json(out(await dispatch.markPaid({ job: await job(req), actor: actorOf(req), paid })));
+  });
+  r.post('/transfer-jobs/:id/guest-payment', async (req, res) => {
+    const d = parse(z.object({ status: z.enum(['PAID', 'UNPAID']), method: z.enum(GUEST_PAY_METHODS).optional() }), req.body || {});
+    res.json(out(await dispatch.guestPayment({ job: await job(req), actor: actorOf(req), ...d })));
   });
   r.post('/transfer-jobs/:id/link', async (req, res) => res.json(out(await dispatch.newLink({ job: await job(req), actor: actorOf(req) }))));
 
