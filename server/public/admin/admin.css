@@ -195,3 +195,12 @@ body.noscroll{overflow:hidden}
   .m-scroll>*{flex:none}.legend.m-scroll{white-space:nowrap;margin:8px 0}
   .cal-bar{gap:8px}.cal-bar>.row{width:100%}.page-head{margin-bottom:10px}
 }
+
+/* настройки и финансы */
+label.opt{flex-direction:row;gap:10px;align-items:flex-start;padding:7px 0;cursor:pointer;font-size:14px}.opt input[type=radio]{width:auto!important;margin:3px 0 0;padding:0!important;flex:none}.opt span{display:flex;flex-direction:column;gap:2px}.opt b{font-weight:600;color:var(--text)}.opt small{color:var(--muted);font-size:12.5px;font-weight:400}
+label.check{flex-direction:row;gap:8px;align-items:center;margin:4px 0 8px;font-size:14px;font-weight:500}
+.opt-in{display:flex;align-items:center;gap:8px;margin:0 0 8px 26px}.opt-in input{max-width:140px}
+.fin-h{font-size:14px;margin:18px 0 8px;color:var(--text2)}.fin-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.card.fin{padding:14px 16px}.fin-v{font-size:22px;font-weight:800;margin:4px 0}.card.fin.green .fin-v{color:#15803d}.card.fin.amber .fin-v{color:#b45309}.card.fin.red .fin-v{color:#b91c1c}
+.money-kv dd b{font-size:15px}
+.nav-app{display:block;margin:10px 12px 0;padding:8px 10px;border-radius:9px;font-size:13px;color:var(--muted);text-decoration:none;border:1px dashed var(--border)}.nav-app:hover{color:inherit}

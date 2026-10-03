@@ -25,6 +25,7 @@ function toast(msg, err) {
   while (box.children.length > 3) box.firstElementChild.remove();
   t._t = setTimeout(() => t.remove(), err ? 5000 : 2600);
 }
+async function copyText(t) { try { await navigator.clipboard.writeText(t); toast('Ссылка скопирована'); } catch { prompt('Скопируйте ссылку:', t); } }
 const guard = (fn) => async (...a) => { try { await fn(...a); } catch (e) { toast(e.message, true); } };
 
 // ---------------- вход ----------------
@@ -40,16 +41,17 @@ $('#loginForm').addEventListener('submit', async (e) => {
 $('#logoutBtn').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); location.hash = ''; showLogin(); });
 $('#menuBtn').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
 
-const VIEWS = [['calendar', '🗓', 'Календарь'], ['bookings', '📅', 'Брони и заявки'], ['transfers', '🚗', 'Трансферы'], ['repairs', '🛠', 'Заявки мастерам'], ['apartments', '🏠', 'Квартиры и фото'], ['texts', '✏️', 'Тексты сайта'], ['brand', '🎨', 'Бренд и логотип'], ['team', '👥', 'Команда и Telegram'], ['notifications', '🔔', 'Уведомления']];
+const VIEWS = [['calendar', '🗓', 'Календарь'], ['bookings', '📅', 'Брони и заявки'], ['transfers', '🚗', 'Трансферы'], ['repairs', '🛠', 'Заявки мастерам'], ['apartments', '🏠', 'Квартиры и фото'], ['texts', '✏️', 'Тексты сайта'], ['brand', '🎨', 'Бренд и логотип'], ['team', '👥', 'Команда и Telegram'], ['finance', '💰', 'Финансы', 'owner'], ['notifications', '🔔', 'Уведомления'], ['settings', '⚙️', 'Настройки']];
+const myViews = () => VIEWS.filter(v => !v[3] || v[3] === S.me?.role);
 function start(me) {
   S.me = me; $('#login').hidden = true; $('#app').hidden = false;
   $('#accName').textContent = me.account.name;
   $('#userBox').innerHTML = `<b>${esc(me.user.name)}</b>${esc(ROLE[me.role])}`;
   const [v, id] = location.hash.slice(1).split('/');
-  go(VIEWS.some(x => x[0] === v) ? v : 'calendar', id);
+  go(myViews().some(x => x[0] === v) ? v : 'calendar', id);
 }
 function renderNav() {
-  $('#nav').innerHTML = VIEWS.map(([k, i, l]) => `<button class="${S.view === k ? 'active' : ''}" data-nav="${k}"><span>${i}</span>${l}${k === 'bookings' && S.reqCount ? `<span class="cnt">${S.reqCount}</span>` : ''}${k === 'repairs' && S.wrCount ? `<span class="cnt">${S.wrCount}</span>` : ''}${k === 'transfers' && S.trCount ? `<span class="cnt">${S.trCount}</span>` : ''}</button>`).join('');
+  $('#nav').innerHTML = myViews().map(([k, i, l]) => `<button class="${S.view === k ? 'active' : ''}" data-nav="${k}"><span>${i}</span>${l}${k === 'bookings' && S.reqCount ? `<span class="cnt">${S.reqCount}</span>` : ''}${k === 'repairs' && S.wrCount ? `<span class="cnt">${S.wrCount}</span>` : ''}${k === 'transfers' && S.trCount ? `<span class="cnt">${S.trCount}</span>` : ''}</button>`).join('');
 }
 $('#nav').addEventListener('click', (e) => { const b = e.target.closest('[data-nav]'); if (b) go(b.dataset.nav); });
 function go(view, id) {
@@ -61,11 +63,11 @@ function go(view, id) {
     if (view === 'apartments') return id ? openApartment(id) : renderApartments();
     if (view === 'repairs') return id ? (id === 'new' ? newRepair() : openRepair(id)) : renderRepairs();
     if (view === 'transfers') return renderTransfers(id);
-    return ({ calendar: renderCalendar, bookings: renderBookings, texts: renderTexts, brand: renderBrand, team: renderTeam, notifications: renderNotifications })[view]();
+    return ({ calendar: renderCalendar, bookings: renderBookings, texts: renderTexts, brand: renderBrand, team: renderTeam, notifications: renderNotifications, settings: renderSettings, finance: renderFinance })[view]();
   })();
 }
 const view = (html) => { $('#view').innerHTML = html; };
-window.addEventListener('hashchange', () => { if (!S.me) return; const [v, id] = location.hash.slice(1).split('/'); if (VIEWS.some(x => x[0] === v)) go(v, id); });
+window.addEventListener('hashchange', () => { if (!S.me) return; const [v, id] = location.hash.slice(1).split('/'); if (myViews().some(x => x[0] === v)) go(v, id); });
 
 // ---------------- квартиры ----------------
 async function renderApartments() {
@@ -272,7 +274,7 @@ async function renderBookings() {
 }
 
 // ---------------- заявки мастерам ----------------
-const WR_ST = { NEW: ['violet', 'Новая'], VISIT_INSPECTION: ['blue', 'Выезд / осмотр'], AWAITING_OWNER_APPROVAL: ['amber', 'Ожидает подтверждения хозяина'], REJECTED: ['red', 'Смета отклонена'],
+const WR_ST = { NEW: ['violet', 'Новая'], VISIT_INSPECTION: ['blue', 'Выезд / осмотр'], AWAITING_OWNER_APPROVAL: ['amber', 'Ждёт одобрения сметы'], REJECTED: ['red', 'Смета отклонена'],
   APPROVED: ['green', 'Смета одобрена'], IN_PROGRESS: ['blue', 'В работе'], DONE: ['green', 'Выполнена'], CANCELLED: ['', 'Отменена'] };
 const OCC = { UNKNOWN: 'Пока неизвестно', OWNER_PRESENT: 'Владелец будет', EMPTY: 'Квартира пустая' };
 const WR_TYPE = { plumb: 'Сантехника', elec: 'Электрика', appl: 'Техника', furn: 'Мебель', build: 'Строительные работы', paint: 'Покраска', other: 'Другое' };
@@ -339,11 +341,11 @@ function drawRepair() {
       <span class="chip">${METHOD[e.method]}</span>${e.preliminary ? '<span class="chip">предварительно</span>' : ''}${e.status === 'pending' ? '<span class="chip amber">ждёт решения</span>' : e.status === 'approved' ? '<span class="chip green">одобрена</span>' : '<span class="chip red">отклонена</span>'}</div>
     <div class="muted small">Работа ${money(e.labourKzt)} · ${e.materialsIncluded ? `материалы ${money(e.materialsKzt)} входят в цену` : 'материалы не входят, покупаются отдельно'} · ${esc(e.byName || '')} · ${fmtTime(e.createdAt)}</div>
     ${e.items ? `<div class="small">📦 ${esc(e.items)}</div>` : ''}${e.comment ? `<div class="small">💬 ${esc(e.comment)}</div>` : ''}${e.rejectReason ? `<div class="small" style="color:var(--red)">Причина отказа: ${esc(e.rejectReason)}</div>` : ''}
-    ${e.status === 'pending' && t.status === 'AWAITING_OWNER_APPROVAL' ? `<div class="row" style="margin-top:8px"><button class="btn sm success" data-est-ok="${e.id}">Одобрить смету</button><button class="btn sm" data-est-no="${e.id}">Отклонить…</button></div>` : ''}</div>`;
+    ${e.status === 'pending' && t.status === 'AWAITING_OWNER_APPROVAL' ? (t.canDecide ? `<div class="row" style="margin-top:8px"><button class="btn sm success" data-est-ok="${e.id}">Одобрить смету</button><button class="btn sm" data-est-no="${e.id}">Отклонить…</button></div>` : '<div class="muted small" style="margin-top:6px">Решение по смете принимает владелец (см. «Настройки»)</div>') : ''}</div>`;
   const extra = (x) => `<div class="wr-item"><div class="row"><b class="grow">${money(x.amountKzt)} · ${esc(x.description)}</b>${x.status === 'PENDING' ? '<span class="chip amber">ждёт решения</span>' : x.status === 'APPROVED' ? '<span class="chip green">одобрен</span>' : '<span class="chip red">отклонён</span>'}</div>
     <div class="muted small">Почему: ${esc(x.reason)} · ${esc(x.byName || '')} · ${fmtTime(x.createdAt)}</div>${x.photos.length ? `<div class="wr-photos sm">${x.photos.map(p => `<a href="${esc(p.url)}" target="_blank" rel="noopener" style="background-image:url('${esc(p.url)}')"></a>`).join('')}</div>` : ''}
     ${x.decisionNote ? `<div class="small">💬 ${esc(x.decisionNote)}</div>` : ''}
-    ${x.status === 'PENDING' && !t.paid && t.status !== 'CANCELLED' ? `<div class="row" style="margin-top:8px"><button class="btn sm success" data-x-ok="${x.id}">Одобрить</button><button class="btn sm" data-x-no="${x.id}">Отклонить…</button></div>` : ''}</div>`;
+    ${x.status === 'PENDING' && !t.paid && t.status !== 'CANCELLED' ? (t.canDecide ? `<div class="row" style="margin-top:8px"><button class="btn sm success" data-x-ok="${x.id}">Одобрить</button><button class="btn sm" data-x-no="${x.id}">Отклонить…</button></div>` : '<div class="muted small" style="margin-top:6px">Решение принимает владелец</div>') : ''}</div>`;
   const problem = t.photos.filter(p => p.kind === 'problem'), work = t.photos.filter(p => p.kind !== 'problem' && !p.extraId);
   const PK = { arrival: 'приезд', inspection: 'осмотр', after: 'после работ', receipt: 'чек' };
   view(`<div class="page-head"><div><button class="btn sm" id="back">← Все заявки</button><h1 style="margin-top:10px">${esc(t.title)}</h1>
@@ -362,7 +364,7 @@ function drawRepair() {
         ${occFields(t.occupancy.status, t.occupancy.accessInstructions)}
         <div class="row"><button class="btn sm primary" type="submit">Сохранить</button><span class="muted small grow">${t.occupancy.updatedBy ? `изменил(а) ${esc(t.occupancy.updatedBy.name)}, ${fmtTime(t.occupancy.updatedAt)}` : ''}</span></div></div></form>
       <div class="card"><div class="card-h"><h2>Сумма</h2></div><div class="card-b small">В финансах: <b>${t.costKzt != null ? money(t.costKzt) : '—'}</b>${t.paid ? ` · оплачено ${fmtTime(t.paidAt)}` : ''}${t.pendingExtras ? `<div style="color:var(--amber,#b45309)">Нерешённых доп. расходов: ${t.pendingExtras} — оплату отметить нельзя</div>` : ''}</div></div>
-      ${t.link && open ? `<div class="card"><div class="card-h"><h2>Ссылка без входа</h2></div><div class="card-b small"><div class="muted">Для подрядчика без аккаунта (страница для ссылки — следующий шаг, сейчас это адрес API)</div><code style="word-break:break-all">${esc(t.link.api)}</code><div><button class="btn sm" id="wrLink" style="margin-top:8px">Выпустить новую ссылку</button></div></div></div>` : ''}
+      ${t.link && open ? `<div class="card"><div class="card-h"><h2>Ссылка без входа</h2></div><div class="card-b small"><div class="muted">Для подрядчика без аккаунта: откроет на телефоне и отметит шаги (смета, приезд, фото, итог). Перестаёт работать после выполнения.</div><div class="row" style="margin-top:6px"><a href="${esc(t.link.url)}" target="_blank" rel="noopener" style="word-break:break-all">${esc(t.link.url)}</a></div><div class="row" style="margin-top:8px"><button class="btn sm" data-copy="${esc(t.link.url)}">Скопировать</button><button class="btn sm" id="wrLink">Выпустить новую ссылку</button></div></div></div>` : ''}
       <div class="card"><div class="card-h"><h2>Журнал</h2></div><div class="card-b"><ol class="wr-log">${t.events.slice().reverse().map(e => `<li><b>${EV[e.type] || e.type}</b>${e.type === 'occupancy_changed' && e.data?.to ? ` → ${OCC[e.data.to]}` : ''}${e.data?.totalKzt ? ` · ${money(e.data.totalKzt)}` : ''}${e.data?.amountKzt ? ` · ${money(e.data.amountKzt)}` : ''}${e.data?.finalCostKzt != null ? ` · итог ${money(e.data.finalCostKzt)}` : ''}
         <div class="muted small">${esc(e.actorName || '')} · ${fmtTime(e.createdAt)}</div>${e.note ? `<div class="small">${esc(e.note)}</div>` : ''}</li>`).join('')}</ol></div></div>
     </div></div>`);
@@ -375,6 +377,7 @@ function drawRepair() {
   if ($('#wrLink')) $('#wrLink').onclick = guard(async () => { if (!confirm('Старая ссылка перестанет работать. Выпустить новую?')) return; S.wr = await api(`/api/admin/repairs/${t.id}/link`, { method: 'POST' }); drawRepair(); toast('Новая ссылка готова'); });
   $('#view').onclick = guard(async (e) => {
     const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.copy) { await copyText(b.dataset.copy); return; }
     if (b.dataset.estOk) { S.wr = await api(`/api/admin/estimates/${b.dataset.estOk}/approve`, { method: 'POST' }); toast('Смета одобрена — мастер может начинать'); }
     else if (b.dataset.estNo) { const reason = prompt('Почему отклоняете? Мастер увидит это и пришлёт новую смету:'); if (!reason) return; S.wr = await api(`/api/admin/estimates/${b.dataset.estNo}/reject`, { method: 'POST', body: { reason } }); toast('Смета отклонена'); }
     else if (b.dataset.xOk) { S.wr = await api(`/api/admin/extras/${b.dataset.xOk}/approve`, { method: 'POST' }); toast('Доп. расход одобрен'); }
@@ -391,9 +394,19 @@ async function renderTeam() {
     <div class="card"><div class="table-wrap"><table class="t"><thead><tr><th>Сотрудник</th><th>Роль</th><th>Доступ</th><th>Водит (трансферы)</th><th>Telegram</th><th></th></tr></thead><tbody>
     ${list.map(m => `<tr><td><b>${esc(m.name)}</b><div class="muted small">${esc(m.email || m.phone || '')}</div></td><td>${ROLE[m.role] || m.role}</td><td>${m.active ? '<span class="chip green">включён</span>' : '<span class="chip">отключён</span>'}</td>
       <td>${m.role === 'driver' ? '<span class="chip blue">🚗 водитель</span>' : `<button class="btn sm ${m.canDrive ? 'success' : ''}" data-drive="${m.userId}" data-on="${m.canDrive ? 1 : 0}">${m.canDrive ? '🚗 Водит' : 'Не водит'}</button>`}
-        ${m.canDrive ? `<input class="veh" data-veh="${m.userId}" value="${esc(m.vehicle || '')}" placeholder="Машина, цвет, номер" title="Гость увидит машину, когда водитель возьмёт заказ">` : ''}</td>
+        ${m.canDrive ? `<input class="veh" data-veh="${m.userId}" value="${esc(m.vehicle || '')}" placeholder="Машина, цвет, номер" title="Гость увидит машину, когда водитель возьмёт заказ">` : ''}
+        ${m.canDrive && S.me.role === 'owner' ? `<input class="veh" data-rate="${m.userId}" value="${m.payoutFixedKzt != null ? m.payoutFixedKzt : m.payoutPercent != null ? m.payoutPercent + '%' : ''}" placeholder="Ставка: как в настройках" title="Своя ставка водителя: «15%» — комиссия бизнеса, «7000» — фиксированно водителю за поездку. Пусто — как в «Настройках».">` : ''}</td>
       <td>${m.telegramLinked ? '<span class="chip green">подключён</span>' : '<span class="chip amber">не подключён</span>'}</td><td><button class="btn sm" data-invite="${m.userId}">Ссылка для Telegram</button><div class="muted small" id="inv-${m.userId}"></div></td></tr>`).join('')}</tbody></table></div></div>`);
   $('#view').onchange = guard(async (e) => {
+    const rt = e.target.closest('[data-rate]');
+    if (rt) {
+      const raw = rt.value.trim().replace(/\s/g, ''); let body;
+      if (!raw) body = { payoutPercent: null, payoutFixedKzt: null };
+      else if (/^\d+([.,]\d+)?%$/.test(raw)) body = { payoutPercent: Number(raw.replace('%', '').replace(',', '.')), payoutFixedKzt: null };
+      else if (/^\d+$/.test(raw)) body = { payoutFixedKzt: Number(raw), payoutPercent: null };
+      else return toast('Ставка: «15%» (комиссия бизнеса) или «7000» (фиксированно водителю)', true);
+      await api(`/api/admin/team/${rt.dataset.rate}`, { method: 'PATCH', body }); return toast(raw ? 'Своя ставка водителя сохранена' : 'Ставка — как в настройках');
+    }
     const v = e.target.closest('[data-veh]'); if (!v) return;
     await api(`/api/admin/team/${v.dataset.veh}`, { method: 'PATCH', body: { vehicle: v.value.trim() || null } }); toast('Машина сохранена');
   });
@@ -404,6 +417,73 @@ async function renderTeam() {
     const r = await api(`/api/admin/team/${b.dataset.invite}/telegram-invite`, { method: 'POST' });
     $('#inv-' + b.dataset.invite).innerHTML = r.link ? `<a href="${esc(r.link)}" target="_blank" rel="noopener">${esc(r.link)}</a>` : `Код: <code>/start ${esc(r.payload)}</code> — бот ещё не настроен (нет TELEGRAM_BOT_USERNAME)`;
   });
+}
+
+// ---------------- настройки ----------------
+async function renderSettings() {
+  const st = S.settings = await api('/api/admin/settings');
+  const ro = st.canEdit ? '' : 'disabled';
+  const radio = (name, val, label, hint) => `<label class="opt"><input type="radio" name="${name}" value="${val}" ${st[name] === val ? 'checked' : ''} ${ro}><span><b>${label}</b>${hint ? `<small>${hint}</small>` : ''}</span></label>`;
+  view(`<div class="page-head"><div><h1>Настройки</h1><p class="sub">${st.canEdit ? 'Меняет только владелец.' : 'Только просмотр — эти настройки меняет владелец.'}</p></div></div>
+    <form id="stForm" class="stack" novalidate>
+    <div class="card"><div class="card-h"><h2>🚗 Комиссия с трансферов</h2><span class="chip ${st.commissionConfigured ? 'green' : 'amber'}">${st.commissionConfigured ? 'настроено' : 'не настроено'}</span></div><div class="card-b">
+      ${st.commissionConfigured ? '' : '<div class="alert amber">Комиссия ещё не настроена — водители получают <b>100%</b> цены трансфера. Укажите, сколько оставляет бизнес.</div>'}
+      ${radio('transferPayoutMode', 'PERCENT', 'Бизнес оставляет процент от цены', 'Водителю — цена для гостя минус комиссия')}
+      <div class="opt-in"><input name="ownerCommissionPercent" type="number" min="0" max="100" step="1" value="${st.ownerCommissionPercent ?? ''}" placeholder="0" ${ro}><span class="muted">% бизнесу</span></div>
+      ${radio('transferPayoutMode', 'FIXED', 'Фиксированная сумма водителю за поездку', 'Бизнесу — всё, что сверху')}
+      <div class="opt-in"><input name="driverFixedKzt" type="number" min="0" step="500" value="${st.driverFixedKzt ?? ''}" placeholder="6000" ${ro}><span class="muted">₸ водителю</span></div>
+      <div class="muted small" id="stPreview"></div>
+      <div class="muted small" style="margin-top:6px">Своя ставка для отдельного водителя — в «Команде»; для одной поездки — в карточке трансфера («Задать вручную»). Водители видят только свою выплату.</div></div></div>
+    <div class="card"><div class="card-h"><h2>🔔 Кому уведомления «для менеджера»</h2></div><div class="card-b">
+      <div class="muted small" style="margin-bottom:6px">Новые заявки, «никто не взял трансфер», водитель взял/отказался, сметы и отчёты мастеров. Гостям, водителям и мастерам уведомления приходят как обычно; оплаты — всегда владельцу.</div>
+      ${radio('managerNotify', 'BOTH', 'Владельцу и администраторам')}${radio('managerNotify', 'OWNER', 'Только владельцу')}${radio('managerNotify', 'ADMIN', 'Только администраторам', 'если активных админов нет — владельцу')}</div></div>
+    <div class="card"><div class="card-h"><h2>🧾 Кто одобряет сметы и доп. расходы</h2></div><div class="card-b">
+      ${radio('approvalBy', 'OWNER_AND_ADMIN', 'Владелец и администратор', 'по умолчанию')}${radio('approvalBy', 'OWNER_ONLY', 'Только владелец', 'админ видит смету, но решение — за владельцем; смета всегда приходит владельцу')}</div></div>
+    <div class="card"><div class="card-h"><h2>✈️ Слежение за рейсами</h2><span class="chip ${st.server.flightProvider ? 'green' : ''}">${st.server.flightProvider ? 'подключено: ' + esc(st.server.flightProvider) : 'не подключено'}</span></div><div class="card-b">
+      <label class="check"><input type="checkbox" name="flightTracking" ${st.flightTracking ? 'checked' : ''} ${ro}> Сдвигать время подачи, если рейс задерживается (водитель и вы получите уведомление)</label>
+      <div class="muted small">${st.server.flightProvider ? 'Проверяем встречи в аэропорту на ближайшие 12 часов, не чаще раза в 20 минут.' : 'Нужен ключ AeroDataBox на сервере (AERODATABOX_API_KEY, см. README_SERVER.md). Пока время подачи меняют водитель или админ вручную; в карточке — ссылка «проверить рейс».'}</div></div></div>
+    <div class="card"><div class="card-h"><h2>🔌 Подключения сервера</h2></div><div class="card-b"><dl class="kv">
+      <dt>Telegram-бот</dt><dd>${st.server.telegram ? `<span class="chip green">включён</span>${st.server.telegramBot ? ' @' + esc(st.server.telegramBot) : ''}` : '<span class="chip amber">выключен</span> <span class="muted small">уведомления пишутся в журнал</span>'}</dd>
+      <dt>Фото</dt><dd>${st.server.storage === 's3' ? 'S3-хранилище' : 'папка uploads/ на сервере'}</dd>
+      <dt>Приложение команды</dt><dd><a href="/app/" target="_blank" rel="noopener">${location.origin}/app/</a> <span class="muted small">— водители, мастера, клининг</span></dd></dl></div></div>
+    ${st.canEdit ? '<div class="row"><button class="btn primary">Сохранить настройки</button></div>' : ''}</form>`);
+  const f = $('#stForm');
+  const preview = () => {
+    const price = 10000, mode = f.querySelector('[name=transferPayoutMode]:checked')?.value;
+    const pay = mode === 'FIXED' ? Number(f.elements.driverFixedKzt.value || 0) : Math.round(price * (100 - Number(f.elements.ownerCommissionPercent.value || 0)) / 100 / 100) * 100;
+    $('#stPreview').innerHTML = `Пример: трансфер за ${money(price)} → водителю <b>${money(pay)}</b>, бизнесу <b>${money(price - pay)}</b>`;
+  };
+  f.oninput = (e) => {   // ввели число — выбираем соответствующий вариант
+    const pick = { ownerCommissionPercent: 'PERCENT', driverFixedKzt: 'FIXED' }[e.target.name];
+    if (pick) f.querySelector(`[name=transferPayoutMode][value=${pick}]`).checked = true;
+    preview();
+  };
+  preview();
+  f.onsubmit = guard(async (e) => {
+    e.preventDefault();
+    const mode = f.querySelector('[name=transferPayoutMode]:checked').value;
+    const num = (n) => f.elements[n].value === '' ? null : Number(f.elements[n].value);
+    const body = { transferPayoutMode: mode, ownerCommissionPercent: mode === 'PERCENT' ? (num('ownerCommissionPercent') ?? 0) : num('ownerCommissionPercent'), driverFixedKzt: num('driverFixedKzt'),
+      managerNotify: f.querySelector('[name=managerNotify]:checked').value, approvalBy: f.querySelector('[name=approvalBy]:checked').value, flightTracking: f.elements.flightTracking.checked };
+    S.settings = await api('/api/admin/settings', { method: 'PUT', body }); toast('Настройки сохранены. Новая комиссия — для новых заказов и при смене водителя'); renderSettings();
+  });
+}
+
+// ---------------- финансы (владелец) ----------------
+async function renderFinance(month) {
+  const m = month || S.finMonth || todayIso().slice(0, 7); S.finMonth = m;
+  const f = await api('/api/admin/finance?month=' + m);
+  const [y, mm] = m.split('-').map(Number);
+  const shift = (n) => { const d = new Date(Date.UTC(y, mm - 1 + n, 1)); return d.toISOString().slice(0, 7); };
+  const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь', 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+  const tile = (label, value, hint, tone = '') => `<div class="card fin ${tone}"><div class="muted small">${label}</div><div class="fin-v">${value}</div>${hint ? `<div class="muted small">${hint}</div>` : ''}</div>`;
+  view(`<div class="page-head"><div><h1>Финансы</h1><p class="sub">Только владелец. Трансферы — по выполненным поездкам месяца, ремонты — по дате заявки (без отменённых).</p></div>
+      <div class="row"><button class="btn sm" data-m="${shift(-1)}">←</button><b style="min-width:120px;text-align:center">${MONTHS[mm - 1]} ${y}</b><button class="btn sm" data-m="${shift(1)}">→</button></div></div>
+    <h3 class="fin-h">Проживание</h3><div class="fin-grid">${tile('Выручка', money(f.revenueKzt), `${f.bookings} брон.`)}${tile('Ночей продано', f.nights, `загрузка ${Math.round(f.occupancy * 100)}%`)}${tile('Средняя цена ночи', money(f.adrKzt))}</div>
+    <h3 class="fin-h">Трансферы · ${f.transfers} поездок</h3><div class="fin-grid">${tile('Заплатили гости', money(f.transfersRevenueKzt))}${tile('Водителям', money(f.transfersPayoutKzt), f.transfersUnpaidKzt ? `ещё не выплачено ${money(f.transfersUnpaidKzt)}` : 'всё выплачено', f.transfersUnpaidKzt ? 'amber' : '')}${tile('Осталось бизнесу (комиссия)', money(f.transfersMarginKzt), '', 'green')}</div>
+    <h3 class="fin-h">Ремонты и мастера · ${f.repairs}</h3><div class="fin-grid">${tile('Расходы', money(f.repairsKzt))}${tile('Не оплачено мастерам', money(f.repairsUnpaidKzt), '', f.repairsUnpaidKzt ? 'amber' : '')}</div>
+    <h3 class="fin-h">Итого</h3><div class="fin-grid">${tile('Проживание + трансферы − водителям − ремонты', money(f.netKzt), '', f.netKzt >= 0 ? 'green' : 'red')}</div>`);
+  $('#view').onclick = (e) => { const b = e.target.closest('[data-m]'); if (b) guard(renderFinance)(b.dataset.m); };
 }
 
 // ---------------- уведомления ----------------
@@ -607,9 +687,10 @@ async function requestedTransferCard(transferId) {
     if (e.target.closest('[data-act=dispatch]')) { const j = await api(`/api/admin/transfers/${t.id}/dispatch`, { method: 'POST' }); toast('Заказ предложен всем водителям'); await transferCard(j.id); refresh(); }
   });
 }
+const PAY_RULE = { account: 'по настройке аккаунта', driver: 'ставка водителя', manual: 'задано вручную' };
 async function transferCard(id) {
-  const [j, drivers] = await Promise.all([api('/api/admin/transfer-jobs/' + id), api('/api/admin/drivers')]);
-  S.job = j; S.drivers = drivers; drawTransferCard();
+  const [j, drivers, settings] = await Promise.all([api('/api/admin/transfer-jobs/' + id), api('/api/admin/drivers'), S.settings ? Promise.resolve(S.settings) : api('/api/admin/settings')]);
+  S.job = j; S.drivers = drivers; S.settings = settings; drawTransferCard();
 }
 function driverOptions(j) {
   const cur = j.driver ? `${j.driver.kind === 'user' ? 'u' : 'c'}:${j.driver.id}` : '';
@@ -626,16 +707,20 @@ function drawTransferCard() {
     ${j.status === 'UNASSIGNED' ? '<div class="alert red">Никто из водителей не взял заказ. Назначьте водителя вручную ниже.</div>' : j.status === 'OFFERED' ? `<div class="alert amber">Заказ предложен всем водителям (${S.drivers.team.length + ' чел.'}). Кто первым нажмёт «Беру», тот и везёт. Если никто не возьмёт — придёт сигнал.</div>` : ''}
     <section class="ds"><h3>Маршрут</h3><div class="route"><div><i></i>${esc(j.from)}</div><div><i class="end"></i>${esc(j.to)}</div></div>
       <dl class="kv">${j.flight ? `<dt>Рейс</dt><dd><b>${esc(j.flight)}</b> · <a href="${flightUrl}" target="_blank" rel="noopener">проверить рейс ↗</a></dd>` : ''}${j.meetingPoint ? `<dt>Где встречать</dt><dd>${esc(j.meetingPoint)}</dd>` : ''}
-      <dt>Табличка</dt><dd>${esc(j.sign || '—')}</dd><dt>Ожидание</dt><dd>бесплатно ${j.freeWaitMin} мин${j.arrivedAt ? ` · водитель на месте с ${hmOf(j.arrivedAt)}` : ''}</dd></dl></section>
+      ${j.flightStatus ? `<dt>Статус рейса</dt><dd>${esc(j.flightStatus)}${j.flightEta ? `, прилёт ~${hmOf(j.flightEta)}` : ''} <span class="muted small">(проверено ${hmOf(j.flightCheckedAt)})</span></dd>` : ''}<dt>Табличка</dt><dd>${esc(j.sign || '—')}</dd><dt>Ожидание</dt><dd>бесплатно ${j.freeWaitMin} мин${j.arrivedAt ? ` · водитель на месте с ${hmOf(j.arrivedAt)}` : ''}</dd></dl></section>
     <section class="ds"><h3>Гость</h3><dl class="kv"><dt>Имя</dt><dd>${esc(j.guestName || '—')}</dd><dt>Телефон</dt><dd>${j.guestPhone ? `<a href="tel:${esc(j.guestPhone.replace(/\s/g, ''))}">${esc(j.guestPhone)}</a>` : '—'}</dd>
-      <dt>Пассажиры</dt><dd>${j.pax} · багаж ${j.bags}${j.childSeats ? ` · детских кресел: ${j.childSeats}` : ''}</dd>${j.notes ? `<dt>Заметки</dt><dd>${esc(j.notes)}</dd>` : ''}<dt>Цена для гостя</dt><dd>${money(j.priceKzt)}</dd></dl></section>
+      <dt>Пассажиры</dt><dd>${j.pax} · багаж ${j.bags}${j.childSeats ? ` · детских кресел: ${j.childSeats}` : ''}</dd>${j.notes ? `<dt>Заметки</dt><dd>${esc(j.notes)}</dd>` : ''}</dl></section>
     <section class="ds"><h3>Водитель</h3>
       ${j.driver ? `<div class="driver"><b>${esc(j.driver.name)}</b>${j.driver.kind === 'contractor' ? ' <span class="chip">внешний</span>' : ''}<div class="muted small">${esc(j.vehicle || '')}${j.driver.phone ? ` · <a href="tel:${esc(j.driver.phone.replace(/\s/g, ''))}">${esc(j.driver.phone)}</a>` : ''}</div>${j.etaAt && j.status === 'EN_ROUTE' ? `<div class="small">Будет примерно в <b>${hmOf(j.etaAt)}</b></div>` : ''}</div>` : '<div class="muted">Пока никто не взял</div>'}
-      ${j.link ? `<div class="small" style="margin-top:6px">Ссылка для внешнего водителя: <a href="${esc(j.link.url)}" target="_blank" rel="noopener">${esc(j.link.url)}</a></div>` : ''}
+      ${j.link ? `<div class="small" style="margin-top:6px">Ссылка для внешнего водителя (отправьте ему): <a href="${esc(j.link.url)}" target="_blank" rel="noopener" style="word-break:break-all">${esc(j.link.url)}</a> <button class="btn sm" data-act="copy">Скопировать</button></div>` : ''}
       ${canAssign ? `<div class="row" style="margin-top:10px"><select id="trDriver" class="grow">${driverOptions(j)}</select><button class="btn sm primary" data-act="assign">${j.driver ? 'Заменить' : 'Назначить'}</button></div>` : ''}
       <div class="row" style="margin-top:8px">${next ? `<button class="btn sm" data-act="step" data-step="${next[0]}">Отметить за водителя: ${next[1]}</button>` : ''}${['UNASSIGNED', 'ACCEPTED'].includes(j.status) ? `<button class="btn sm" data-act="offer">${j.status === 'ACCEPTED' ? 'Снять водителя и предложить всем' : 'Предложить всем ещё раз'}</button>` : ''}</div></section>
-    <section class="ds"><h3>Выплата водителю</h3><div class="row"><input id="trPay" type="number" min="0" step="500" value="${j.payoutKzt ?? ''}" style="max-width:140px"><span class="muted">₸</span><button class="btn sm" data-act="pay">Сохранить</button>
-      ${j.status === 'DONE' ? `<button class="btn sm ${j.paid ? '' : 'success'}" data-act="paid">${j.paid ? 'Снять «оплачено»' : 'Оплачено водителю'}</button>` : '<span class="muted small">«Оплачено» — после выполнения; сумма попадёт в финансы</span>'}</div></section>
+    <section class="ds"><h3>Деньги</h3>
+      <dl class="kv money-kv"><dt>Цена для гостя</dt><dd>${money(j.priceKzt)}</dd><dt>Комиссия бизнеса</dt><dd>${j.commissionKzt != null ? money(j.commissionKzt) : '—'}${j.priceKzt && j.commissionKzt != null ? ` <span class="muted small">(${Math.round(j.commissionKzt / j.priceKzt * 100)}%)</span>` : ''}</dd>
+        <dt>Водителю</dt><dd><b>${j.payoutKzt != null ? money(j.payoutKzt) : '—'}</b> <span class="muted small">${PAY_RULE[j.payoutRule] || ''}</span>${j.paid ? ' <span class="chip green">оплачено</span>' : ''}</dd></dl>
+      ${S.settings && !S.settings.commissionConfigured ? `<div class="alert amber small">Комиссия не настроена — водитель получает 100% цены. ${S.me.role === 'owner' ? '<a href="#settings">Настроить →</a>' : 'Настраивает владелец.'}</div>` : ''}
+      ${j.status !== 'CANCELLED' && !j.paid ? `<div class="row" style="margin-top:8px"><input id="trPay" type="number" min="0" step="500" value="${j.payoutKzt ?? ''}" style="max-width:130px" aria-label="Выплата водителю"><span class="muted">₸</span><button class="btn sm" data-act="pay">Задать вручную</button>${j.payoutManual ? '<button class="btn sm" data-act="auto">По правилам</button>' : ''}</div>` : ''}
+      <div class="row" style="margin-top:8px">${j.status === 'DONE' ? `<button class="btn sm ${j.paid ? '' : 'success'}" data-act="paid">${j.paid ? 'Снять «оплачено»' : 'Оплачено водителю'}</button>` : '<span class="muted small">«Оплачено» — после выполнения; выплата и комиссия попадут в финансы</span>'}</div></section>
     ${open && j.status !== 'PICKED_UP' ? `<details class="ds"><summary>Изменить время, рейс, место встречи</summary><div class="grid g3" style="margin-top:10px"><label>Дата<input id="trDate" type="date" value="${j.date}"></label><label>Время<input id="trTime" type="time" value="${j.time}"></label><label>Рейс<input id="trFlight" value="${esc(j.flight || '')}"></label>
       <label style="grid-column:1/-1">Где встречать<input id="trMeet" value="${esc(j.meetingPoint || '')}" placeholder="Зал прилёта, выход 3, у кофейни"></label></div><div class="row" style="margin-top:8px"><button class="btn sm primary" data-act="save">Сохранить${j.driver ? ' — водитель получит уведомление' : ''}</button></div></details>` : ''}
     <section class="ds"><h3>Журнал</h3><ul class="wr-log">${[...j.events].reverse().map(e => `<li><b>${TR_EV[e.type] || e.type}</b>${e.actorName ? ` — ${esc(e.actorName)}` : ''}<div class="muted small">${fmtTime(e.createdAt)}${e.note ? ' · ' + esc(e.note) : ''}${e.data?.before ? ` · ${esc(e.data.before)} → ${esc(e.data.after)}` : ''}${e.data?.etaMinutes ? ` · ETA ${e.data.etaMinutes} мин` : ''}${e.data?.driver ? ` · ${esc(e.data.driver)}` : ''}</div></li>`).join('')}</ul></section>
@@ -648,7 +733,9 @@ function drawTransferCard() {
       const [k, id] = v.split(':'); S.job = await api(url + '/assign', { method: 'POST', body: k === 'u' ? { driverUserId: id } : { driverContractorId: id } }); msg = `Назначен: ${S.job.driver.name}`;
     } else if (a.dataset.act === 'offer') { S.job = await api(url + '/offer', { method: 'POST' }); msg = 'Заказ снова предложен всем водителям'; }
     else if (a.dataset.act === 'step') { S.job = await api(url + '/status', { method: 'POST', body: { action: a.dataset.step } }); msg = TR_ST[S.job.status][1]; }
-    else if (a.dataset.act === 'pay') { S.job = await api(url, { method: 'PATCH', body: { payoutKzt: $('#trPay').value === '' ? null : +$('#trPay').value } }); msg = 'Сумма водителю сохранена'; }
+    else if (a.dataset.act === 'pay') { if ($('#trPay').value === '') return toast('Укажите сумму водителю', true); S.job = await api(url, { method: 'PATCH', body: { payoutKzt: +$('#trPay').value } }); msg = 'Выплата водителю задана вручную'; }
+    else if (a.dataset.act === 'auto') { S.job = await api(url, { method: 'PATCH', body: { payoutAuto: true } }); msg = 'Выплата пересчитана по правилам'; }
+    else if (a.dataset.act === 'copy') { return copyText(j.link.url); }
     else if (a.dataset.act === 'paid') { S.job = await api(url + '/paid', { method: 'POST', body: { paid: !j.paid } }); msg = S.job.paid ? 'Отмечено: оплачено водителю' : 'Отметка снята'; }
     else if (a.dataset.act === 'save') {
       const body = { date: $('#trDate').value, time: $('#trTime').value, flight: $('#trFlight').value.trim() || null, meetingPoint: $('#trMeet').value.trim() || null };
@@ -670,10 +757,10 @@ async function renderTransfers(openId) {
   const unpaid = items.filter(x => x.status === 'DONE' && !x.paid).reduce((s, x) => s + (x.payoutKzt || 0), 0);
   view(`<div class="page-head"><div><h1>Трансферы</h1><p class="sub">Как в Uber: подтверждённая бронь с трансфером сразу предлагается всем, кто водит; первый «Беру» получает заказ. Никто не взял за ${30} мин или до подачи меньше 3 ч — придёт сигнал, назначьте вручную.</p></div></div>
     <div class="row" style="margin-bottom:12px"><div class="tabs scroll">${TR_TABS.map(t => `<button class="${t === tab ? 'active' : ''}" data-tab="${t[0]}">${t[1]} · ${items.filter(inTab(t)).length}</button>`).join('')}</div>${unpaid ? `<span class="chip amber">к выплате водителям: ${money(unpaid)}</span>` : ''}</div>
-    <div class="card">${rows.length ? `<div class="table-wrap"><table class="t tr-table"><thead><tr><th>Когда</th><th>Маршрут</th><th>Гость</th><th>Водитель</th><th>Статус</th><th>Водителю</th></tr></thead><tbody>
+    <div class="card">${rows.length ? `<div class="table-wrap"><table class="t tr-table"><thead><tr><th>Когда</th><th>Маршрут</th><th>Гость</th><th>Водитель</th><th>Статус</th><th>Цена · водителю</th></tr></thead><tbody>
     ${rows.map(x => `<tr class="click" data-open="tr:${x.id}:${x.transferId}"><td style="white-space:nowrap"><b>${fmtDay(x.date)}, ${x.time}</b><div class="muted small">${DIR[x.direction]}${x.flight ? ' · ' + esc(x.flight) : ''}</div></td>
       <td><div class="small">${esc(x.from)}</div><div class="small">→ ${esc(x.to)}</div></td><td>${esc(x.guestName || '—')}<div class="muted small">${x.pax} пасс.${x.bookingNumber ? ` · бронь №${x.bookingNumber}` : ''}</div></td>
-      <td>${esc(x.driverName || '—')}</td><td>${badge(TR_ST, x.status)}</td><td style="white-space:nowrap">${x.payoutKzt != null ? money(x.payoutKzt) : '—'}${x.paid ? '<div class="muted small">оплачено</div>' : ''}</td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Здесь пусто</div>'}</div>
+      <td>${esc(x.driverName || '—')}</td><td>${badge(TR_ST, x.status)}</td><td style="white-space:nowrap">${x.priceKzt != null ? `<b>${money(x.priceKzt)}</b>` : '—'}<div class="muted small">водителю ${x.payoutKzt != null ? money(x.payoutKzt) : '—'}${x.paid ? ' · оплачено' : ''}</div></td></tr>`).join('')}</tbody></table></div>` : '<div class="empty">Здесь пусто</div>'}</div>
     ${legend()}`);
   $('#view').onclick = (e) => {
     const t = e.target.closest('[data-tab]'); if (t) { S.trTab = t.dataset.tab; return renderTransfers(); }
