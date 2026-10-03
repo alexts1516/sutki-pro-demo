@@ -12,12 +12,12 @@ export { prisma, config, request };
 export const PASS = 'demo12345';
 
 /** Приложение для тестов. transport — подменный «бот» (или null — бот выключен). */
-export function makeApp({ transport = null, payments = null } = {}) {
+export function makeApp({ transport = null, payments = null, config: cfg = config, flights = null } = {}) {
   const events = createEventBus({ logger: { error() {} } });
   const notifier = createNotificationService({ prisma, transport, quiet: true, logger: { warn() {}, error() {} } });
   notifier.register(events);
   const storage = createStorage(config.storage);
-  const app = createApp({ config, events, storage, payments, logger: { error() {}, warn() {}, log() {} } });
+  const app = createApp({ config: cfg, events, storage, payments, flights, logger: { error() {}, warn() {}, log() {} } });
   return { app, events, notifier, storage };
 }
 

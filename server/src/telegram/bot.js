@@ -5,8 +5,8 @@ import crypto from 'node:crypto';
 import { Bot, webhookCallback } from 'grammy';
 import { linkByStartPayload, unlinkChat } from './linking.js';
 
-export function createTelegramBot({ token, prisma, logger = console }) {
-  const bot = new Bot(token);
+export function createTelegramBot({ token, prisma, logger = console, botInfo }) {
+  const bot = new Bot(token, botInfo ? { botInfo } : undefined);
 
   bot.command('start', async (ctx) => {
     const r = await linkByStartPayload({ prisma, payload: ctx.match, chatId: ctx.chat.id, languageCode: ctx.from?.language_code });
@@ -17,7 +17,7 @@ export function createTelegramBot({ token, prisma, logger = console }) {
     const n = await unlinkChat({ prisma, chatId: ctx.chat.id });
     await ctx.reply(n ? 'Уведомления отключены. Чтобы включить снова — откройте ссылку ещё раз.' : 'Этот чат не был подключён.');
   });
-  bot.command('help', (ctx) => ctx.reply('Бот присылает уведомления о бронях, заездах, трансферах и задачах команды.\n/stop — отключить уведомления'));
+  bot.command('help', (ctx) => ctx.reply('Бот присылает уведомления о бронях, заездах, трансферах и задачах команды.\nПод новым трансфером — кнопка «Беру»: заказ получает первый.\n/stop — отключить уведомления'));
   bot.catch((err) => logger.error('[telegram]', err.error?.message || err.message));
   return bot;
 }

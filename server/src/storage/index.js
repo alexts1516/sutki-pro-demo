@@ -3,8 +3,9 @@ import { randomToken } from '../lib/tokens.js';
 import { createLocalStorage } from './local.js';
 import { createS3Storage } from './s3.js';
 
-export function createStorage(cfg) {
-  return cfg.driver === 's3' ? createS3Storage(cfg.s3) : createLocalStorage({ uploadDir: cfg.uploadDir });
+/** Хранилище фото: local (папка uploads/, по умолчанию) или s3 (STORAGE_DRIVER=s3, см. src/storage/s3.js) */
+export function createStorage(cfg, deps = {}) {
+  return cfg.driver === 's3' ? createS3Storage(cfg.s3, deps) : createLocalStorage({ uploadDir: cfg.uploadDir });
 }
 
 // Разрешённые картинки. SVG не принимаем: в нём может быть скрипт.

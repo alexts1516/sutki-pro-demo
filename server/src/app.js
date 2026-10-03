@@ -8,7 +8,10 @@ import { prisma } from './db.js';
 import { authenticate, requireRole } from './auth/middleware.js';
 import { MANAGERS } from './auth/roles.js';
 import { HttpError } from './lib/errors.js';
-import authRoutes from './routes/auth.js';
+import authRouter from './routes/auth.js';
+import settingsRouter from './routes/admin/settings.js';
+import linkKindRouter from './routes/linkKind.js';
+import { linkGuard } from './lib/rateLimit.js';
 import apartmentsRouter from './routes/admin/apartments.js';
 import siteRouter from './routes/admin/site.js';
 import operationsRouter from './routes/admin/operations.js';
@@ -25,10 +28,11 @@ import staffTransfersRouter from './routes/staffTransfers.js';
 import transferLinkRouter from './routes/transferLink.js';
 import { createTransferDispatch } from './services/transferJobs.js';
 
-export function createApp({ config = defaultConfig, events, storage, payments = null, telegramWebhook = null, logger = console }) {
+export function createApp({ config = defaultConfig, events, storage, payments = null, telegramWebhook = null, flights = null, logger = console }) {
   const app = express();
   const workflow = createWorkflow({ events });
   const dispatch = createTransferDispatch({ events, config });
+  dispatch.setFlightTracker(flights);   // слежение за рейсами — только если задан ключ AeroDataBox
   app.disable('x-powered-by');
   app.set('trust proxy', 1);
 
@@ -60,7 +64,7 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
     res.json({ ok: true, telegram: !!telegramWebhook || !!config.telegram.token, payments: payments?.name || null, storage: storage.driver });
   });
 
-  app.use('/api/auth', authRoutes);
+  app.use('/api/auth', authRouter({ config }));
   app.use('/api/public/:slug', publicRouter({ events, payments, config, dispatch }));
   const admin = express.Router();
   admin.use(authenticate, requireRole(...MANAGERS));
@@ -70,18 +74,26 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
   admin.use(transfersRouter({ dispatch, config }));
   admin.use(calendarRouter());
   admin.use(teamRouter({ config }));
+  admin.use(settingsRouter({ config, storage, flights }));
   admin.use(workRequestsRouter({ workflow, storage, config }));
   app.use('/api/admin', admin);
   app.use('/api/staff/transfers', authenticate, staffTransfersRouter({ dispatch }));
   app.use('/api/staff', authenticate, staffRouter({ events, workflow, storage, config }));
-  app.use('/api/task-link', taskLinkRouter({ workflow, storage, config }));
-  app.use('/api/transfer-link', transferLinkRouter({ dispatch }));
+  // ссылки без входа: лимит запросов с IP и отдельно — на неверные ссылки (защита от перебора)
+  const guard = linkGuard({ max: config.rateLimit?.linkMax ?? 120, badMax: config.rateLimit?.linkBadMax ?? 20, windowMin: config.rateLimit?.linkWindowMin ?? 15 });
+  app.use('/api/link', guard, linkKindRouter());
+  app.use('/api/task-link', guard, taskLinkRouter({ workflow, storage, config }));
+  app.use('/api/transfer-link', guard, transferLinkRouter({ dispatch }));
 
   // файлы и админка
   if (storage.driver === 'local') app.use('/uploads', express.static(storage.uploadDir, { maxAge: '7d', fallthrough: false }));
   const pub = path.join(config.root, 'public');
   app.get('/', (_req, res) => res.redirect('/admin/'));
   app.use('/admin', express.static(path.join(pub, 'admin'), { extensions: ['html'] }));
+  app.use('/app', express.static(path.join(pub, 'app'), { extensions: ['html'] }));     // приложение водителя/мастера/клининга
+  app.use('/shared', express.static(path.join(pub, 'shared'), { maxAge: '1h' }));
+  app.get('/link/:token', (_req, res) => res.sendFile(path.join(pub, 'link', 'index.html')));   // одна задача по ссылке без входа
+  app.use('/link-assets', express.static(path.join(pub, 'link'), { maxAge: '1h' }));
   app.use('/brand-assets', express.static(path.join(config.root, '..', 'assets'), { maxAge: '1h' }));   // стили и шрифты прототипа
 
   // 404 и ошибки — всегда JSON для /api

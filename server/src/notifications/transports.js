@@ -3,8 +3,10 @@
 export function telegramTransport(api) {
   return {
     name: 'telegram',
-    async send(chatId, text) {
-      await api.sendMessage(chatId, text, { parse_mode: 'HTML', link_preview_options: { is_disabled: true } });
+    /** buttons — кнопки под сообщением: [[{ text, data }]] (callback_data до 64 байт) */
+    async send(chatId, text, { buttons = null } = {}) {
+      const extra = buttons ? { reply_markup: { inline_keyboard: buttons.map(row => row.map(b => ({ text: b.text, callback_data: b.data }))) } } : {};
+      await api.sendMessage(chatId, text, { parse_mode: 'HTML', link_preview_options: { is_disabled: true }, ...extra });
     },
   };
 }

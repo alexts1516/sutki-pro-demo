@@ -5,9 +5,10 @@ import { prisma } from '../db.js';
 import { checkPassword } from '../auth/password.js';
 import { authenticate, signToken, setAuthCookie, COOKIE } from '../auth/middleware.js';
 import { HttpError, parse } from '../lib/errors.js';
+import { createLimiter, tooMany } from '../lib/rateLimit.js';
+import { config as defaultConfig } from '../config.js';
 
-const r = Router();
-const LoginSchema = z.object({ login: z.string().min(3), password: z.string().min(1), accountId: z.string().optional() });
+const LoginSchema = z.object({ login: z.string().min(3).max(120), password: z.string().min(1).max(200), accountId: z.string().max(40).optional() });
 
 const accountsOf = (userId) => prisma.membership.findMany({ where: { userId, active: true }, include: { account: { select: { id: true, name: true, slug: true, plan: true, status: true } } } });
 const me = (user, m, list) => ({
@@ -17,12 +18,26 @@ const me = (user, m, list) => ({
   accounts: list.map(x => ({ id: x.account.id, name: x.account.name, role: x.role })),
 });
 
+export default function authRouter({ config = defaultConfig } = {}) {
+const r = Router();
+// Защита от подбора пароля: неудачные попытки считаются на пару «логин + IP» и на IP целиком
+const rl = config.rateLimit || { loginMax: 5, loginWindowMin: 15, ipMax: 30 };
+const perLogin = createLimiter({ max: rl.loginMax, windowMs: rl.loginWindowMin * 60000 });
+const perIp = createLimiter({ max: rl.ipMax, windowMs: rl.loginWindowMin * 60000 });
+
 r.post('/login', async (req, res) => {
   const { login, password, accountId } = parse(LoginSchema, req.body);
   const l = login.trim().toLowerCase();
+  const ip = req.ip || 'unknown', key = `${ip}|${l}`;
+  const wait = perLogin.blockedFor(key) || perIp.blockedFor(ip);
+  if (wait) throw tooMany(res, wait, 'Слишком много попыток входа.');
   const phone = l.replace(/[^\d+]/g, '');
   const user = await prisma.user.findFirst({ where: { OR: [{ email: l }, ...(phone.length >= 6 ? [{ phone }] : [])] } });
-  if (!user || !(await checkPassword(password, user.passwordHash))) throw new HttpError(401, 'Неверный логин или пароль');
+  if (!user || !(await checkPassword(password, user.passwordHash))) {
+    perLogin.hit(key); perIp.hit(ip);
+    throw new HttpError(401, 'Неверный логин или пароль');
+  }
+  perLogin.reset(key);
   const list = await accountsOf(user.id);
   if (!list.length) throw new HttpError(403, 'У пользователя нет доступа ни к одному аккаунту');
   const m = (accountId && list.find(x => x.accountId === accountId)) || list.find(x => x.role === 'owner') || list[0];
@@ -60,4 +75,5 @@ r.post('/switch-account', authenticate, async (req, res) => {
   res.json({ token, ...me(req.user, m, await accountsOf(req.user.id)) });
 });
 
-export default r;
+return r;
+}

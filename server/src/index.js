@@ -8,10 +8,12 @@ import { telegramTransport } from './notifications/transports.js';
 import { startScheduler } from './notifications/scheduler.js';
 import { createStorage } from './storage/index.js';
 import { createPaymentProvider } from './payments/index.js';
+import { createFlightTracker } from './flights/index.js';
 
 const events = createEventBus();
 const storage = createStorage(config.storage);
 const payments = createPaymentProvider(config.payments, { publicUrl: config.publicUrl });
+const flights = createFlightTracker(config.flights);   // null без AERODATABOX_API_KEY
 
 let bot = null, transport = null, telegramWebhook = null;
 if (config.telegram.token) {
@@ -22,13 +24,20 @@ if (config.telegram.token) {
 }
 createNotificationService({ prisma, transport }).register(events);
 
-const app = createApp({ config, events, storage, payments, telegramWebhook });
+const app = createApp({ config, events, storage, payments, telegramWebhook, flights });
+if (bot) {
+  const { registerTransferButtons } = await import('./telegram/transferButtons.js');
+  registerTransferButtons(bot, { prisma, dispatch: app.locals.dispatch, publicUrl: config.publicUrl });   // кнопка «Беру» под предложением трансфера
+}
 const server = app.listen(config.port, async () => {
   console.log(`\n  Сервер запущен: http://localhost:${config.port}`);
   console.log(`  Админка:        http://localhost:${config.port}/admin/`);
   console.log(`  Проверка:       http://localhost:${config.port}/api/health`);
   console.log(`  Telegram-бот:   ${bot ? 'включён (' + config.telegram.mode + ')' : 'выключен — уведомления пишутся в консоль и журнал'}`);
-  console.log(`  Онлайн-оплата:  ${payments ? payments.name : 'выключена'}\n`);
+  console.log(`  Онлайн-оплата:  ${payments ? payments.name : 'выключена'}`);
+  console.log(`  Фото:           ${storage.driver === 's3' ? 'S3-хранилище' : 'папка uploads/'}`);
+  console.log(`  Рейсы:          ${flights ? 'слежение через ' + flights.name : 'без слежения (время подачи меняют вручную)'}`);
+  console.log(`  Приложение команды: http://localhost:${config.port}/app/\n`);
   if (bot) {
     const { startTelegram } = await import('./telegram/bot.js');
     startTelegram({ bot, mode: config.telegram.mode, publicUrl: config.publicUrl }).catch(e => console.error('[telegram] не удалось запустить:', e.message));
