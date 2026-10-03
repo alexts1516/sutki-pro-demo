@@ -8,3 +8,4 @@ prisma/*.db*
 uploads/
 uploads-test/
 coverage/
+demo/generated/

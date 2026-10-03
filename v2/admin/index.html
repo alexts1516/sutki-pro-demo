@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Сутки·Pro — админка владельца (демо)</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234f46e5'/%3E%3Ctext x='16' y='22.5' font-size='18' text-anchor='middle' fill='white' font-family='Arial' font-weight='700'%3ES%3C/text%3E%3C/svg%3E">
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+<div id="login" class="login" hidden>
+  <form class="login-card" id="loginForm" novalidate>
+    <div class="brand"><div class="logo">S</div><div><b>Сутки·Pro</b><small>админка владельца</small></div></div>
+    <h1>Вход</h1>
+    <label>Email или телефон<input id="lgLogin" autocomplete="username" required></label>
+    <label>Пароль<input id="lgPass" type="password" autocomplete="current-password" required></label>
+    <div class="err" id="lgErr" hidden></div>
+    <button class="btn primary block" id="lgBtn">Войти</button>
+    <p class="muted small">Демо после <code>npm run db:seed</code>: владелец azamat@astanastay.example, админ alina@astanastay.example — пароль demo12345.</p>
+    <p class="muted small">Водители, мастера и клининг входят в <a href="../app/">приложение команды</a>.</p>
+  </form>
+</div>
+<div id="app" class="app" hidden>
+  <aside class="sidebar" id="sidebar">
+    <div class="brand"><div class="logo">S</div><div><b>Сутки·Pro</b><small id="accName">…</small></div></div>
+    <nav class="nav" id="nav"></nav>
+    <a class="nav-app" href="../app/" target="_blank" rel="noopener">📱 Приложение команды</a>
+    <div class="side-foot"><div id="userBox" class="user-box"></div><button class="btn ghost sm" id="logoutBtn">Выйти</button></div>
+  </aside>
+  <main class="main"><div class="topbar"><button class="icon-btn only-m" id="menuBtn" aria-label="Меню">☰</button><span class="muted" id="crumb"></span></div><div id="view"></div></main>
+</div>
+<div class="toasts" id="toasts"></div>
+<script type="module" src="../demo/demo.js"></script>
+<script src="admin.js" type="module"></script>
+</body>
+</html>

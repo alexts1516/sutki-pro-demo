@@ -18,6 +18,8 @@
     "setup": "node scripts/setup.js",
     "test": "node scripts/test-db.js && node --test --test-force-exit --test-concurrency=1 tests/",
     "test:pg": "node scripts/test-pg.js",
+    "test:memory": "node scripts/test-memory.js",
+    "demo:build": "node scripts/build-static-demo.js",
     "pg:schema": "node scripts/pg-schema.js",
     "pg:migration": "node scripts/pg-schema.js && prisma migrate dev --create-only --schema prisma/postgres/schema.prisma --name",
     "pg:deploy": "node scripts/pg-schema.js && prisma generate --schema prisma/postgres/schema.prisma && prisma migrate deploy --schema prisma/postgres/schema.prisma"
@@ -34,6 +36,8 @@
     "zod": "^3.25.76"
   },
   "devDependencies": {
+    "buffer": "^6.0.3",
+    "esbuild": "^0.28.2",
     "prisma": "^6.19.3",
     "supertest": "^7.3.0"
   }

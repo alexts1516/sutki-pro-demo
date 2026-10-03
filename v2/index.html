@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ru" data-demo-landing>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#4f46e5">
+<title>Сутки·Pro — демо серверной версии</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%234f46e5'/%3E%3Ctext x='16' y='22.5' font-size='18' text-anchor='middle' fill='white' font-family='Arial' font-weight='700'%3ES%3C/text%3E%3C/svg%3E">
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Arial,sans-serif;background:#f1f5f9;color:#0f172a;-webkit-text-size-adjust:100%}
+.wrap{max-width:640px;margin:0 auto;padding:16px 14px calc(110px + env(safe-area-inset-bottom))}
+header{display:flex;gap:10px;align-items:center;margin:4px 0 12px}
+.logo{width:40px;height:40px;border-radius:11px;background:#4f46e5;color:#fff;font-weight:800;font-size:21px;display:flex;align-items:center;justify-content:center;flex:none}
+h1{font-size:20px;margin:0;line-height:1.2}
+header small{color:#64748b;font-size:13px}
+.card{background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:14px;margin:12px 0}
+.card h2{font-size:16.5px;margin:0 0 8px}
+.notice{background:#fefce8;border-color:#fde68a}
+.notice p{margin:0 0 6px;font-size:14px;line-height:1.45}
+.notice p:last-child{margin:0}
+.status{font-size:13px;color:#475569;display:flex;gap:6px;align-items:center;margin-top:6px}
+.dot{width:8px;height:8px;border-radius:50%;background:#f59e0b}
+.dot.ready{background:#22c55e}
+.roles{display:grid;grid-template-columns:1fr;gap:8px}
+@media(min-width:520px){.roles{grid-template-columns:1fr 1fr}}
+.role{display:flex;gap:10px;align-items:center;text-align:left;border:1px solid #e2e8f0;background:#f8fafc;border-radius:12px;padding:11px 12px;cursor:pointer;font:inherit;color:inherit;min-height:58px;-webkit-tap-highlight-color:transparent}
+.role:active{background:#eef2ff}
+.role .ic{font-size:24px;width:32px;text-align:center;flex:none}
+.role b{display:block;font-size:15px}
+.role small{display:block;color:#64748b;font-size:12px;margin-top:2px;line-height:1.3}
+.sc{border-top:1px solid #f1f5f9;padding-top:10px;margin-top:10px}
+.sc:first-of-type{border:0;padding-top:0;margin-top:0}
+.sc h3{font-size:15px;margin:0 0 6px}
+.sc ol{margin:0 0 8px;padding-left:20px;font-size:14px;line-height:1.5}
+.sc li{margin:2px 0}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:1px solid #c7d2fe;background:#eef2ff;color:#3730a3;border-radius:10px;padding:9px 12px;font:inherit;font-size:14px;font-weight:600;cursor:pointer;text-decoration:none;margin:2px 4px 2px 0}
+.btn.primary{background:#4f46e5;border-color:#4f46e5;color:#fff}
+.btn.red{background:#fff5f5;border-color:#fecaca;color:#b91c1c}
+.btn:disabled{opacity:.6}
+label{display:block;font-size:13px;color:#475569;margin:8px 0 3px}
+input,select{width:100%;font:inherit;font-size:16px;padding:9px 10px;border:1px solid #cbd5e1;border-radius:10px;background:#fff;color:#0f172a}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.check{display:flex;gap:8px;align-items:center;font-size:14.5px;color:#0f172a;margin:12px 0 4px}
+.check input{width:20px;height:20px}
+.ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;border-radius:10px;padding:9px 10px;font-size:14px;margin-top:10px}
+.err{background:#fef2f2;border:1px solid #fecaca;color:#991b1b;border-radius:10px;padding:9px 10px;font-size:14px;margin-top:10px}
+ul.plain{margin:0;padding-left:18px;font-size:14px;line-height:1.5}
+.muted{color:#64748b;font-size:13px}
+.toast{position:fixed;left:50%;top:12px;transform:translateX(-50%);background:#0f172a;color:#fff;padding:10px 14px;border-radius:12px;font-size:14px;z-index:50;max-width:92vw;display:none}
+.toast.on{display:block}.toast.err{background:#b91c1c}
+code{background:#f1f5f9;border-radius:4px;padding:0 4px;font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header><div class="logo">S</div><div><h1>Сутки·Pro — демо серверной версии</h1><small>как будет работать настоящий сервер: админка, приложение команды, ссылки</small></div></header>
+
+  <div class="card notice">
+    <p>👋 <b>Это демо.</b> Данные хранятся <b>только в вашем браузере</b> — их видите только вы.</p>
+    <p>Нет настоящих оплат, Telegram-бота и сервера: всё, что бот отправил бы людям, видно по кнопке <b>«💬 Telegram»</b> внизу экрана.</p>
+    <div class="status" id="status"><span class="dot" id="dot"></span><span id="statusText">Готовим демо-данные…</span></div>
+  </div>
+
+  <div class="card">
+    <h2>1. Войдите за любого — одним касанием</h2>
+    <div class="roles" id="roles"></div>
+    <p class="muted" style="margin:10px 0 0">Сменить роль можно в любой момент — кнопка <b>«👥 Сменить роль»</b> внизу справа.</p>
+  </div>
+
+  <div class="card">
+    <h2>2. Попробуйте сценарий</h2>
+    <div class="sc">
+      <h3>🚗 Бронь с трансфером → водитель</h3>
+      <ol>
+        <li>Владелец → «Брони и заявки» → заявка с трансфером → <b>«Подтвердить»</b>.</li>
+        <li>Заказ ушёл водителям: откройте <b>«💬 Telegram»</b> — у водителей сообщение с кнопкой «✋ Беру».</li>
+        <li>Нажмите «Беру» за Руслана (в Telegram-демо) или войдите <b>водителем Руслан</b> и нажмите «Беру» в приложении — первый получает заказ, номер квартиры и телефон гостя открываются только ему.</li>
+        <li>Шаги: «Выехал» → «На месте» → «Гость в машине» → «Завершить».</li>
+        <li>Владелец → «Трансферы» → карточка: «Оплата гостя → бизнес» и «Выплата водителю».</li>
+      </ol>
+      <button class="btn primary" data-go="owner" data-hash="bookings">Начать: владелец → брони</button>
+      <button class="btn" data-go="driver">Водитель Руслан</button>
+    </div>
+    <div class="sc">
+      <h3>🔧 Заявка мастеру → смета по фото → доп. расход</h3>
+      <ol>
+        <li>Владелец → «Заявки мастерам» → <b>«Новая заявка»</b>: исполнитель Master Electric, смета по фото, можно приложить фото.</li>
+        <li>Войдите <b>мастером Master Electric</b> → заявка → «Смета» → отправить.</li>
+        <li>Владелец → заявка → <b>«Одобрить»</b> смету.</li>
+        <li>Мастер → «Начать работу» → <b>«Доп. расход»</b>; владелец его одобряет.</li>
+        <li>Мастер → <b>«Выполнено»</b> с отчётом — сумма попадает в «Финансы».</li>
+      </ol>
+      <button class="btn primary" data-go="owner" data-hash="repairs/new">Начать: новая заявка</button>
+      <button class="btn" data-go="master">Мастер Master Electric</button>
+    </div>
+    <div class="sc">
+      <h3>💰 Комиссия с трансферов → финансы</h3>
+      <ol>
+        <li>Владелец → «Настройки» → «Бизнес оставляет процент», например <b>20%</b> → «Сохранить».</li>
+        <li>Там же — «Везёт сам владелец — вся сумма бизнесу».</li>
+        <li>«Финансы» → выручка от гостей, выплаты водителям (должны / выплачено), что осталось бизнесу.</li>
+      </ol>
+      <button class="btn primary" data-go="owner" data-hash="settings">Начать: настройки</button>
+      <button class="btn" data-go="owner" data-hash="finance">Финансы</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>3. Гость: новая заявка с трансфером</h2>
+    <p class="muted" style="margin:0 0 4px">Как с сайта гостей. После отправки войдите владельцем и подтвердите заявку — заказ уйдёт водителям.</p>
+    <form id="guest" novalidate>
+      <label>Квартира<select id="gApt"><option>Загрузка…</option></select></label>
+      <div class="grid2"><label>Заезд<input id="gIn" type="date"></label><label>Выезд<input id="gOut" type="date"></label></div>
+      <div class="grid2"><label>Имя<input id="gName" value="Анна Смирнова" autocomplete="off"></label><label>Телефон<input id="gPhone" value="+7 701 555 12 34" inputmode="tel" autocomplete="off"></label></div>
+      <label class="check"><input type="checkbox" id="gTr" checked> Встреча в аэропорту (трансфер)</label>
+      <div class="grid2" id="gTrBox"><label>Рейс<input id="gFlight" value="KC 852" autocomplete="off"></label><label>Время прилёта<input id="gTime" type="time" value="14:30"></label></div>
+      <button class="btn primary" id="gBtn" style="margin-top:12px">Отправить заявку</button>
+      <div id="gRes"></div>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>Что здесь не настоящее</h2>
+    <ul class="plain">
+      <li>Telegram-бот — сообщения показываются во вкладке «💬 Telegram (демо)», никуда не уходят.</li>
+      <li>Онлайн-оплата (CloudPayments / PayLink) выключена — оплату гостя отмечают вручную: наличные / карта / онлайн.</li>
+      <li>Слежение за рейсами и облачное хранилище фото выключены; фото сохраняются в браузере (уменьшенными).</li>
+      <li>Сервера и хостинга нет: тот же код сервера работает прямо в странице, «база» — в браузере.</li>
+    </ul>
+    <p style="margin:12px 0 0"><button class="btn red" id="reset">↺ Сбросить демо</button> <a class="btn" href="../">Старый прототип</a></p>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<script type="module">
+import { demo } from './demo/demo.js';
+const { goRole, ROLES } = globalThis.SutkiDemoUI;
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const toast = (t, err) => { const el = $('#toast'); el.textContent = t; el.className = 'toast on' + (err ? ' err' : ''); clearTimeout(el._t); el._t = setTimeout(() => { el.className = 'toast'; }, err ? 5000 : 2500); };
+const iso = (d) => new Date(Date.now() + d * 86400000 + 5 * 3600000).toISOString().slice(0, 10);
+
+$('#roles').innerHTML = ROLES.map(r => `<button class="role" data-go="${r.id}"><span class="ic">${r.icon}</span><span><b>${esc(r.title)}</b><small>${esc(r.sub)}</small></span></button>`).join('');
+document.addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-go]'); if (!b) return;
+  b.disabled = true; toast('Входим…');
+  try { await goRole(b.dataset.go, b.dataset.hash); } catch (err) { toast(err.message, true); b.disabled = false; }
+});
+$('#reset').onclick = async () => {
+  if (!confirm('Сбросить демо? Все ваши изменения пропадут, данные заполнятся заново.')) return;
+  $('#reset').disabled = true; toast('Заполняем демо-данные…');
+  await demo.reset(); location.reload();
+};
+$('#gTr').onchange = () => { $('#gTrBox').hidden = !$('#gTr').checked; };
+$('#gIn').value = iso(4); $('#gOut').value = iso(6);
+// свободные на выбранные даты — первыми
+async function loadApts() {
+  const list = await (await fetch(`/api/public/astana-stay/apartments?checkIn=${$('#gIn').value}&checkOut=${$('#gOut').value}`)).json();
+  list.sort((a, b) => (b.available !== false) - (a.available !== false));
+  $('#gApt').innerHTML = list.map(a => `<option value="${a.id}">${a.available === false ? '⛔ занято · ' : ''}${esc(a.title)} · ${a.rooms} · ${a.basePriceKzt.toLocaleString('ru-RU')} ₸</option>`).join('');
+}
+$('#gIn').onchange = $('#gOut').onchange = () => demo.ready.then(loadApts);
+
+demo.ready.then(async () => {
+  $("#dot").classList.add("ready"); $('#statusText').textContent = 'Демо готово' + (demo.seededAt ? ` · данные от ${new Date(demo.seededAt).toLocaleString('ru-RU', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' })}` : '');
+  await loadApts();
+}).catch(e => { $('#statusText').textContent = 'Не удалось запустить демо: ' + e.message; });
+
+$('#guest').onsubmit = async (e) => {
+  e.preventDefault(); const res = $('#gRes'); res.innerHTML = ''; $('#gBtn').disabled = true;
+  const post = async (path, body) => { const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); const d = await r.json(); if (!r.ok) throw new Error(d.error + (d.details ? ': ' + d.details.map(x => x.message).join(', ') : '')); return d; };
+  try {
+    const b = await post('/api/public/astana-stay/bookings', { apartmentId: $('#gApt').value, checkIn: $('#gIn').value, checkOut: $('#gOut').value, guests: 2, name: $('#gName').value, phone: $('#gPhone').value, paymentMethod: 'cash' });
+    let tr = '';
+    if ($('#gTr').checked) {
+      const t = await post('/api/public/astana-stay/transfers', { bookingToken: b.token, direction: 'in', place: 'airport', date: $('#gIn').value, time: $('#gTime').value, flight: $('#gFlight').value || undefined, pax: 2, bags: 2 });
+      tr = ` + трансфер ${t.priceKzt.toLocaleString('ru-RU')} ₸`;
+    }
+    res.innerHTML = `<div class="ok">✅ Заявка №${esc(b.number)} отправлена${tr}. Теперь подтвердите её как владелец:<br><button class="btn primary" data-go="owner" data-hash="bookings" style="margin-top:8px">Владелец → брони</button></div>`;
+  } catch (err) { res.innerHTML = `<div class="err">${esc(err.message)}</div>`; }
+  $('#gBtn').disabled = false;
+};
+</script>
+</body>
+</html>
