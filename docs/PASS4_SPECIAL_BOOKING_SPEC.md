@@ -1,8 +1,28 @@
-# Проход 4 — «Личная ссылка для особой брони» (спецификация)
+# Проход 4 — «Личная ссылка для особой брони» (спецификация, финальная редакция)
 
-Статус: **СПРОЕКТИРОВАНО, НЕ РЕАЛИЗОВАНО** (4 октября 2026). Ни одна строка ниже не является описанием существующего кода, кроме раздела 1 («что уже есть»). Проход 3 заморожен; эта спецификация меняет его код только в точках, явно перечисленных в разделе 15 и шаге 0 плана.
+Статус: **СПРОЕКТИРОВАНО, НЕ РЕАЛИЗОВАНО.** Редакция 2 — 4 октября 2026. Ни одна строка ниже не описывает существующий код, кроме раздела 1 («что уже есть»). Проход 3 заморожен; код прохода 3 меняется только в общих точках, перечисленных в разделе 15.
 
-Главный принцип: **второй системы броней нет.** Личная ссылка — это вход в существующий `Booking`. Пока гость заполняет ссылку, бронь — обычная `request` (держит даты существующей проверкой пересечений). Когда условия выполнены — вызывается существующая `confirmBooking()`, и дальше всё делает проход 3: подготовка, «Сегодня», готовность, трансфер, недочёты, выплаты.
+**Главный принцип: второй системы броней нет.** Личная ссылка — вход в существующий `Booking`. Пока гость заполняет ссылку, бронь — обычная `request` со сроком удержания. Когда условия выполнены, вызывается существующая `confirmBooking()`. Дальше всё делает проход 3: подготовка, «Сегодня», готовность, трансфер, недочёты, выплаты.
+
+**Что изменилось в редакции 2.**
+- Паспорт и билет больше не обязательны и в систему не загружаются (раздел 9).
+- Защита от двойной брони теперь работает на уровне базы PostgreSQL, а не замка внутри процесса (раздел 10).
+- Подтверждение брони стало одной транзакцией, а последующие действия идут через журнал «отложенных действий» с восстановлением (раздел 4.5).
+- Неоплаченные заявки с сайта теперь живут ограниченное время — тот же механизм, что у ссылки (раздел 11).
+- Предложенные значения больше не выдаются за решения владельца (раздел 20).
+
+### Значения по умолчанию
+
+Технические значения выбраны архитектором и **не являются решениями владельца**. Каждое меняется в одном месте кода или настройках.
+
+| Параметр | Значение | Где |
+|---|---|---|
+| Срок ссылки по умолчанию | 24 ч; админ выбирает 1–72 ч; продление — максимум до 7 суток от создания | константы `LINK_DEFAULT_H / LINK_MAX_H / LINK_MAX_TOTAL_D` в `services/bookingLinks.js` |
+| Удержание неоплаченной заявки с сайта | 30 мин; продлевается до «сейчас + 20 мин» при открытии оплаты | `PUBLIC_HOLD_MIN`, `PAY_EXTEND_MIN` в `services/bookings.js` |
+| Токен ссылки | 256 бит; в базе — только SHA-256 | раздел 8 |
+| Пороги «Сегодня» для ссылки | ≤ 3 ч — «Требует действия», ≤ 1 ч — «Критично» | `LINK_WARN = [3h, 1h]` |
+| Повторы отложенных действий | 5 попыток; аренда (lease) 5 мин; прогон раз в 1 мин | `OUTBOX_*` в `services/outbox.js` |
+| Минимальное время подготовки между гостями | 120 мин, станет настройкой `minPrepMinutes` (раздел 12а) | сейчас константа `PREP_MIN` в `src/routes/admin/ops.js` |
 
 ---
 
@@ -10,406 +30,531 @@
 
 | Что | Где | Как используем |
 |---|---|---|
-| Бронь и статусы `request → confirmed → completed / cancelled` | `server/prisma/schema.prisma` → `model Booking`; `src/services/bookings.js` | Личная ссылка создаёт `Booking{status:'request', source:'link'}`. Новых статусов брони нет. |
-| Проверка занятости (брони `request`+`confirmed` и ремонты с `blockDays`) | `bookings.js` → `BLOCKING`, `isAvailable()`, `busyRanges()` | При создании ссылки и повторно перед подтверждением. `request` уже держит даты → ссылка «держит» даты без нового механизма. |
-| Цена | `bookings.js` → `quote()` | Цена по умолчанию; владелец/админ может задать свою сумму (`totalKzt`). |
-| Номер брони, токен брони | `bookings.js` → `nextBookingNumber()`, `Booking.token` (`randomToken(12)`) | Как в `createBookingRequest()` (с повтором при `P2002`). `Booking.token` остаётся для гостевой страницы брони и Telegram `b_<token>` — **не** является токеном личной ссылки. |
-| Подтверждение брони (идемпотентно с приёмки прохода 3) | `bookings.js` → `confirmBooking({accountId, bookingId, events, dispatch, actor})` | Единственная точка передачи в проход 3 (раздел 15). Внутри: условная запись `updateMany where status='request'`, создание `CleaningTask` в день выезда, событие `booking.confirmed`, `dispatch.createForBooking()` (заказы водителям). |
-| Отмена брони | `src/routes/admin/operations.js` → `POST /bookings/:id/cancel` (статус `cancelled`, `dispatch.cancelForBooking()`, удаление неначатой подготовки) | Логику **вынести** в `services/bookings.js → cancelBooking()` (шаг 0) и вызывать из админки и из истечения/отзыва ссылки. |
-| Условия оплаты особой брони | Уже используются значения `Booking.paymentMethod = 'cash_on_arrival' | 'deposit'`, `paymentStatus = 'unpaid' | 'prepaid' | 'paid'` (`prisma/seed.js → payTerms`, `public/admin/admin.js → payChip()`); `SRC.link = 'Личная ссылка'` | Без новых полей в `Booking`. |
-| Ранний заезд | `Booking.earlyCheckIn`, `earlyCheckInStatus`; `POST /api/admin/bookings/:id/early-checkin` (`src/routes/admin/ops.js`) | Гость может попросить на странице ссылки (P1) — дальше существующий поток согласования. |
-| Гость | `model Guest` (name, phone, email, locale, telegramChatId) | Создаётся при создании ссылки (имя/телефон от админа или «Гость по ссылке»), обновляется данными гостя. |
-| Страница по ссылке без входа | `server/src/app.js`: `GET /link/:token` → `public/link/index.html`; `public/link/link.js` (по `kind` показывает задачу или трансфер); `src/routes/linkKind.js` (`GET /api/link/:token` → `{kind}`) | Добавляется `kind:'special'` → новый вид на той же странице. Новой страницы/статики не нужно. |
-| Защита ссылок от перебора | `src/lib/rateLimit.js` → `linkGuard({max, badMax, windowMin})` (общий лимит с IP + отдельный лимит на ответы 404); подключение в `app.js` (`/api/link`, `/api/task-link`, `/api/transfer-link`), настройки `config.rateLimit.link*` | Тот же `guard` на `/api/special-link`. |
-| Случайные токены, сравнение без утечки по времени | `src/lib/tokens.js` → `randomToken()`, `safeEqual()` (на `crypto`) | `randomToken(32)` (256 бит) + SHA-256 для хранения. |
-| Загрузка файлов | `src/lib/upload.js` → `imageUpload()` (multer в памяти, лимиты), `src/storage/index.js` → `makeKey()` (случайное имя), `looksLikeImage()` (магические байты), адаптеры `storage/local.js`, `storage/s3.js` (подпись `signV4`) | Тот же приём файлов, но **отдельное приватное хранение** (раздел 9). |
-| Уведомления | `src/notifications/events.js` (шина событий), `service.js` → `deliver()` с `dedupeKey` (уникален в `NotificationLog`), `toManagers()` (учитывает `AccountSettings.managerNotify`), `templates.js`; планировщик `scheduler.js → startScheduler()` (напоминания о заезде каждые 30 мин, диспетчер трансферов и напоминание о выплатах по `payoutReminderHours`) | Новые события + шаблоны с `dedupeKey`; напоминания — следующим шагом через уже существующий `startScheduler` (раздел 12). |
-| Роли и доступ | `src/auth/roles.js` (`MANAGERS = ['owner','admin']`), `app.js`: `admin.use(authenticate, requireRole(...MANAGERS))`; `requireRole('owner')` для отдельных маршрутов | Всё управление ссылками — под `/api/admin` (владелец и админ). |
-| «Сегодня» и готовность | `src/services/ops.js` → `todayView()`, `apartmentState()`; сейчас неоплаченные `request` попадают в `snap.holds` → пункт `awaiting_payment` («Информация») | Для `source:'link'` — свои пункты «Требует внимания» (раздел 13), вместо `awaiting_payment`. |
-| Очередь на один ключ (защита от двойного нажатия) | `src/services/defects.js` → `withLock()` (внутри процесса) | Вынести в `src/lib/lock.js` и использовать для «квартира» и «ссылка» (шаг 0). |
+| Бронь и статусы `request → confirmed → completed / cancelled` | `server/prisma/schema.prisma → model Booking`; `src/services/bookings.js` | Ссылка создаёт `Booking{status:'request', source:'link'}`. Новых статусов брони нет. |
+| Занятость | `bookings.js → BLOCKING`, `isAvailable()`, `busyRanges()` (брони `request/confirmed` + ремонты с `blockDays`) | Остаётся единственной логикой занятости. Меняется только правило для истёкшего удержания (раздел 11) и выполнение внутри транзакции (раздел 10). |
+| Цена, номер брони | `quote()`, `nextBookingNumber()` (+ повтор при `P2002` в `createBookingRequest()`) | Без изменений. |
+| Подтверждение (идемпотентно после приёмки прохода 3) | `bookings.js → confirmBooking({accountId, bookingId, events, dispatch, actor})`: условная запись `updateMany where status='request'`, `CleaningTask` в день выезда, событие `booking.confirmed`, `dispatch.createForBooking()` | Единственная точка передачи в проход 3. В проходе 4 становится транзакционной (раздел 4.5). |
+| Отмена брони | `src/routes/admin/operations.js → POST /bookings/:id/cancel` | Выносится в `cancelBooking()` (раздел 15). |
+| Условия оплаты особой брони | `Booking.paymentMethod = 'cash_on_arrival' | 'deposit'`, `paymentStatus = 'unpaid' | 'prepaid' | 'paid'` (уже в `prisma/seed.js → payTerms`, `public/admin/admin.js → payChip()`); `SRC.link = 'Личная ссылка'` | Без новых полей. |
+| Оплата на сайте | `src/payments/index.js → applyPaymentResult()` (успех → `paymentStatus:'paid'` → `confirmBooking`), `src/routes/public.js → POST /bookings/:token/pay` | Без изменений, плюс обработка оплаты после истечения удержания (раздел 11). |
+| Гость | `model Guest` | Создаётся при создании ссылки, обновляется данными гостя. Профиля с документами нет. |
+| Страница по ссылке без входа | `app.js: GET /link/:token` → `public/link/index.html`, `public/link/link.js`; `src/routes/linkKind.js` | Новый `kind:'special'` на той же странице. |
+| Защита ссылок от перебора | `src/lib/rateLimit.js → linkGuard()`, подключение в `app.js` (`config.rateLimit.link*`, по умолчанию 120 запросов / 20 неверных за 15 мин) | Тот же guard на `/api/special-link`. |
+| Токены | `src/lib/tokens.js → randomToken()` | `randomToken(32)` + SHA-256. |
+| Уведомления | `src/notifications/events.js`, `service.js → deliver()` с уникальным `dedupeKey`, `toManagers()` (по `AccountSettings.managerNotify`), `templates.js` | Новые шаблоны. Отправка идёт через журнал отложенных действий (раздел 4.5). |
+| Планировщик | `src/notifications/scheduler.js → startScheduler()` (уже запускает напоминания о заезде, диспетчер трансферов, напоминания о выплатах) | Сюда добавляются прогон журнала отложенных действий, сверка и снятие истёкших удержаний. Отдельного cron или очереди нет. |
+| Роли | `src/auth/roles.js` (`MANAGERS`), `app.js: admin.use(authenticate, requireRole(...MANAGERS))` | Управление ссылками — `/api/admin` (владелец и админ). |
+| «Сегодня» | `src/services/ops.js → todayView()` (сейчас неоплаченные `request` → пункт `awaiting_payment`) | Пункты `link_*`, `outbox_failed`, `payment_orphaned` (раздел 13). |
 
-**Поправка к ПЛАН.md.** В «Известных проблемах» прохода 3 сказано, что Telegram-бот может создавать брони `request`. Проверка кода: в `src/telegram/*` создания броней нет (бот только привязывает гостя по `b_<token>`, кнопки «Беру» и выплат). Реально оставшийся путь неоплаченных `request` — публичный `POST /api/public/:slug/bookings` (`src/routes/public.js`): `paymentMethod` по умолчанию `'cash'`, такая бронь держит даты бессрочно. Это не ошибка прохода 3, но учтено в разделах 10–11 и 20.
+**Поправка к прежним документам.** Telegram-бот брони не создаёт: в `src/telegram/*` нет создания `Booking`. Бессрочные неоплаченные `request` создаёт только `POST /api/public/:slug/bookings` (`src/routes/public.js`): `paymentMethod` по умолчанию `'cash'`. Закрывается в разделе 11.
 
 ## 2. Цель
 
-Владелец/администратор за 30 секунд создаёт для особого гостя (написал в Telegram/WhatsApp/Instagram) личную ссылку: квартира, даты, цена, условия (наличные при заезде или залог), срок действия. Гость по ссылке видит предложение, вводит минимум данных, загружает паспорт (и билет, если требуется), нажимает «Подтвердить бронь». Бронь становится обычной подтверждённой бронью — дальше работает проход 3. Без регистрации гостя, без второй системы броней, без вечных броней-заявок в календаре.
+Владелец или админ за 30 секунд создаёт для особого гостя личную ссылку: квартира, даты, цена, условия (наличные при заезде или залог), срок. При желании он отмечает «Нужно дополнительное подтверждение» (например, гость пришлёт паспорт или билет в мессенджер).
+
+Гость по ссылке видит предложение, вводит имя и телефон, соглашается с условиями и нажимает «Подтвердить бронь». После этого бронь становится обычной подтверждённой бронью прохода 3.
+
+Регистрации гостя нет. Паспортов в системе нет. Вечных заявок в календаре нет. Двойная бронь невозможна даже при нескольких копиях сервера.
 
 ## 3. Бизнес-поток
 
-1. Гость пишет владельцу/админу в мессенджер. Договорились устно.
-2. Админ: «Брони» → «＋ Личная ссылка» → квартира, даты, гостей, условия (A — наличные при заезде; B — залог N ₸), нужен ли билет, срок ссылки (по умолчанию 24 ч), при желании имя/телефон гостя и своя цена → «Создать».
-   Система проверяет занятость, создаёт `Booking(request, source:'link')` (даты удерживаются) и `BookingLink`. Админ видит ссылку **один раз** и копирует её в мессенджер.
-3. Гость открывает ссылку: квартира, даты, ночи, сумма, условия, «Предложение действует до …», что нужно сделать.
-4. Гость: имя, телефон (и e-mail по желанию), галочка «Согласен с условиями» → загружает паспорт (+ билет) → «Подтвердить бронь».
-5. Если условия выполнены (данные + согласие + обязательные документы + для B — залог отмечен полученным): ссылка `completed`, вызывается `confirmBooking()` → бронь `confirmed` → подготовка, «Сегодня», трансфер (если заказан), напоминания о заезде.
-6. Если гость не успел — ссылка истекает, бронь `cancelled`, даты свободны. Админ может продлить ссылку до истечения или создать новую.
+1. Гость пишет владельцу или админу в мессенджер, они договариваются.
+2. Админ открывает «Брони» → «＋ Личная ссылка» и заполняет:
+   - квартиру, даты, число гостей;
+   - условия: A — наличные при заезде, B — залог N ₸;
+   - срок ссылки;
+   - по желанию — имя и телефон гостя, свою цену (раздел 20), комментарий;
+   - по желанию — галочку «Нужно дополнительное подтверждение» и текст, что нужно (например, «паспорт и билет — пришлите в WhatsApp»).
+   Система в одной транзакции проверяет занятость и создаёт `Booking(request, source:'link', holdUntil = срок ссылки)` и `BookingLink`. Ссылка показывается один раз, админ копирует её в мессенджер.
+3. Гость открывает ссылку и видит: квартиру, даты, ночи, сумму, условия, «действует до …», что сделать. Если подтверждение требуется, он видит и текст, что прислать и куда (вне системы).
+4. Гость вводит имя, телефон (e-mail по желанию), ставит «Согласен с условиями» и нажимает «Подтвердить бронь».
+5. Бронь подтверждается, если выполнены все условия:
+   - данные гостя и согласие с текущим предложением;
+   - для B — админ отметил «Залог получен»;
+   - если галочка подтверждения стояла — админ отметил «Подтверждение получено».
+   Тогда в одной транзакции ссылка становится `completed`, бронь `confirmed` и создаётся подготовка. Заказ водителям и уведомления идут через журнал отложенных действий. Дальше работает проход 3.
+6. Если гость не успел, удержание истекает: бронь `cancelled`, ссылка `expired`, даты свободны. Админ может продлить ссылку до истечения или создать новую.
 
-Условие C («другие») **не вводится**: в системе нет подтверждённой потребности (есть только `cash_on_arrival` и `deposit`).
+Других условий, кроме A и B, нет: в системе нет подтверждённой потребности.
 
 ## 4. Машина состояний
 
-Состояния разделены: **у брони** — только существующие `request / confirmed / cancelled / completed`; **у ссылки** — хранимый `status` из 5 значений + производные подсостояния (считаются из отметок времени, не хранятся).
+У брони остаются только существующие статусы `request / confirmed / cancelled / completed` и одно новое поле `holdUntil`. У ссылки — хранимый `status` и производные подсостояния.
 
 ### 4.1 Хранимые статусы `BookingLink.status`
 
-`active` · `completed` · `expired` · `revoked` · `cancelled` (бронь отменили после подтверждения — ссылка только для чтения).
+`active` · `completed` · `expired` · `revoked` · `cancelled` (бронь отменили после подтверждения; ссылка только для чтения).
 
-### 4.2 Производные подсостояния (для `active`)
+### 4.2 Производные подсостояния (для `active`, не хранятся)
 
-| Подсостояние | Условие | Что видит админ |
-|---|---|---|
-| ссылка создана / ждём гостя | `guestStartedAt = null` | «Ждём гостя · до 5 окт 19:00» |
-| гость начал | `guestStartedAt ≠ null` | «Гость начал заполнять» |
-| не заполнено | начал, но `missing()` не пуст | «Не хватает: паспорт, согласие» |
-| документы получены | все обязательные документы есть (`docsCompletedAt`) | «Документы получены» (+ «ждём залог», если B) |
-| условия выполнены | `missing()` пуст | мгновенное, в той же операции переходит в `completed` |
+| Подсостояние | Условие |
+|---|---|
+| ждём гостя | `guestStartedAt = null` |
+| гость начал | `guestStartedAt ≠ null`, `missing()` не пуст |
+| ждём админа | данные и согласие есть, нет отметки залога или подтверждения |
+| условия выполнены | `missing()` пуст — в той же транзакции переходит в `completed` |
 
-`missing(link)` = список из: `guest` (нет имени/телефона), `terms` (нет `termsAcceptedAt` или `termsHash` ≠ текущему предложению), `passport`, `ticket` (если `requireTicket`), `deposit` (если `terms='deposit'` и нет `depositReceivedAt`).
+`missing(link, booking)` — список того, что ещё не выполнено:
+- `guest` — нет имени или телефона;
+- `terms` — нет `termsAcceptedAt`, или `termsHash` не совпадает с текущим `sha256(checkIn|checkOut|totalKzt|terms|depositKzt)`;
+- `deposit` — если `terms='deposit'` и нет `depositReceivedAt`;
+- `extra_check` — **только** если `extraCheckRequired = true` и нет `extraCheckedAt`.
 
-«Первое открытие» **не** считается началом: превью ссылок в Telegram/WhatsApp запрашивают адрес сами. Начало — первый POST гостя. Открытия только считаются (`lastOpenedAt`, `openCount`).
+Паспорт и билет в `missing()` **не входят никогда**.
+
+Начало заполнения считается по первому POST гостя, а не по открытию: превью ссылок в мессенджерах сами запрашивают адрес. Открытия только считаются (`openCount`, `lastOpenedAt`).
 
 ### 4.3 Переходы
 
+Обозначение `TX(apt)` — транзакция с блокировкой квартиры (раздел 10).
+
 | Текущее | Событие | Новое | Побочные эффекты |
 |---|---|---|---|
-| — | Админ «Создать» (квартира свободна) | link `active`, booking `request` | Под замком квартиры: `isAvailable()` → `Guest` → `Booking(request, source 'link', paymentMethod по условиям)` → `BookingLink(tokenHash)` — одной транзакцией. Ответ с токеном (один раз). Событие `link.created` (только журнал). |
-| — | «Создать», даты заняты | — | 409 «Эти даты уже заняты», ничего не создаётся. |
-| `active` | Гость GET | `active` | Ленивая проверка срока (см. ниже); `openCount+1`, `lastOpenedAt`. |
-| `active` | Гость POST данных/согласия | `active` | `guestStartedAt ??= now`; обновить `Guest`; `termsAcceptedAt`, `termsHash`. Первый раз — событие `link.started` (dedupe `link.started:<id>`). |
-| `active` | Гость загрузил документ | `active` | `BookingDocument` (дубль по `sha256` → вернуть существующий). Если все обязательные — `docsCompletedAt ??= now`, событие `link.docs_received` (dedupe). |
-| `active` | Админ «Залог получен» (B) | `active` или → `completed` | `depositReceivedAt`, `Booking.paymentStatus='prepaid'`. Если `missing()` пуст и гость уже нажимал «Подтвердить» (`submittedAt`) — выполнить подтверждение (ниже). |
-| `active` | Гость «Подтвердить бронь», `missing()` не пуст | `active` | `submittedAt ??= now`; 409 `{missing:[...]}`. |
-| `active` | «Подтвердить», `missing()` пуст, квартира свободна | link `completed`, booking `confirmed` | Под замком квартиры: (1) `updateMany(BookingLink where id, status='active', expiresAt>now → status 'completed', completedAt)`; если 0 строк — вернуть текущее состояние (идемпотентно). (2) `isAvailable(..., excludeBookingId)` повторно. (3) `confirmBooking()` — передача в проход 3. Событие `link.completed`. |
-| `active` | «Подтвердить», квартира стала занята (ремонт закрыл даты) | `active` | Откат шага (1) (та же транзакция), 409 «Даты стали недоступны — владелец свяжется с вами»; событие `link.conflict` менеджерам (dedupe). |
-| `active` | `expiresAt ≤ now` (ленивая проверка при любом чтении/записи; позже — планировщик) | link `expired`, booking `cancelled` | Условная запись `where status='active' and expiresAt<=now`; победитель вызывает `cancelBooking(reason 'Личная ссылка истекла')`; документы этой ссылки удаляются из хранилища; событие `link.expired` (dedupe). |
-| `active` | Админ «Продлить» (+N ч, итог ≤ 7 суток от создания) | `active` | `expiresAt` обновлён; занятость не перепроверяется (даты и так удержаны). |
-| `active` | Админ «Новая ссылка» (потерял/подозрение на кражу) | `active` | Новый токен, старый хэш заменён → старая ссылка сразу 404. |
-| `active` | Админ «Отозвать» | link `revoked`, booking `cancelled` | `cancelBooking()`, удалить документы, событие `link.revoked`. |
-| `active` | Админ изменил даты/сумму брони (существующий `PATCH /bookings/:id`) | `active` | Ничего не храним заново: страница читает бронь. `termsHash` перестаёт совпадать → гость должен снова поставить галочку. |
-| `active` | Админ отменил бронь в карточке брони | link `revoked` | `cancelBooking()` переводит связанную активную ссылку в `revoked` (одно место — в `cancelBooking`). |
-| `completed` | Гость GET / повторный «Подтвердить» | `completed` | 200, «Бронь №… подтверждена» (идемпотентно), без загрузки и правки. |
-| `completed` | Бронь отменили (админ) | `cancelled` | Страница: «Бронь отменена». Документы — по сроку хранения. |
-| `expired`/`revoked`/`cancelled` | Любой запрос гостя | без изменений | 410 «Ссылка больше не действует — напишите владельцу». |
-| `expired` | Админ «Продлить» | — | 409 «Ссылка истекла — создайте новую» (даты могли уже занять). Кнопка «Создать заново» с теми же полями. |
+| — | Админ «Создать» | link `active`, booking `request` | `TX(apt)`: снять истёкшие удержания квартиры → `isAvailable` → `Guest` → `Booking(holdUntil)` → `BookingLink(tokenHash)`. Токен — в ответе один раз. |
+| — | «Создать», даты заняты | — | 409 «Эти даты уже заняты». Конфликт в базе (`23P01`) тоже даёт 409. |
+| `active` | Гость GET | `active` | Сначала ленивое истечение (раздел 11); затем `openCount+1`. |
+| `active` | Гость POST данных и согласия | `active` | `guestStartedAt ??= now`, обновить `Guest`, `termsAcceptedAt`, `termsHash`. Первый раз — событие `link.started` в журнал (dedupe). Если `submittedAt` уже есть и `missing()` стал пуст — подтверждение (ниже). |
+| `active` | Админ «Залог получен» / «Подтверждение получено» | `active` или `completed` | Условная запись `where depositReceivedAt IS NULL` (или `extraCheckedAt IS NULL`); залог → `Booking.paymentStatus='prepaid'`. Если `submittedAt` есть и `missing()` пуст — подтверждение. |
+| `active` | Гость «Подтвердить», `missing()` не пуст | `active` | `submittedAt ??= now`; 200 `{status:'active', missing}` — гость видит, чего ждём. |
+| `active` | Подтверждение: `missing()` пуст, `now < holdUntil` | link `completed`, booking `confirmed` | Одна `TX(apt)` (раздел 4.5): условные записи ссылки и брони, `isAvailable(excludeBookingId)`, `CleaningTask(autoKey)`, строки журнала отложенных действий. После коммита — прогон журнала. |
+| `active` | Подтверждение при `now ≥ holdUntil` | link `expired`, booking `cancelled` | Граница строгая: ровно в `holdUntil` уже истекло. В той же транзакции — истечение; гостю 410. |
+| `active` | Подтверждение, даты закрыты ремонтом | `active` | Откат транзакции; 409 «Даты стали недоступны — владелец свяжется с вами»; событие `link.conflict` и «Критично» в «Сегодня». |
+| `active` | `holdUntil ≤ now`: ленивая проверка при любом чтении занятости или ссылки, плюс планировщик | link `expired`, booking `cancelled` | `releaseExpiredHolds()` (раздел 11); событие `link.expired` в журнал (dedupe). |
+| `active` | Админ «Продлить» | `active` | `TX(apt)`: `Booking.holdUntil` += N ч, только если `now < holdUntil` и итог ≤ 7 суток от создания. |
+| `active` | Админ «Новая ссылка» | `active` | Новый токен, хэш заменён; старая ссылка сразу 404. |
+| `active` | Админ «Отозвать» | link `revoked`, booking `cancelled` | `cancelBooking()` (сама закрывает ссылку). |
+| `active` | Админ меняет даты или сумму брони (существующий PATCH, теперь в `TX(apt)`) | `active` | `termsHash` перестаёт совпадать — нужна новая галочка гостя. |
+| `active` | Админ отменяет бронь | link `revoked` | `cancelBooking()`. |
+| `completed` | Гость GET / повторный «Подтвердить» / повтор после таймаута клиента | `completed` | 200 «Бронь №… подтверждена», без эффектов. |
+| `completed` | Бронь отменили | `cancelled` | В `cancelBooking()`. |
+| `expired` / `revoked` / `cancelled` | Любой запрос гостя | — | 410 «Ссылка больше не действует — напишите владельцу». |
+| `expired` | Админ «Продлить» | — | 409 «Ссылка истекла — создайте новую» (даты могли занять); кнопка «Создать заново» с теми же полями. |
 
-### 4.4 Идемпотентность (уроки приёмки прохода 3)
+### 4.4 Идемпотентность
 
-- Каждый переход статуса — условная запись `updateMany({where:{id, status:<ожидаемый>}})`; кто получил 0 строк — читает и возвращает текущее состояние, побочных эффектов не делает.
-- Создание брони и ссылки, подтверждение — под замком квартиры (`withLock('apt:'+apartmentId)`), чтобы проверка занятости и запись были атомарны внутри процесса; плюс повторная проверка `isAvailable` перед `confirmBooking`.
-- `confirmBooking()` уже идемпотентна (одна подготовка, один заказ водителям).
-- Документ: уникальность `(linkId, sha256)` — повторная загрузка того же файла возвращает существующую запись.
-- Уведомления — только через `deliver()` с `dedupeKey` `link.<event>:<linkId>[:<n>]`.
-- Создание ссылки двойным кликом: клиент блокирует кнопку; сервер — замок квартиры: второй запрос видит, что даты заняты только что созданной бронью → 409 «Эти даты уже заняты» (безопасно: одна бронь). P1: заголовок `Idempotency-Key` не нужен.
+- Каждый переход — условная запись `updateMany({where:{id, status:<ожидаемый>, ...}})`. Если изменено 0 строк — прочитать и вернуть текущее состояние без эффектов.
+- Двойная бронь исключена базой (раздел 10), а не кодом.
+- Одна подготовка на бронь — уникальный `CleaningTask.autoKey = 'turnover:<bookingId>'`.
+- Один заказ водителям на трансфер — уже есть уникальный `TransferJob.transferId`; `createForBooking` берёт только трансферы `job: null`.
+- Уведомления — уникальный `NotificationLog.dedupeKey` (уже есть) и уникальный `OutboxEvent.dedupeKey`.
+- Повтор «Подтвердить» после таймаута клиента возвращает тот же результат.
+
+### 4.5 Подтверждение и восстановление после сбоя
+
+Проблема: сейчас `confirmBooking()` делает несколько отдельных записей подряд — статус, подготовку, событие, `dispatch.createForBooking`. Падение процесса между ними оставляет бронь `confirmed` без подготовки или без заказа водителям навсегда.
+
+**В одной транзакции базы** (`prisma.$transaction(async tx => …)`, внутри `TX(apt)`):
+1. `BookingLink active → completed` (для ссылки);
+2. `Booking request → confirmed` (условная запись, `holdUntil = null`, платёжные поля по условиям);
+3. повторная `isAvailable(tx, …, excludeBookingId)`;
+4. `CleaningTask` в день выезда с `autoKey='turnover:<bookingId>'` (уникальный; если уже есть — пропустить);
+5. строки журнала `OutboxEvent`:
+   - `transfers.dispatch:<bookingId>` → `dispatch.createForBooking`;
+   - `event:booking.confirmed:<bookingId>` → `events.emit('booking.confirmed')`;
+   - для ссылки — `event:link.completed:<linkId>`.
+
+**После коммита** — только то, что можно повторять: прогон этих строк журнала (Telegram, предложения водителям, расчёт выплаты водителю). `TransferJob` создаётся здесь, а не в транзакции: `createForTransfer()` рассылает предложения и уже идемпотентна по `transferId`, а переписывать её под транзакцию — лишнее изменение прохода 3.
+
+**Журнал `OutboxEvent`** (одна маленькая таблица; внешних очередей нет):
+- `runOutbox({limit})` захватывает строки условной записью `updateMany where status='pending' and nextAttemptAt<=now → nextAttemptAt = now + 5 мин` (аренда — безопасно при нескольких копиях сервера), выполняет и ставит `done`.
+- При ошибке — `attempts+1`, `lastError`, следующая попытка позже. После 5 попыток — `failed` и «Критично» в «Сегодня»: «Не завершена цепочка брони №…».
+- Запуск: сразу после коммита (лучшее усилие, в том же процессе), при старте сервера и каждую минуту из `startScheduler`.
+
+**Сверка (reconciler) `reconcileBookings()`** в том же тике планировщика — для старых данных и на всякий случай:
+- подтверждённые брони с выездом ≥ сегодня без какой-либо `CleaningTask` с этим `bookingId` → создать с `autoKey`;
+- подтверждённые брони с активным `Transfer` без `TransferJob` и без ожидающей строки журнала → добавить `transfers.dispatch`.
+Всё идемпотентно благодаря уникальным ключам.
+
+Отмена брони устроена так же: `cancelBooking()` в транзакции меняет статус, удаляет неначатую подготовку и закрывает ссылку; отмена заказов водителям и их уведомление (`dispatch.cancelForBooking`) — строкой журнала `transfers.cancel:<bookingId>`.
 
 ## 5. Изменения данных
 
-Одна новая сущность ссылки и одна — документа (документ нельзя хранить в существующих `CleaningPhoto`/`RepairPhoto`: другие права и срок хранения). `Booking` не меняется.
-
 ```prisma
 model BookingLink {
-  id                String    @id @default(cuid())
-  accountId         String
-  bookingId         String    @unique
-  tokenHash         String    @unique /// sha256(token) hex; сам токен не хранится
-  status            String    @default("active") /// active | completed | expired | revoked | cancelled
-  terms             String /// cash_on_arrival | deposit
-  depositKzt        Int?
-  requireTicket     Boolean   @default(false)
-  expiresAt         DateTime
-  note              String? /// условия словами для гостя (необязательно)
-  termsHash         String? /// sha256(checkIn|checkOut|totalKzt|terms|depositKzt) на момент согласия
-  termsAcceptedAt   DateTime?
-  guestStartedAt    DateTime?
-  docsCompletedAt   DateTime?
-  depositReceivedAt DateTime?
-  depositMarkedBy   String?
-  submittedAt       DateTime?
-  completedAt       DateTime?
-  closedAt          DateTime? /// истекла / отозвана / отменена
-  closedByName      String?
-  openCount         Int       @default(0)
-  lastOpenedAt      DateTime?
-  createdById       String?
-  createdByName     String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-
-  account   Account           @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  booking   Booking           @relation(fields: [bookingId], references: [id], onDelete: Cascade)
-  documents BookingDocument[]
-
-  @@index([accountId, status, expiresAt])
+  id                 String    @id @default(cuid())
+  accountId          String
+  bookingId          String    @unique
+  tokenHash          String    @unique /// sha256(token), hex; сам токен не хранится
+  status             String    @default("active") /// active | completed | expired | revoked | cancelled
+  terms              String /// cash_on_arrival | deposit
+  depositKzt         Int?
+  extraCheckRequired Boolean   @default(false) /// владелец/админ попросил доп. подтверждение (паспорт/билет — вне системы)
+  extraCheckNote     String? /// что и куда прислать, для гостя
+  extraCheckedAt     DateTime?
+  extraCheckedBy     String?
+  note               String?
+  termsHash          String?
+  termsAcceptedAt    DateTime?
+  guestStartedAt     DateTime?
+  submittedAt        DateTime?
+  depositReceivedAt  DateTime?
+  depositMarkedBy    String?
+  completedAt        DateTime?
+  closedAt           DateTime?
+  closedByName       String?
+  openCount          Int       @default(0)
+  lastOpenedAt       DateTime?
+  createdById        String?
+  createdByName      String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+  @@index([accountId, status])
 }
 
-model BookingDocument {
-  id           String    @id @default(cuid())
-  accountId    String
-  linkId       String
-  bookingId    String
-  kind         String /// passport | ticket
-  storageKey   String /// приватный ключ, не URL
-  mimeType     String
-  sizeBytes    Int
-  sha256       String
-  accessLog    Json? /// последние 20 просмотров: [{userId, name, at}]
-  deleteAfter  DateTime? /// когда удалить (выезд + срок хранения)
-  createdAt    DateTime  @default(now())
-
-  account Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  link    BookingLink @relation(fields: [linkId], references: [id], onDelete: Cascade)
-
-  @@unique([linkId, sha256])
-  @@index([accountId, deleteAfter])
+model OutboxEvent {
+  id            String    @id @default(cuid())
+  accountId     String
+  kind          String /// transfers.dispatch | transfers.cancel | event
+  payload       Json /// { bookingId } | { name, data }
+  dedupeKey     String    @unique
+  status        String    @default("pending") /// pending | done | failed
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now())
+  lastError     String?
+  createdAt     DateTime  @default(now())
+  doneAt        DateTime?
+  @@index([status, nextAttemptAt])
 }
 ```
 
-Обратные связи: `Booking.link BookingLink?`, `Account.bookingLinks`, `Account.bookingDocuments`. Комментарий `Booking.source` уже содержит `link`.
+Изменения существующих моделей (минимум):
+- `Booking.holdUntil DateTime?` — до какого момента неподтверждённая бронь держит даты. Индекс `@@index([apartmentId, status, holdUntil])`. Срок ссылки хранится **только здесь**, у `BookingLink` своего `expiresAt` нет — одна правда.
+- `CleaningTask.autoKey String? @unique` — ключ автоматической подготовки (`turnover:<bookingId>`). Уникальность допускает много `NULL` (и SQLite, и PostgreSQL), старые данные не мешают.
+- Обратные связи: `Booking.link BookingLink?`, `Account.bookingLinks`.
+- (Шаг 8, отдельно) `AccountSettings.minPrepMinutes Int @default(120)`.
 
-Миграции: `npx prisma migrate dev --name pass4_booking_links` (SQLite), затем `npm run pg:schema` и миграция в `prisma/postgres/migrations/<та же метка>_pass4_booking_links/` (как в проходе 3); проверка — `npm run test:pg` (на рабочей машине уже ставился PostgreSQL 17: `sudo pg_ctlcluster 17 main start`, пользователь `sutki/sutki`).
+**Миграции.**
+1. SQLite: `npx prisma migrate dev --name pass4_links_outbox_holds`.
+2. PostgreSQL: `npm run pg:schema` → папка `prisma/postgres/migrations/<метка>_pass4_links_outbox_holds/` с тем же содержимым **плюс ручной SQL** (раздел 10):
 
-Настройка (раздел 12а): `AccountSettings.minPrepMinutes Int @default(120)` — в той же миграции, если делается в этом проходе.
+```sql
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+ALTER TABLE "Booking" ADD CONSTRAINT booking_no_overlap
+  EXCLUDE USING gist ("apartmentId" WITH =, tsrange("checkIn", "checkOut", '[)') WITH &&)
+  WHERE (status IN ('request', 'confirmed'));
+```
+
+3. Перед ограничением — в той же миграции сделать данные чистыми:
+   - старым `request` без `holdUntil` выставить `holdUntil = now() + interval '24 hours'`;
+   - проверочный запрос на уже пересекающиеся брони — миграция должна упасть с понятным сообщением, а не молча.
+4. Проверка — `npm run test:pg` (на рабочей машине уже ставился PostgreSQL 17: `sudo pg_ctlcluster 17 main start`, пользователь `sutki/sutki`).
 
 ## 6. API
 
-Общие ошибки: `400` проверка полей (`{error}`), `401/403` вход/роль, `404` не найдено (для гостевых — считается в лимит перебора), `409` конфликт состояния/дат (`{error, missing?}`), `410` ссылка больше не действует, `413` файл слишком большой, `415` неподдерживаемый файл, `429` лимит.
+Общие ошибки:
+- `400` — неверные поля;
+- `401` / `403` — нет входа или нет прав;
+- `404` — не найдено (для гостя считается в лимит перебора);
+- `409` — конфликт состояния или дат (`{error, missing?}`);
+- `410` — ссылка больше не действует;
+- `429` — лимит запросов.
 
-### 6.1 Владелец и администратор (`/api/admin`, `requireRole(...MANAGERS)`)
+### 6.1 Владелец и админ (`/api/admin`, `requireRole(...MANAGERS)`)
 
 | Метод и путь | Тело | Ответ |
 |---|---|---|
-| `POST /booking-links` | `{apartmentId, checkIn:'YYYY-MM-DD', checkOut, guestsCount, terms:'cash_on_arrival'|'deposit', depositKzt? (обязателен для deposit, 1…totalKzt), totalKzt? (своя цена; иначе quote), requireTicket?=false, expiresInHours?=24 (1…72), guestName?, guestPhone?, note?}` | `201 {link: LinkOut, url: '<PUBLIC_URL>/link/<token>'}` — `url` только в этом ответе. Ошибки: 404 квартира, 400 даты (прошлое, >90 ночей, гостей > maxGuests), 409 «Эти даты уже заняты». |
-| `GET /booking-links?status=active|all` | — | `[LinkOut]` (сначала ленивое истечение). |
-| `GET /booking-links/:id` | — | `LinkOut + documents:[{id, kind, mimeType, sizeBytes, createdAt}]` (без URL файлов). |
-| `POST /booking-links/:id/extend` | `{hours: 1…72}` | `LinkOut`; 409 если не `active` или итог > 7 суток от создания. |
-| `POST /booking-links/:id/rotate` | — | `{link, url}` (новый токен); 409 если не `active`. |
-| `POST /booking-links/:id/revoke` | `{reason?}` | `LinkOut` (status `revoked`, бронь `cancelled`); повтор — 200 то же. |
-| `POST /booking-links/:id/deposit` | `{received: true}` | `LinkOut` (может стать `completed`); 409 если условия не `deposit` или ссылка не `active`. |
-| `GET /booking-links/:id/documents/:docId` | — | Поток файла: `Content-Type` из записи, `Content-Disposition: inline`, `Cache-Control: no-store`, `X-Content-Type-Options: nosniff`; запись в `accessLog`. 404 для чужого аккаунта. |
+| `POST /booking-links` | `{apartmentId, checkIn:'YYYY-MM-DD', checkOut, guestsCount, terms:'cash_on_arrival'|'deposit', depositKzt? (обязателен для deposit; 1…totalKzt), totalKzt? (своя цена — раздел 20), expiresInHours?=24 (1…72), extraCheckRequired?=false, extraCheckNote?, guestName?, guestPhone?, note?}` | `201 {link: LinkOut, url}` — `url` только здесь. Ошибки: 404, 400 (прошлое, >90 ночей, гостей > maxGuests), 409 занято. |
+| `GET /booking-links?status=active|all` | — | `[LinkOut]` (после ленивого истечения). |
+| `GET /booking-links/:id` | — | `LinkOut`. |
+| `POST /booking-links/:id/extend` | `{hours: 1…72}` | `LinkOut`; 409 если не `active`, удержание уже истекло или итог больше 7 суток. |
+| `POST /booking-links/:id/rotate` | — | `{link, url}`; 409 если не `active`. |
+| `POST /booking-links/:id/revoke` | `{reason?}` | `LinkOut`; повтор — 200. |
+| `POST /booking-links/:id/deposit` | — | `LinkOut` (может стать `completed`); 409 если условия не `deposit` или ссылка не `active`; повтор — 200. |
+| `POST /booking-links/:id/extra-check` | — | `LinkOut` (может стать `completed`); 409 если подтверждение не запрашивалось; повтор — 200. |
 
-`LinkOut = {id, bookingId, bookingNumber, status, stage ('waiting'|'started'|'incomplete'|'docs_received'|'completed'|'expired'|'revoked'|'cancelled'), missing:[...], guest:{name, phone}, apartment:{id, title, code}, checkIn, checkOut, totalKzt, terms, depositKzt, requireTicket, expiresAt, openCount, lastOpenedAt, guestStartedAt, docsCompletedAt, depositReceivedAt, completedAt, createdByName}`.
+`LinkOut = {id, bookingId, bookingNumber, status, stage, missing, guest:{name, phone}, apartment:{id, title, code}, checkIn, checkOut, totalKzt, terms, depositKzt, extraCheckRequired, extraCheckNote, holdUntil, openCount, lastOpenedAt, guestStartedAt, submittedAt, depositReceivedAt, extraCheckedAt, completedAt, createdByName}`.
 
-В `GET /api/admin/bookings*` у брони `source:'link'` добавить `link: LinkOut|null` (одно поле, без дублирования данных брони).
+В ответах `GET /api/admin/bookings*` у брони `source:'link'` — поле `link: LinkOut|null`.
 
 ### 6.2 Гость (без входа; `/api/special-link`, через `linkGuard`)
 
-Поиск: `tokenHash = sha256(token)`; длина токена 40–64 символа, иначе 404 без запроса к базе.
+Длина токена 40–64 символа, иначе 404 без запроса к базе; поиск по `sha256(token)`.
 
 | Метод и путь | Тело | Ответ |
 |---|---|---|
-| `GET /:token` | — | `200 {status, stage, missing, expiresAt, apartment:{title, rooms, maxGuests, photo, address (только после подтверждения)}, checkIn, checkOut, checkInTime, checkOutTime, nights, guestsCount, totalKzt, terms, depositKzt, note, requireTicket, guest:{name, phone} (то, что ввёл сам гость или админ), documents:[{id, kind, sizeBytes}], booking:{number, status}, telegramLink (после подтверждения: deepLink b_<Booking.token>)}`. `410` для `expired/revoked/cancelled` (с `{status}`). |
-| `POST /:token/guest` | `{name, phone, email?, acceptTerms: true, earlyCheckIn? (P1)}` | `200` как GET. 409 если не `active`. |
-| `POST /:token/documents` | multipart: `file` (1 файл), `kind: passport|ticket` | `201 {id, kind, sizeBytes}`; повтор того же файла — `200` та же запись; 413/415; 409 лимит 4 файла на вид или ссылка не `active`. |
-| `DELETE /:token/documents/:docId` | — | `204`; только `active` и только документ этой ссылки (иначе 404). |
-| `POST /:token/submit` | — | `200 {status:'completed', booking:{number, status:'confirmed'}}`; повтор — то же; `409 {error, missing:[...]}`; `409` «Даты стали недоступны»; `410`. |
+| `GET /:token` | — | `200 {status, stage, missing, holdUntil, apartment:{title, rooms, maxGuests, photo, address (только после подтверждения)}, checkIn, checkOut, checkInTime, checkOutTime, nights, guestsCount, totalKzt, terms, depositKzt, note, extraCheckRequired, extraCheckNote, guest:{name, phone}, booking:{number, status}, telegramLink (после подтверждения: b_<Booking.token>)}`; 410 для закрытых. |
+| `POST /:token/guest` | `{name, phone, email?, acceptTerms: true}` | 200 как GET; 409 если не `active`; 410. |
+| `POST /:token/submit` | — | `200 {status:'completed', booking:{number, status:'confirmed'}}` или `200 {status:'active', missing}`; повтор — тот же ответ; 409 «Даты стали недоступны»; 410. |
 
-Файлы гостю **не отдаются** никогда (только метаданные).
+Гостевых ответов без `bookingId`, `guestId`, внутренних id. Заголовки `Cache-Control: no-store`, `Referrer-Policy: no-referrer`.
 
 ## 7. Права
 
-| Действие | Владелец | Админ | Подготовка / мастер / водитель | Гость по ссылке |
+| Действие | Владелец | Админ | Подготовка / мастер / водитель | Гость |
 |---|---|---|---|---|
 | Создать, продлить, новая ссылка, отозвать | ✔ | ✔ | — | — |
-| «Залог получен» | ✔ | ✔ | — | — |
+| Своя цена в ссылке | ✔ | по решению владельца (раздел 20); до решения — нет | — | — |
+| «Залог получен», «Подтверждение получено» | ✔ | ✔ | — | — |
 | Видеть состояние ссылки | ✔ | ✔ | — | только свою |
-| Смотреть паспорт/билет | ✔ | ✔ | — (никогда, ни через API) | — (только список своих загрузок) |
-| Загрузить/удалить свой документ | — | — | — | ✔ пока `active` |
-| После подтверждения | как у любой брони | как у любой брони | как в проходе 3 (водитель — имя/телефон гостя по существующим правилам после «Беру»; подготовка — без данных гостя) | страница «подтверждено», адрес, Telegram |
-
-Сумма залога и цена видны владельцу и админу (как сейчас у брони); исполнителям — нет.
+| После подтверждения | как любая бронь | как любая бронь | как в проходе 3 | статус, адрес, Telegram |
 
 ## 8. Безопасность токена
 
-- **Почему не существующие токены.** `Booking.token` (96 бит) и `RepairTask/TransferJob.linkToken` (144 бит) хранятся открытым текстом — для ссылки, открывающей загрузку паспорта, этого мало. Переиспользуем механизм (`randomToken`, страницу `/link/:token`, `linkGuard`), но токен — новый.
-- **Генерация:** `randomToken(32)` → 256 бит, base64url (43 символа).
-- **Хранение:** только `sha256(token)` (hex) в `BookingLink.tokenHash` (`@unique`). Поиск по хэшу (сравнение внутри индекса; перебор бессмыслен при 256 битах). Токен показывается админу один раз; «Скопировать ещё раз» = «Новая ссылка» (ротация, старая сразу умирает).
-- **Срок:** `expiresAt` (по умолчанию 24 ч, 1–72 ч, продление — максимум 7 суток от создания).
-- **Многоразовая до завершения:** гость может открыть ссылку сколько угодно раз и вернуться позже (данные сохраняются на сервере). После `completed` — только чтение «Бронь подтверждена» до дня выезда + 1, затем 410. После `expired/revoked/cancelled` — 410.
-- **Перебор:** `linkGuard` (общий лимит с IP + лимит на 404, по умолчанию 120 запросов / 20 неверных за 15 мин — `config.rateLimit.link*`). Длина токена проверяется до базы. Загрузка: multer `limits` + не более 8 файлов на ссылку суммарно.
-- **Утечки:** ответы гостю не содержат `bookingId`, `guestId`, внутренних id квартиры; адрес квартиры — только после подтверждения (как `GET /bookings/:token`). Заголовок `Referrer-Policy: no-referrer` и `Cache-Control: no-store` на гостевых ответах; токен не пишется в журналы (в логах — `linkId`).
-- **Украденный токен:** владелец «Новая ссылка» или «Отозвать». До подтверждения злоумышленник может загрузить мусор (не увидит чужих файлов); после подтверждения — видит только статус и адрес (как владелец гостевой ссылки брони сейчас).
+- `Booking.token` (96 бит) и `linkToken` заданий (144 бита) хранятся открытым текстом, поэтому для ссылки, создающей бронь, — новый токен. Переиспользуются `randomToken`, страница `/link/:token` и `linkGuard`.
+- Генерация: `randomToken(32)` — 256 бит, base64url, 43 символа.
+- Хранение: только `sha256(token)` в `BookingLink.tokenHash @unique`. Показ — один раз; «Скопировать ещё раз» = «Новая ссылка» (старая сразу умирает).
+- Ссылка многоразовая до завершения: гость возвращается по той же ссылке, данные на сервере. После `completed` — только просмотр «подтверждено» до дня выезда + 1, потом 410. Закрытые — 410.
+- Перебор: `linkGuard` (лимит с IP + лимит на 404), длина проверяется до базы. При 256 битах перебор бессмыслен.
+- Токен не пишется в журналы, там только `linkId`.
+- Украденный токен — «Новая ссылка» или «Отозвать». Злоумышленник может самое большее заполнить данные; документов в системе нет.
 
-## 9. Безопасность документов (паспорт)
+## 9. Документы (паспорт, билет) — в проходе 4 в систему НЕ загружаются
 
-- **Кто видит:** только владелец и админ этого аккаунта, через `GET /api/admin/booking-links/:id/documents/:docId` (сессия + роль + `accountId`). Ни исполнители, ни гость, ни публичный URL.
-- **Где хранится:**
-  - local: отдельная папка `PRIVATE_UPLOAD_DIR` (по умолчанию `server/private-uploads`), **не** под `/uploads` (тот раздаётся `express.static` в `app.js`). В адаптер `storage/local.js` добавить `savePrivate(key, buf)`, `readPrivate(key) → Buffer|Stream`, `removePrivate(key)` с той же защитой пути.
-  - S3: префикс `private/`, объект без публичного доступа, никогда не через `publicUrl`; чтение — `GET` с подписью `signV4` (уже есть) на сервере и отдача потоком. Короткие подписанные URL — не нужны в первой версии.
-  - демо v2 (браузер): то же API адаптера в памяти/IndexedDB браузера.
-- **Ключ файла:** `makeKey(accountId, 'docs/<linkId>', mime)` → случайное имя; исходное имя файла не хранится и не используется в пути.
-- **Форматы:** JPG, PNG, HEIC/HEIF (фото с iPhone), PDF. Проверка магических байтов: расширить `looksLikeImage` → `looksLikeDocument(buf)`: JPEG `FF D8`, PNG `89 50 4E 47`, PDF `%PDF-`, HEIC — `ftyp` на смещении 4 с брендом `heic|heix|hevc|mif1|msf1`. MIME из запроса не доверяем — пишем тип по сигнатуре. WebP/GIF/AVIF для документов не нужны.
-- **Размер:** до 10 МБ на файл (`MAX_DOC_MB`), до 4 файлов на вид.
-- **Хранение и удаление:** `deleteAfter = день выезда + DOC_RETENTION_DAYS` (предложение — 30 дней, **решение владельца**, раздел 20). Если ссылка истекла/отозвана — документы удаляются сразу. При отмене подтверждённой брони — через 7 дней. Удаление: функция `purgeDocuments(accountId?)` (файл + запись), вызывается лениво при открытии списка ссылок; в продакшене — обязательный ежедневный запуск из существующего `startScheduler` (P0 перед запуском).
-- **Аудит:** `accessLog` (последние 20 просмотров: кто, когда) — достаточно; отдельная таблица аудита не нужна.
-- **Обязательно до продакшена (P0):** приватная папка вне статики; проверка сигнатур; проверка `accountId` в каждом запросе к файлу; удаление по сроку из планировщика; HTTPS (уже требование развёртывания); резервные копии `private-uploads` — зашифрованные или исключены (решить при развёртывании). Шифрование файлов на диске — не в первой версии.
+**Решение владельца (новое).** Обычные брони и брони по личной ссылке по умолчанию паспорта **не требуют**. Паспорт и билет — только **дополнительное подтверждение** для исключительной брони «на доверии». Нужно ли оно, решает владелец или админ для каждой ссылки. Полного профиля паспорта гостя нет. Миграционный учёт иностранцев, eQonaq и прочие требования — **не проход 4**: это будущий этап, привязанный к фактическому заселению.
 
-## 10. Занятость и одновременность
+**Почему `BookingDocument` убран из прохода 4.**
+- Ядро ссылки (предложение → согласие → подтверждение → проход 3) работает без файлов.
+- Дополнительное подтверждение закрывается флагом `extraCheckRequired` и отметкой админа «Подтверждение получено». Гость присылает фото в мессенджер, в котором уже идёт переписка.
+- Хранение паспортов на сервере — самая рискованная часть прежней редакции: закрытая папка, сроки удаления, резервные копии, права, форматы. Без доказанной потребности это архитектура «на будущее».
+- Вопрос о сроке хранения паспорта отпадает.
 
-- **Держит ли ссылка даты:** да — бронь `request` входит в `BLOCKING`, существующие `isAvailable()`/`busyRanges()`/календарь видят её без изменений. Держит до `expiresAt` (по умолчанию 24 ч). Это решение по умолчанию; если владелец решит иначе — раздел 20.
-- **Админ создаёт ссылку, а даты в этот момент берёт сайт:** создание идёт под `withLock('apt:<id>')` с проверкой `isAvailable` внутри; кто первый записал бронь — тот и занял. **Важно:** сейчас публичный `createBookingRequest()` проверяет и записывает **без замка** (существовало до прохода 3) — между двумя одновременными запросами возможна двойная бронь. Шаг 0 плана: тот же замок квартиры в `createBookingRequest()` и в смене дат брони (`PATCH /bookings/:id`). Для нескольких копий сервера — ограничение в базе (PostgreSQL `EXCLUDE USING gist` по `daterange` для статусов `request/confirmed`) — до масштабирования, не в этом проходе.
-- **Перед подтверждением:** обязательная повторная проверка `isAvailable(accountId, apartmentId, checkIn, checkOut, excludeBookingId=booking.id)` под тем же замком (ловит закрытие дат ремонтом, добавленное после создания ссылки).
-- **Конфликт:** 409 гостю «Даты стали недоступны — владелец свяжется с вами», ссылка остаётся `active`, менеджерам `link.conflict` и пункт «Критично» в «Сегодня». Двойной брони нет никогда.
-- **Админ меняет даты** брони по ссылке (существующий PATCH с проверкой занятости) — гость видит новые даты, согласие сбрасывается (`termsHash`).
+**Следующий маленький шаг — только если владелец попросит загрузку в систему.** Модель `BookingDocument` (вид, приватный ключ, тип по сигнатуре, sha256, удалить после). Приватное хранение вне `/uploads` (`savePrivate/readPrivate` в `storage/local.js` и `s3.js`), просмотр только владельцем и админом через авторизованный адрес, JPG/PNG/HEIC/PDF до 10 МБ, удаление по сроку из `startScheduler`. Условие `extra_check` тогда выполняется отметкой админа после просмотра. Проход 4 к этому готов: условие уже отделено.
 
-## 11. Истечение срока
+## 10. Двойная бронь: гарантия на уровне базы
 
-- `BookingLink.expiresAt` обязателен. После него: ссылка `expired`, бронь `cancelled` (`cancelBooking`), даты свободны, документы удалены, гостю 410.
-- **Ленивое истечение (первая версия):** `expireDueLinks(accountId, now)` — найти `active` с `expiresAt ≤ now` (индекс `[accountId, status, expiresAt]`) и закрыть каждую условной записью. Вызывать в начале: гостевых `/api/special-link/*`, `GET/POST /api/admin/booking-links*`, `todayView()`, `GET /api/admin/calendar`, `GET /api/admin/bookings`, публичных `GET /apartments/:id/availability` и `POST /bookings`, `isAvailable()`-путей создания ссылки. Так «вечных» заявок по ссылкам в календаре нет: любой, кто смотрит на даты, сначала освобождает просроченные.
-- **Позже (следующий шаг, не cron отдельно):** вызов `expireDueLinks` и `purgeDocuments` из существующего `startScheduler` (раз в 5–30 мин) — тот же код.
-- **Продлить:** только `active`, итог ≤ 7 суток от создания. **Истекла:** «Создать заново» (новая проверка занятости, новая ссылка, прежние данные гостя подставляются).
-- **Незаполненная бронь:** отменяется вместе с истечением; номер брони остаётся в истории как отменённый.
-- Неоплаченные `request` с сайта (`source:'site'`) — та же проблема «вечной заявки», но это **не** часть прохода 4 (раздел 19); механизм `expire…` можно распространить на них отдельным решением.
+**Выбор: ограничение `EXCLUDE` в PostgreSQL + блокировка строки квартиры в транзакции.**
+
+| Вариант | Оценка |
+|---|---|
+| `withLock('apt:'+id)` в Node | Только один процесс — **недостаточно** для продакшена. Остаётся как удобство для SQLite (разработка и демо). |
+| `pg_advisory_xact_lock(hash)` | Работает, но это та же «дисциплина кода», что и блокировка строки, только менее наглядная. Не выбран. |
+| `SELECT … FROM "Apartment" WHERE id=$1 FOR UPDATE` в транзакции | Упорядочивает все изменения занятости одной квартиры между процессами, в том числе проверки с ремонтами (`blockDays` — другая таблица). Но держится на том, что каждый путь её берёт. |
+| `EXCLUDE USING gist ("apartmentId" WITH =, tsrange("checkIn","checkOut",'[)') WITH &&) WHERE status IN ('request','confirmed')` | **Гарантия базы**: две пересекающиеся блокирующие брони одной квартиры не могут существовать, даже если путь в коде забыт или запросы из разных копий сервера. |
+
+**Итог.** Обязательная гарантия — `EXCLUDE` (ловит любые пути). Блокировка строки квартиры — для правильных сообщений и правил с ремонтами и истёкшими удержаниями. Обе — в одном общем помощнике:
+
+```js
+// services/bookings.js
+const isPostgres = /^postgres/.test(process.env.DATABASE_URL || '');
+export async function withApartmentTx(apartmentId, fn) {
+  const run = () => prisma.$transaction(async (tx) => {
+    if (isPostgres) await tx.$queryRaw`SELECT id FROM "Apartment" WHERE id = ${apartmentId} FOR UPDATE`;
+    await releaseExpiredHolds(tx, { apartmentId, now: new Date() });   // иначе EXCLUDE «увидит» истёкшее удержание
+    return fn(tx);
+  }, isPostgres ? { isolationLevel: 'ReadCommitted', timeout: 10000 } : { timeout: 10000 });   // SQLite знает только Serializable
+  return isPostgres ? run() : withLock(`apt:${apartmentId}`, run);   // SQLite (разработка/демо): один процесс — очередь в памяти
+}
+```
+
+- `isAvailable(tx, …)` принимает `tx` (по умолчанию — общий клиент для чтений вне записи).
+- Ошибку базы `23P01` (нарушение `EXCLUDE`; в Prisma — `P2010` или `PrismaClientUnknownRequestError` с этим кодом) превращать в `HttpError(409, 'Эти даты уже заняты')`.
+- **SQLite** — только разработка и демо: один процесс, один пишущий, транзакции идут по очереди; `EXCLUDE` там нет, вместо него внутри `withApartmentTx` остаётся `withLock('apt:'+id)`.
+- **Гарантия продакшена:** «на одной PostgreSQL при любом числе процессов и контейнеров две пересекающиеся брони `request/confirmed` одной квартиры невозможны — это запрещает база».
+- Расширение `btree_gist` доверенное (PostgreSQL 13+), владелец базы может его включить; у управляемых PostgreSQL (Render, Neon, Supabase) оно есть.
+- Ограничение не видит `holdUntil` (в условии ограничения нельзя `now()`), поэтому истёкшие удержания снимаются в той же транзакции до записи (`releaseExpiredHolds` выше), а чтения занятости их не считают (раздел 11).
+
+**Все пути, меняющие занятость, — через `withApartmentTx`:**
+
+| Путь | Файл / функция |
+|---|---|
+| Публичная бронь с сайта | `src/routes/public.js → POST /bookings` → `services/bookings.js → createBookingRequest()` |
+| Создание личной ссылки | новое `services/bookingLinks.js → create()` |
+| Подтверждение (оплатой, админом, ссылкой) | `services/bookings.js → confirmBooking()`; вызывается из `payments/index.js → applyPaymentResult()`, `routes/admin/operations.js → POST /bookings/:id/confirm`, `bookingLinks.submit/markDeposit/markExtraCheck` |
+| Смена дат брони | `routes/admin/operations.js → PATCH /bookings/:id` (ветка `checkIn/checkOut`) |
+| Продление удержания | `bookingLinks.extend()`; продление при открытии оплаты в `public.js → POST /bookings/:token/pay` |
+| Восстановление брони при оплате после истечения | `applyPaymentResult()` (раздел 11) |
+| Закрытие дат ремонтом | `routes/admin/workRequests.js → POST /repairs` (`blockDays > 0`) → `workRequests.create()` — только блокировка строки квартиры (ремонт — не бронь; при пересечении с бронью — существующее поведение, предупреждение в «Сегодня») |
+| Отмена брони | `cancelBooking()` — в транзакции; освобождает даты, `EXCLUDE` не нарушает |
+
+Других путей создания или изменения дат брони в коде нет: `prisma.booking.create` есть только в `createBookingRequest()`, а `seed.js` — не путь работы системы.
+
+## 11. Удержание дат и истечение (общее для ссылки и сайта)
+
+**Правило занятости:** бронь блокирует даты, если `status = 'confirmed'` или `status = 'request' AND holdUntil > now`. Меняется условие в `BLOCKING`-запросах `isAvailable()` / `busyRanges()` и в календаре. Запрос с `holdUntil` в прошлом даты **не держит**, даже если ещё не снят.
+
+**Снятие:** `releaseExpiredHolds(tx|prisma, {accountId?, apartmentId?, now})`:
+- брони `status:'request' AND holdUntil <= now` → `cancelled`;
+- связанные ссылки `active` → `expired` (`closedAt`);
+- строки журнала `event:link.expired:<linkId>` / `event:booking.hold_expired:<bookingId>` (dedupe).
+Условные записи, безопасно при повторе и при нескольких процессах.
+
+Вызывается:
+- в `withApartmentTx` (для своей квартиры);
+- лениво в начале чтений: гостевые `/api/special-link/*`, `GET/POST /api/admin/booking-links*`, `todayView()`, `GET /api/admin/calendar`, `GET /api/admin/bookings`, публичные `GET /apartments/:id/availability`;
+- из `startScheduler` раз в минуту (вместе с `runOutbox`).
+Отдельного cron нет.
+
+**Публичная бронь с сайта (закрывает «вечные заявки»):**
+- `POST /api/public/:slug/bookings` принимает **только** `paymentMethod: 'card'` (это и значение по умолчанию). Другие значения — 400 «Бронирование на сайте — только с оплатой картой; для особых условий напишите нам». Модель уже решена владельцем: обычный гость бронирует только с оплатой.
+- Бронь создаётся `request` с `holdUntil = now + 30 мин` (технически). `POST /bookings/:token/pay` продлевает удержание до `max(holdUntil, now + 20 мин)`.
+- Если онлайн-оплата не подключена (`payments = null`), заявка честно истечёт; в продакшене оплата обязательна (ПЛАН.md, раздел 6 «Что нужно от владельца для запуска» — договор с платёжной системой).
+- **Оплата после истечения** (`applyPaymentResult`, бронь уже `cancelled` по истечению): в `withApartmentTx`, если даты свободны — вернуть бронь в `request` и подтвердить (`confirmBooking`); если заняты — бронь остаётся отменённой, платёж `succeeded`, строка журнала `event:payment.orphaned` → менеджерам и «Критично» в «Сегодня»: «Оплата без брони — верните деньги». Возврат денег — вручную, автоматического возврата нет.
+
+**Ссылка:** срок ссылки = `Booking.holdUntil`. Продлить — только пока не истёк. Истёкла — «Создать заново».
 
 ## 12. Уведомления
 
-Существующее: события → `service.js` → Telegram (если есть токен) или журнал; повторы гасит `dedupeKey`; менеджерам — по `managerNotify`. Гостю в Telegram до подтверждения писать нельзя (его чат появляется только после привязки `b_<token>`), поэтому напоминания гостю — сообщение админа вручную (кнопка «Скопировать напоминание»).
+Все события идут строками журнала `OutboxEvent kind:'event'` → `events.emit` → существующие `deliver()` с `dedupeKey`. Получатели — `toManagers()` по `managerNotify`. Гостю до подтверждения в Telegram писать нельзя (его чат появится только после привязки `b_<token>`), поэтому напоминание гостю — вручную: «Скопировать напоминание» в карточке.
 
-Цепочка (ответственный — получатели `toManagers`, по `managerNotify`):
-
-| Момент | Первая версия | Следующий шаг |
+| Момент | Первая версия | Следующий маленький шаг |
 |---|---|---|
-| Ссылка создана | только журнал | — |
-| Гость начал | `link.started` менеджерам (dedupe) | — |
-| Документы получены, ждём залог | `link.docs_received` (dedupe) | — |
-| Бронь подтверждена | `link.completed` + существующий `booking.confirmed` | — |
-| Не начал/не закончил, до истечения ≤ 3 ч | пункт «Требует действия» в «Сегодня» (вычисляется при чтении, без рассылки) | Telegram-напоминание ответственному из `startScheduler` (dedupe `link.reminder:<id>:1`) |
-| До истечения ≤ 1 ч | пункт «Критично» в «Сегодня» | второе напоминание + владельцу, если ответственный — админ (dedupe `:2`) |
-| Истекла | `link.expired` (dedupe) | — |
-| Конфликт дат | `link.conflict` (dedupe) + «Критично» | — |
+| Гость начал | `link.started` менеджерам | — |
+| Ждём админа (залог или подтверждение) | `link.needs_admin` | — |
+| Бронь подтверждена | `link.completed` + существующий `booking.confirmed` гостю | — |
+| До конца удержания ≤ 3 ч / ≤ 1 ч | пункты «Сегодня» (вычисляются при чтении) | Telegram-напоминание ответственному из `startScheduler` (`link.reminder:<id>:1/2`) |
+| Истекла | `link.expired` | — |
+| Конфликт дат | `link.conflict` + «Критично» | — |
+| Оплата без брони | `payment.orphaned` + «Критично» | — |
 
-Прежние цифры из ПЛАН.md (1 ч / 6 ч / передача владельцу до 24 ч) — **не окончательные**; пороги выше — предложение, их легко поменять в одном месте (`LINK_REMIND = [3h, 1h]`).
+Прежние цифры из ПЛАН.md (1 ч / 6 ч / передача владельцу до 24 ч) — не окончательные; пороги выше — технические.
 
-### 12а. «Двухчасовой буфер» → настройка
+### 12а. Минимальное время подготовки между гостями → настройка
 
-Сейчас (проход 3, приёмка) минимум между выездом предыдущего гостя и ранним заездом — константа `PREP_MIN = 120` в `src/routes/admin/ops.js` (проверка в `POST /bookings/:id/early-checkin`). Должна стать настройкой аккаунта «Минимальное время подготовки между гостями»:
-- поле `AccountSettings.minPrepMinutes Int @default(120)` (`prisma/schema.prisma` + PG);
-- значение по умолчанию в `src/services/settings.js` (`DEFAULT_SETTINGS`), чтение/запись в `src/routes/admin/settings.js` (zod 30…720, шаг 15), поле в форме «Настройки» `public/admin/admin.js` рядом с `driverStartWindowMin`;
-- читать в `routes/admin/ops.js` вместо `PREP_MIN` (`(await getSettings(accountId)).minPrepMinutes`).
-Проходу 4 это **не обязательно** (личная ссылка не меняет время заезда); делать отдельным маленьким шагом 8 плана, если владелец подтвердит.
+Сейчас (приёмка прохода 3) это константа `PREP_MIN = 120` в `src/routes/admin/ops.js` (проверка `POST /bookings/:id/early-checkin`). Должна стать настройкой «Минимальное время подготовки между гостями»:
+- поле `AccountSettings.minPrepMinutes Int @default(120)`;
+- значение по умолчанию в `src/services/settings.js → DEFAULT_SETTINGS`;
+- чтение и запись в `src/routes/admin/settings.js` (zod 30…720, шаг 15);
+- поле в форме «Настройки» в `public/admin/admin.js` рядом с `driverStartWindowMin`;
+- чтение в `routes/admin/ops.js` вместо `PREP_MIN`.
+Проходу 4 не обязательно; шаг 8 плана. 120 мин — техническое значение по умолчанию, владелец меняет в настройках.
 
-## 13. Интерфейс владельца/админа
+## 13. Интерфейс владельца и админа (без нового раздела; детали — на усмотрение исполнителя)
 
-Без нового раздела.
-
-- **«Брони»** → кнопка «＋ Личная ссылка» сверху. Форма в выдвижной панели (как карточки): квартира (список), даты, гостей, условия (2 варианта: «Наличные при заезде» / «Залог» + сумма), «Нужен билет» (галочка), «Ссылка действует» (24 ч по умолчанию; 6 ч / 24 ч / 48 ч / 72 ч), имя и телефон гостя (по желанию), своя цена (по желанию, по умолчанию — расчёт), комментарий для гостя. Кнопка «Создать».
-- **После создания:** большая ссылка + «Скопировать» + готовый текст для мессенджера («Здравствуйте! Ваша бронь: кв. 12, 8–10 окт, 40 000 ₸, наличные при заезде. Подтвердите до 5 окт 19:00: <ссылка>») + «Скопировать текст».
-- **Секция «Ожидают гостя»** (на месте нынешней «Ждут оплаты гостем») — карточка на ссылку: кому · квартира · даты · условия · «до …» · этап («Ждём гостя / Начал / Не хватает: паспорт / Документы получены — ждём залог») · нужно ли действие.
-- **Карточка брони** `source:'link'` — блок «Личная ссылка»: этап и что уже сделал гость (✔ данные, ✔ согласие, ✔ паспорт, — билет, — залог), срок, документы (кнопки «Открыть паспорт» — через защищённый адрес), действия: «Залог получен», «Продлить», «Новая ссылка», «Отозвать». После подтверждения — обычная карточка брони прохода 3 + свёрнутый блок документов.
-- **«Сегодня»** (в `todayView`, вместо `awaiting_payment` для `source:'link'`): `link_conflict` — Критично; `link_expiring` (≤ 1 ч — Критично, ≤ 3 ч — Требует действия) «Ссылка истекает через 2 ч — гость не закончил» → «Напомнить гостю или продлить»; `link_deposit` — Требует действия «Документы получены — отметьте залог»; остальные активные ссылки — «Информация» («Ждём гостя: кв. 12, до 19:00»). Владельцу — по общему правилу прохода 3.
-- **Календарь:** бронь по ссылке уже видна как неподтверждённая (`request`); добавить подпись «по ссылке · до 19:00» в подсказке плитки.
+- **«Брони»:** кнопка «＋ Личная ссылка» → форма в выдвижной панели (поля раздела 3) → после создания ссылка + «Скопировать» + готовый текст для мессенджера.
+- **Секция «Ожидают гостя»** (на месте «Ждут оплаты гостем»): ссылки и неоплаченные заявки сайта — кому, квартира, даты, условия, «до …», этап, нужно ли действие.
+- **Карточка брони** `source:'link'` — блок «Личная ссылка»:
+  - что сделано: ✔ данные, ✔ согласие, — залог, — подтверждение;
+  - срок;
+  - действия: «Залог получен», «Подтверждение получено», «Продлить», «Новая ссылка», «Отозвать», «Скопировать напоминание».
+- **«Сегодня»** (`todayView`):
+  - «Критично»: `link_conflict`, `payment_orphaned`, `outbox_failed`;
+  - `link_expiring`: ≤ 1 ч — «Критично», ≤ 3 ч — «Требует действия»;
+  - «Требует действия»: `link_needs_admin` («Гость всё заполнил — отметьте залог / подтверждение»);
+  - остальные активные ссылки — «Информация»;
+  - для брони по ссылке пункт `awaiting_payment` не показывается.
 
 ## 14. Интерфейс гостя
 
-Страница `/link/<token>` (существующая оболочка), вид `special`. Один экран сверху вниз, без входа и регистрации (регистрация не нужна: доступ даёт токен, а повторный вход — та же ссылка):
+Страница `/link/<token>`, вид `special`, один экран, без входа:
+1. Что предлагают: фото и название, даты и время, ночи, гостей, сумма.
+2. Условия: наличные при заезде, или залог N ₸ (остаток при заезде), плюс комментарий владельца.
+3. До когда: «Предложение действует до 5 окт, 19:00».
+4. Что сделать: имя, телефон, «Согласен с условиями» → «Подтвердить бронь». Если запрошено дополнительное подтверждение — текст владельца, что и куда прислать.
+5. Когда подтверждена: «Бронь подтверждена, когда отмечены все пункты» (+ «и владелец отметит залог / подтверждение»). Затем экран «✅ Бронь №… подтверждена», адрес, время заезда, «Получать сообщения в Telegram».
 
-1. **Что предлагают:** фото и название квартиры, даты (заезд с 14:00, выезд до 12:00), ночи, гостей, **сумма**.
-2. **Условия:** «Оплата наличными при заезде» или «Залог 20 000 ₸ — как внести, скажет владелец; остаток при заезде» + комментарий владельца.
-3. **До когда:** «Предложение действует до 5 окт, 19:00» (таймер не нужен).
-4. **Что сделать** — 3 шага с галочками состояния:
-   1) имя, телефон (+ e-mail по желанию), «Согласен с условиями» → «Сохранить»;
-   2) «Загрузить паспорт» (фото или PDF; можно несколько страниц) [+ «Загрузить билет»], список загруженного с «Удалить»;
-   3) «Подтвердить бронь».
-5. **Когда считается подтверждённой:** текст «Бронь подтверждена, когда все шаги отмечены ✔» (+ «и владелец отметит залог»). После — экран «✅ Бронь №1234 подтверждена», адрес, время заезда, кнопка «Получать сообщения в Telegram» (существующий `b_<token>`).
-- Обновление страницы на любом шаге — всё уже сохранено на сервере, страница показывает текущий шаг.
-- Ошибки простыми словами: «Файл больше 10 МБ», «Подходит фото или PDF», «Ссылка больше не действует — напишите владельцу», «Даты стали недоступны — владелец свяжется с вами».
-- Язык: русский; английский — P1 (тексты в `public/link`).
+Обновление страницы — состояние с сервера. Ошибки простыми словами. Английский — P1.
 
-## 15. Передача в проход 3
+## 15. Передача в проход 3 и минимальные общие изменения
 
-**Точка передачи — ровно одна:** в `submit` (или в «Залог получен», если гость уже нажимал «Подтвердить») после условной записи `BookingLink active → completed` и повторной проверки занятости вызывается
+**Точка передачи — одна:** `confirmBooking()` в транзакционном виде (раздел 4.5), вызываемая из `bookingLinks.submit / markDeposit / markExtraCheck`. После неё проход 4 ничего своего не делает:
+- подготовка — `CleaningTask` из `confirmBooking`;
+- водители — `dispatch.createForBooking` через журнал;
+- «Сегодня», готовность, недочёты — `ops.js`;
+- напоминания о заезде — `runReminders`;
+- выплаты — `performerPayouts`;
+- отмена — `cancelBooking()`.
 
-```js
-await confirmBooking({ accountId, bookingId: link.bookingId, events, dispatch, actor: { type: 'system', name: 'Личная ссылка' } });
-```
-
-(`server/src/services/bookings.js`). Перед этим — `prisma.booking.update` только платёжных полей: `paymentMethod: link.terms`, `paymentStatus: depositReceivedAt ? 'prepaid' : 'unpaid'`.
-
-После этой точки проход 4 **ничего своего не делает**: подготовку создаёт `confirmBooking`, заказ водителям — `dispatch.createForBooking` (если у брони есть трансфер), «Сегодня»/готовность/недочёты — `ops.js`, напоминания о заезде — `runReminders`, выплаты — `performerPayouts`. Отмена подтверждённой брони — существующая отмена (через вынесенную `cancelBooking()`).
-
-Изменения в коде прохода 3 (минимальные, только здесь): (а) вынести `cancelBooking()` и `withLock()` в общие модули без изменения поведения; (б) замок квартиры в `createBookingRequest()` и PATCH дат брони; (в) в `todayView()` — пункты `link_*` вместо `awaiting_payment` для `source:'link'`; (г) `expireDueLinks()` в начале перечисленных чтений; (д) в `cancelBooking()` — закрыть активную ссылку брони.
+**Изменения кода прохода 3 (только общие точки):**
+1. `services/bookings.js`:
+   - `withApartmentTx`, `releaseExpiredHolds`;
+   - `isAvailable(tx?)` с правилом `holdUntil`;
+   - `createBookingRequest` в транзакции с `holdUntil`;
+   - `confirmBooking` — транзакция + `CleaningTask.autoKey` + журнал;
+   - новая `cancelBooking()` (перенос из `operations.js`).
+2. `routes/admin/operations.js`: PATCH дат — через `withApartmentTx`; отмена — через `cancelBooking()`.
+3. `routes/public.js`: только `card`, `holdUntil`, продление при `/pay`.
+4. `payments/index.js → applyPaymentResult`: оплата после истечения.
+5. `routes/admin/workRequests.js → POST /repairs` с `blockDays`: через `withApartmentTx`.
+6. `notifications/scheduler.js`: `runOutbox`, `reconcileBookings`, `releaseExpiredHolds` в тике.
+7. `services/ops.js → todayView`: новые пункты (раздел 13).
+8. `services/outbox.js` (новый): `enqueue(tx, …)`, `runOutbox()`.
 
 ## 16. Сценарии сбоев
 
 | Сценарий | Безопасное поведение |
 |---|---|
-| Ссылку открыли дважды / в двух вкладках | Обе показывают одно состояние с сервера; действия идемпотентны. |
-| Форму данных отправили дважды | Второй запрос перезаписывает теми же данными; `link.started` один раз (dedupe). |
-| Ссылка истекла или отозвана во время заполнения | Следующий запрос → 410, страница «Ссылка больше не действует — напишите владельцу»; загрузка не принимается; документы удаляются. |
-| Документ загрузился частично / обрыв | multer принимает файл целиком или ошибка; записи без файла нет (сначала сохранить файл, потом запись; при ошибке записи — удалить файл). |
-| Тот же документ дважды | `@@unique([linkId, sha256])` → возвращается существующий. |
-| Квартира стала недоступна (ремонт) | Повторная проверка перед подтверждением → 409 гостю, `link.conflict`, «Критично» в «Сегодня»; двойной брони нет. |
-| Админ изменил даты | Гость видит новые даты; согласие сброшено (`termsHash`); подтвердить без новой галочки нельзя. |
-| Гость вернулся позже | Видит сохранённые шаги, продолжает (пока `active`). |
-| «Подтвердить» пришло дважды (двойной клик, повтор сети) | Условная запись `active→completed`: один победитель вызывает `confirmBooking`; второй получает тот же ответ «подтверждена». Одна подготовка, один заказ водителям (проверено приёмкой прохода 3). |
-| Обновление страницы между шагами | Состояние только на сервере; страница восстанавливается из `GET`. |
-| Украден токен | «Новая ссылка» / «Отозвать»; чужие документы злоумышленник не видит (гостю файлы не отдаются вообще). |
-| Перебор токенов | 256 бит + `linkGuard` (лимит на 404) + проверка длины до базы. |
-| Гость пытается открыть чужие документы | Гостевых адресов файлов нет; `DELETE` чужого `docId` → 404; админский адрес требует вход и `accountId`. |
-| Владелец/админ отменяет | До подтверждения — «Отозвать» (бронь `cancelled`, документы удалены). После — обычная отмена брони (ссылка `cancelled`, документы по сроку). |
-| Залог отмечен, а гость ещё не нажал «Подтвердить» | Ссылка ждёт нажатия гостя (бронь подтверждается только после явного «Подтвердить» гостя). |
-| Двойное «Залог получен» | Условная запись по `depositReceivedAt IS NULL`; повтор — 200 без эффектов. |
+| Ссылка открыта дважды / в двух вкладках | Одно состояние с сервера; действия идемпотентны. |
+| Форма отправлена дважды | Те же данные; `link.started` один раз. |
+| Истекла или отозвана во время заполнения | Следующий запрос — 410, понятный экран. |
+| «Подтвердить» ровно в `holdUntil` | Уже истекло (строгая граница `now < holdUntil`), 410; бронь отменена, даты свободны. |
+| Двойной «Подтвердить» / повтор после таймаута клиента | Одна условная запись побеждает; второй получает «подтверждена». Одна бронь, одна подготовка, один заказ. |
+| Процесс упал после коммита подтверждения | Бронь, подготовка и строки журнала уже в базе (одна транзакция). После перезапуска `runOutbox` при старте или по планировщику создаёт заказы водителям и шлёт уведомления; повторы гасят уникальные ключи. |
+| Процесс упал до коммита | Транзакция откатилась: бронь осталась `request`, гость повторяет «Подтвердить». |
+| Две копии сервера одновременно бронируют одни даты | Блокировка строки квартиры выстраивает их по очереди; если путь её не взял — `EXCLUDE` отклоняет вторую запись → 409. |
+| Публичная бронь против создания ссылки на те же даты | То же: одна побеждает, вторая 409. |
+| Смена дат против новой брони | Обе в `withApartmentTx`; база не допустит пересечения. |
+| Квартиру закрыли ремонтом | Проверка в транзакции подтверждения → 409, `link.conflict`, «Критично». |
+| Админ изменил даты | Гость видит новые; нужна новая галочка. |
+| Гость вернулся позже | Видит сохранённое, продолжает, пока не истекло. |
+| Неоплаченная заявка с сайта | Через 30 мин (или 20 мин после открытия оплаты) не держит даты; снимается лениво или планировщиком. |
+| Оплата пришла после истечения | Даты свободны — бронь восстанавливается и подтверждается; заняты — «Оплата без брони — верните деньги». |
+| Украден токен | «Новая ссылка» или «Отозвать»; документов в системе нет. |
+| Перебор токенов | 256 бит + `linkGuard`. |
+| Владелец или админ отменяет | `cancelBooking()`: даты свободны, ссылка закрыта, водителям отмена через журнал. |
+| Строка журнала падает 5 раз | `failed` → «Критично» в «Сегодня», разбор вручную; бронь при этом уже подтверждена и с подготовкой. |
 
-## 17. Тесты
+## 17. Тесты (обязательные)
 
-Новый файл `server/tests/pass4.test.js` (+ проверки в `scripts/demo-e2e.py`). Каждый тест — под конкретный риск.
+Файл `server/tests/pass4.test.js`. Тесты гонок на PostgreSQL — `server/tests/pass4.pg.test.js` (запуск в `npm run test:pg`; на SQLite пропускаются с пометкой). Плюс проверки в `scripts/demo-e2e.py`.
 
-**P0**
-- Токен: в базе только хэш; неверный/короткий токен → 404 и счётчик `linkGuard`; после 20 неверных → 429.
-- Двойная бронь: создать ссылку на занятые даты → 409; одновременные «создать ссылку» и `POST /public/bookings` на те же даты → ровно одна бронь; ремонт закрыл даты → `submit` 409, бронь остаётся `request`.
-- Истечение: `expiresAt` в прошлом → гость 410, бронь `cancelled`, `isAvailable` снова `true`, документы удалены; продлить истёкшую → 409.
-- Повторы: 3 одновременных `submit` → одна `confirmed`, одна `CleaningTask`, один `TransferJob` (если есть трансфер), одно событие `link.completed`; повторная загрузка того же файла → одна запись.
-- Подтверждение только при выполненных условиях: без согласия / без паспорта / без билета (если нужен) / без залога (B) → 409 с `missing`; после изменения дат админом — снова нужна галочка.
-- Документы: исполнители (подготовка, мастер, водитель) → 403 на `/api/admin/booking-links/*`; админ другого аккаунта → 404; гость не получает файлов и не удаляет чужой `docId`; `/uploads/...` не содержит документов; файл с подменённым расширением (не JPG/PNG/HEIC/PDF по сигнатуре) → 415; >10 МБ → 413.
-- После `completed` ни данные, ни документы гостем не меняются (409).
+**P0 — без них проход не принимается:**
+1. Две одновременные брони одной квартиры на пересекающиеся даты → ровно одна, вторая 409.
+2. Гонка из **разных копий приложения** на одной PostgreSQL: два отдельных `PrismaClient` (или два дочерних процесса `node`) одновременно создают пересекающиеся брони → одна; плюс прямая вставка в обход кода (`$executeRaw`) отклоняется ограничением `booking_no_overlap`.
+3. Обычная публичная бронь против личной ссылки на те же даты → одна.
+4. Смена дат брони против одновременной новой брони → пересечения нет.
+5. Истечение ссылки: после `holdUntil` гость получает 410, бронь `cancelled`, `isAvailable` = true.
+6. Подтверждение ровно в момент `holdUntil` → истекло (410), до него на 1 мс — подтверждено.
+7. Повторный POST подтверждения → тот же ответ, одна бронь.
+8. Повтор после таймаута клиента (первый запрос завершился на сервере, клиент не получил ответ) → «подтверждена», без вторых эффектов.
+9. Падение процесса после подтверждения, до последующего действия: подменить `runOutbox` на падающий → бронь `confirmed`, `CleaningTask` есть, `TransferJob` нет, строка журнала `pending`.
+10. Восстановление после перезапуска: новый экземпляр приложения → `runOutbox()` → `TransferJob` создан, уведомление отправлено; повторный прогон ничего не дублирует.
+11. Нет дублей: после повторов, сверки (`reconcileBookings`) и двух прогонов журнала — ровно одна `CleaningTask` на бронь и один `TransferJob` на трансфер.
+12. Отмена и истечение освобождают даты: новая бронь на те же даты проходит.
+13. Паспорт и билет не блокируют: ссылка без `extraCheckRequired` подтверждается без каких-либо документов и отметок; с `extraCheckRequired` — только после «Подтверждение получено».
+14. Публичная неоплаченная заявка не держит даты вечно: `paymentMethod ≠ card` → 400; заявка `card` после `holdUntil` не блокирует; оплата после истечения — восстановление или «оплата без брони».
+15. Безопасность: в базе только хэш токена; неверный или короткий токен → 404 и счётчик `linkGuard`, после лимита — 429; исполнители → 403 на `/api/admin/booking-links/*`; гостевые ответы без внутренних id и без адреса до подтверждения.
+16. Условия: без согласия, после смены дат (старый `termsHash`), без залога (B) → `missing`, бронь не подтверждена.
 
-**P1**
-- Этапы для админа (`stage`, `missing`) на каждом шаге; пункты «Сегодня» `link_expiring/link_deposit/link_conflict` и исчезновение после исправления.
-- Отозвать / новая ссылка (старый токен 404) / продлить (граница 7 суток).
-- Восстановление после обновления (GET возвращает сохранённое).
-- Ошибки загрузки (тип, размер, лимит количества).
-- Уведомления с `dedupeKey` не повторяются.
+**P1:** этапы `stage/missing`; пункты «Сегодня» и их исчезновение после исправления; продление (граница 7 суток), новая ссылка (старый токен 404), отзыв; восстановление после обновления страницы; `outbox_failed` после 5 попыток; уведомления без повторов.
 
-**E2E (`demo-e2e.py`)**
-- Счастливый путь: админ создаёт ссылку → копирует → гость открывает → данные → паспорт → «Подтвердить» → бронь подтверждена → подготовка видна в календаре и «Сегодня».
-- Негатив: истёкшая ссылка → экран «не действует»; двойной «Подтвердить» → одна бронь; конфликт дат → сообщение гостю и «Критично» у админа; ошибок в консоли нет.
+**E2E:**
+- админ создаёт ссылку → гость подтверждает → бронь подтверждена → подготовка в календаре и «Сегодня»;
+- негатив: истёкшая ссылка, двойной «Подтвердить», конфликт дат;
+- ошибок в консоли нет.
 
-## 18. План реализации (каждый шаг — отдельный коммит с тестами, проект рабочий после каждого)
+## 18. План реализации (каждый шаг — коммит с тестами, проект рабочий после каждого)
 
-0. **Фундамент без изменения поведения:** `src/lib/lock.js` (`withLock` из `defects.js`), `cancelBooking()` в `services/bookings.js` (перенос из `operations.js`), замок квартиры в `createBookingRequest()` и PATCH дат. Тест: одновременные брони на одни даты → одна. Регрессия 103/103.
-1. **Схема:** `BookingLink`, `BookingDocument` (+ `minPrepMinutes`, если решено), миграции SQLite и PG, `pg:schema`, `test:pg`.
-2. **Сервис `services/bookingLinks.js`:** `create`, `findByToken` (хэш), `expireDueLinks`, `extend`, `rotate`, `revoke`, `markDeposit`, `missing`, `stage`, `submit` (→ `confirmBooking`). Админ-API 6.1 (без документов). Тесты P0 токен/занятость/истечение/повторы.
-3. **Приватные документы:** `savePrivate/readPrivate/removePrivate` в адаптерах (local, s3, демо), `looksLikeDocument`, гостевая загрузка/удаление, админский просмотр с `accessLog`, `purgeDocuments`. Тесты прав и форматов.
-4. **Гостевое API 6.2 + `linkKind` (`kind:'special'`)** и вид на `/link/<token>`.
-5. **Админка:** форма «＋ Личная ссылка», секция «Ожидают гостя», блок в карточке брони; пункты `link_*` в `todayView`.
-6. **Уведомления первой версии** (события + шаблоны, dedupe).
-7. **E2E + пересборка демо v2 + сид демо** (одна активная ссылка «ждём гостя» и одна «документы получены — ждём залог»), документация (ПЛАН.md, README_SERVER.md).
-8. (Отдельно, по решению владельца) настройка `minPrepMinutes` (раздел 12а).
-9. (Следующий маленький шаг) напоминания и `purgeDocuments` из `startScheduler`.
+0. **Фундамент занятости (общий с проходом 3).**
+   - Миграция: `Booking.holdUntil`, `CleaningTask.autoKey`, `OutboxEvent`; для PG — `btree_gist` + `booking_no_overlap` и чистка данных.
+   - Код: `withApartmentTx`, `releaseExpiredHolds`, правило `holdUntil` в `isAvailable/busyRanges`/календаре; все пути раздела 10.
+   - Тесты P0 №1–4, 12 на SQLite и PG (`test:pg`). Регрессия 103/103.
+1. **Надёжное подтверждение.** `services/outbox.js`, транзакционная `confirmBooking`, `cancelBooking`, `reconcileBookings`, запуск в `startScheduler` и при старте. Тесты P0 №9–11.
+2. **Сайт: только оплата.** Только `card`, `holdUntil` 30 мин, продление при `/pay`, оплата после истечения, `payment_orphaned`. Тест P0 №14; поправить старые тесты и демо, которые создают заявки без `card`.
+3. **Ссылка: модель и сервис.** `BookingLink`, `services/bookingLinks.js`, админ-API 6.1. Тесты P0 №5–8, 13, 15, 16.
+4. **Гостевое API 6.2** + `linkKind` (`kind:'special'`) + вид на `/link/<token>`.
+5. **Админка и «Сегодня»** (раздел 13).
+6. **Уведомления** (раздел 12, первая версия).
+7. **E2E, сид демо** (одна ссылка «ждём гостя», одна «ждём залог»), пересборка v2, ПЛАН.md, README_SERVER.md.
+8. (Отдельно) настройка `minPrepMinutes`.
+9. (Следующий маленький шаг) напоминания ответственному в Telegram.
 
 ## 19. Сознательно отложено
 
-- Онлайн-залог через платёжную систему (`payments.createPayment` уже есть; нужен отдельный `Payment` «залог» и статус `prepaid` без автоподтверждения) — после договора с платёжной системой.
-- Заказ трансфера и ранний заезд со страницы ссылки (существующие `POST /public/:slug/transfers` по `Booking.token` и `earlyCheckIn`) — P1, после основного потока.
+- Загрузка паспорта и билета в систему (`BookingDocument`, приватное хранение) — только по просьбе владельца (раздел 9).
+- Миграционный учёт иностранцев, eQonaq — будущий этап, привязанный к заселению.
+- Онлайн-залог через платёжную систему — после договора.
+- Трансфер и ранний заезд со страницы ссылки — P1 (существующие эндпоинты по `Booking.token`).
 - Английский язык страницы гостя — P1.
-- Напоминания в Telegram и удаление документов по расписанию — следующий шаг (код тот же, вызов из `startScheduler`).
-- Проверка паспорта человеком перед подтверждением (режим «на проверке») — только если владелец решит (раздел 20).
-- Ограничение в базе против двойной брони (`EXCLUDE` в PostgreSQL), счётчики лимитов в Redis — перед запуском нескольких копий сервера.
-- Истечение неоплаченных броней с сайта (`source:'site'`) и запрет `paymentMethod:'cash'` в публичном API — отдельное решение (тот же механизм).
-- Регистрация гостя, распознавание паспорта, Airbnb/iCal, CRM, чат — не делаем.
+- Счётчики лимитов в Redis (`linkGuard` в памяти процесса) — перед запуском нескольких копий; на корректность брони не влияет.
+- Автоматический возврат денег — не делаем.
+- Регистрация гостя, Airbnb/iCal, CRM, чат — не делаем.
 
-## 20. Риски и открытые вопросы
+## 20. Риски и вопросы
 
-### Технические риски
-- **Двойная бронь при одновременных запросах** — существует сейчас в `createBookingRequest()` (проверка и запись без замка; было до прохода 3). Закрывается шагом 0 (внутри одного процесса) и ограничением в базе при масштабировании.
-- **Ленивое истечение** зависит от того, что кто-то смотрит на даты; поэтому вызов встроен во все чтения занятости (раздел 11), а планировщик — следующим шагом.
-- **Хранение паспортов** — персональные данные: приватная папка, сроки удаления, резервные копии (раздел 9) — обязательны до продакшена.
-- **Превью ссылок в мессенджерах** открывают адрес — поэтому «начал» считается по первому действию гостя, а не по открытию.
-- **Неоплаченные заявки с сайта** продолжают держать даты бессрочно (не проход 4) — риск «пустого» календаря.
+### Технические риски (с решением)
+- **Prisma и `EXCLUDE`:** Prisma не описывает такие ограничения в схеме. Ограничение живёт только в ручной SQL-миграции PG. Для PostgreSQL нельзя использовать `prisma db push` (снёс бы ограничение); в проекте и так `migrate deploy`. Тест P0 №2 проверяет, что ограничение есть.
+- **`linkGuard` в памяти процесса:** при нескольких копиях лимит считается на каждую отдельно. На двойную бронь не влияет; Redis — перед масштабированием.
+- **Ленивое снятие удержаний:** благодаря правилу `holdUntil > now` в чтениях истёкшее удержание не мешает, даже если ещё не снято.
+- **Оплата после истечения** — редкий ручной возврат; виден в «Сегодня».
 
-### Открытые БИЗНЕС-вопросы (ответ нужен от владельца; до ответа действуют значения по умолчанию)
-1. **Билет обязателен?** По умолчанию — нет, галочка «Нужен билет» на каждой ссылке.
-2. **Залог:** какая сумма по умолчанию и как гость его вносит (Kaspi-перевод с отметкой «Залог получен» админом — по умолчанию; онлайн — позже)?
-3. **Сколько хранить паспорт после выезда?** Предложение — 30 дней.
-4. **Держит ли ссылка «наличные при заезде» даты без гарантии и сколько?** По умолчанию — да, 24 ч (1–72 ч по выбору админа).
-5. **Подтверждать автоматически, когда гость всё загрузил, или после просмотра паспорта админом?** По умолчанию — автоматически (владелец уже одобрил гостя, создавая ссылку; отменить можно всегда).
-6. **Можно ли давать особую цену по ссылке?** По умолчанию — да (поле «своя цена»).
-7. **Минимальное время подготовки между гостями** — 2 ч по умолчанию; сделать настройкой (раздел 12а)?
+### Вопросы, которые действительно нужны владельцу
+1. **Может ли администратор (не только владелец) ставить в личной ссылке свою цену, отличную от обычной?** Пока владелец не ответил, своя цена доступна только владельцу; администратор создаёт ссылку по обычной цене. На реализацию это не влияет: проверка роли в одном месте.
+
+Остальное, что раньше было вопросами, решено так:
+- паспорт и билет — решение владельца (необязательны, по выбору для каждой ссылки), срок хранения не нужен;
+- срок ссылки, удержание сайта, пороги, 120 мин подготовки — технические значения по умолчанию;
+- залог — сумму вводит админ в ссылке, способ получения вне системы, в системе только отметка «Залог получен»;
+- подтверждение сразу или после проверки — выбирается для каждой ссылки флагом «Нужно дополнительное подтверждение»;
+- кто создаёт ссылки — уже решено (владелец или администратор).
