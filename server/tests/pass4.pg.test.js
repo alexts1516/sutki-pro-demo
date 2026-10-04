@@ -181,6 +181,18 @@ try {
   } else if (a.mode === 'release') {   // шаг 4: планировщик снимает истёкшие удержания
     const { releaseAllExpiredHolds } = await import('./src/services/bookings.js');
     out = { ok: true, released: await releaseAllExpiredHolds(), ms: Date.now() - t0 };
+  } else if (a.mode === 'link' || a.mode === 'extend' || a.mode === 'rotate') {   // шаг 6: сервис личных ссылок в отдельном процессе
+    const L = await import('./src/services/bookingLinks.js');
+    if (a.mode === 'link') {
+      const r = await L.createLink({ accountId: a.accountId, actor: { id: a.userId, name: 'Процесс', type: 'owner' }, apartmentId: a.apartmentId, checkIn: new Date(a.checkIn), checkOut: new Date(a.checkOut), guestsCount: 1, terms: 'cash_on_arrival' });
+      out = { ok: true, id: r.link.id, bookingId: r.link.bookingId, ms: Date.now() - t0 };
+    } else if (a.mode === 'extend') {
+      const r = await L.extendLink({ accountId: a.accountId, linkId: a.linkId, hours: a.hours });
+      out = { ok: true, status: r.status, holdUntil: r.holdUntil, ms: Date.now() - t0 };
+    } else {
+      const r = await L.rotateLink({ accountId: a.accountId, linkId: a.linkId });
+      out = { ok: true, token: r.token, ms: Date.now() - t0 };
+    }
   } else if (a.mode === 'create') {
     const apartment = await prisma.apartment.findUnique({ where: { id: a.apartmentId } });
     const b = await createBookingRequest({ accountId: a.accountId, apartment, checkIn: new Date(a.checkIn), checkOut: new Date(a.checkOut), guestsCount: 1, guest: null, paymentMethod: 'card' });
@@ -366,4 +378,64 @@ test('PG шаг 4: три процесса — поздняя оплата vs н
   }
   console.log('# исходы поздней оплаты:', outcomes.join(', '));
   assert.ok(outcomes.includes('restored'), 'хотя бы раз оплата успела первой — бронь восстановлена');
+});
+
+// ---------- Шаг 6: личные ссылки — гонки отдельных процессов ----------
+
+test('PG шаг 6: два процесса одновременно создают ссылку на одни даты → одна ссылка и одна бронь, вторая 409', { skip }, async () => {
+  const om = await prisma.membership.findFirst({ where: { accountId: acc.id, role: 'owner' } });
+  for (let round = 0; round < 3; round++) {
+    const from = 700 + round * 10;
+    const startAt = Date.now() + 2500;
+    const args = { mode: 'link', startAt, accountId: acc.id, userId: om.userId, apartmentId: apt.id, checkIn: addDays(today, from).toISOString(), checkOut: addDays(today, from + 2).toISOString() };
+    const rs = await Promise.all([appChild(args), appChild(args)]);
+    assert.equal(rs.filter(r => r.ok).length, 1, JSON.stringify(rs));
+    const bad = rs.find(r => !r.ok);
+    assert.equal(bad.status, 409, JSON.stringify(bad));
+    assert.equal(await blocking(from, from + 2), 1);
+    assert.equal(await prisma.bookingLink.count({ where: { booking: { apartmentId: apt.id, checkIn: addDays(today, from) } } }), 1);
+  }
+});
+
+test('PG шаг 6: личная ссылка против брони с сайта на те же даты (разные процессы) → одна', { skip }, async () => {
+  const om = await prisma.membership.findFirst({ where: { accountId: acc.id, role: 'owner' } });
+  for (let round = 0; round < 3; round++) {
+    const from = 740 + round * 10;
+    const startAt = Date.now() + 2500;
+    const common = { startAt, accountId: acc.id, apartmentId: apt.id, checkIn: addDays(today, from).toISOString(), checkOut: addDays(today, from + 2).toISOString() };
+    const rs = await Promise.all([appChild({ ...common, mode: 'link', userId: om.userId }), appChild({ ...common, mode: 'create' })]);
+    assert.equal(rs.filter(r => r.ok).length, 1, JSON.stringify(rs));
+    assert.equal(rs.find(r => !r.ok).status, 409);
+    assert.equal(await blocking(from, from + 2), 1);
+  }
+});
+
+test('PG шаг 6: продление против истечения (планировщик) в разных процессах → согласованный итог', { skip }, async () => {
+  const { createLink } = await import('../src/services/bookingLinks.js');
+  const om = await prisma.membership.findFirst({ where: { accountId: acc.id, role: 'owner' } });
+  for (let round = 0; round < 3; round++) {
+    const from = 780 + round * 10;
+    const { link } = await createLink({ accountId: acc.id, actor: { id: om.userId, name: 'Тест', type: 'owner' }, apartmentId: apt.id, checkIn: addDays(today, from), checkOut: addDays(today, from + 2), guestsCount: 1, terms: 'cash_on_arrival' });
+    const startAt = Date.now() + 2500;
+    await prisma.booking.update({ where: { id: link.bookingId }, data: { holdUntil: new Date(startAt + 40) } });   // истекает «в момент» гонки
+    const [ext] = await Promise.all([appChild({ mode: 'extend', startAt: startAt + 40, accountId: acc.id, linkId: link.id, hours: 1 }), appChild({ mode: 'release', startAt: startAt + 40 })]);
+    const l = await prisma.bookingLink.findUnique({ where: { id: link.id } });
+    const b = await prisma.booking.findUnique({ where: { id: link.bookingId } });
+    if (ext.ok) { assert.equal(l.status, 'active'); assert.equal(b.status, 'request'); assert.ok(b.holdUntil > new Date()); }
+    else { assert.equal(ext.status, 409, JSON.stringify(ext)); assert.equal(l.status, 'expired'); assert.equal(b.status, 'cancelled'); }
+  }
+});
+
+test('PG шаг 6: две одновременные «Новая ссылка» → действует ровно один из выданных токенов', { skip }, async () => {
+  const { createLink, findLinkByToken } = await import('../src/services/bookingLinks.js');
+  const om = await prisma.membership.findFirst({ where: { accountId: acc.id, role: 'owner' } });
+  const { link, token } = await createLink({ accountId: acc.id, actor: { id: om.userId, name: 'Тест', type: 'owner' }, apartmentId: apt.id, checkIn: addDays(today, 820), checkOut: addDays(today, 822), guestsCount: 1, terms: 'cash_on_arrival' });
+  const startAt = Date.now() + 2500;
+  const rs = await Promise.all([0, 1].map(() => appChild({ mode: 'rotate', startAt, accountId: acc.id, linkId: link.id })));
+  const okTokens = rs.filter(r => r.ok).map(r => r.token);
+  assert.ok(okTokens.length >= 1, JSON.stringify(rs));
+  const valid = [];
+  for (const t of [token, ...okTokens]) if (await findLinkByToken(t)) valid.push(t);
+  assert.equal(valid.length, 1, 'ровно один действующий токен');
+  assert.notEqual(valid[0], token);
 });

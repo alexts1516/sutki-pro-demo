@@ -34,6 +34,7 @@ export function blockingWhere(now = new Date()) {
 }
 
 /** Снять истёкшие удержания: заявки с holdUntil <= now → cancelled + строка журнала event:booking.hold_expired.
+ *  Личная ссылка такой брони — active → expired + строка event:link.expired (шаг 6).
  *  Условная запись — безопасно при повторе и при нескольких процессах. Заявки без срока (holdUntil = null) не трогает.
  *  db — tx транзакции квартиры (withApartmentTx) или общий клиент. Возвращает число снятых. */
 export async function releaseExpiredHolds(db = prisma, { accountId, apartmentId, now = new Date() } = {}) {
@@ -45,13 +46,18 @@ export async function releaseExpiredHolds(db = prisma, { accountId, apartmentId,
     if (!r.count) continue;
     n++;
     await enqueue(db, { accountId: b.accountId, kind: 'event', payload: { name: 'booking.hold_expired', data: { accountId: b.accountId, bookingId: b.id } }, dedupeKey: `event:booking.hold_expired:${b.id}` });
+    // проход 4, шаг 6: личная ссылка этой брони active → expired (та же условная запись — повтор ничего не меняет)
+    const link = await db.bookingLink.findUnique({ where: { bookingId: b.id }, select: { id: true } });
+    if (link && (await db.bookingLink.updateMany({ where: { id: link.id, status: 'active' }, data: { status: 'expired', closedAt: now } })).count) {
+      await enqueue(db, { accountId: b.accountId, kind: 'event', payload: { name: 'link.expired', data: { accountId: b.accountId, bookingId: b.id, linkId: link.id } }, dedupeKey: `event:link.expired:${link.id}` });
+    }
   }
   return n;
 }
 
 /** Снять истёкшие удержания во всех квартирах (планировщик): по одной транзакции квартиры на каждую. */
-export async function releaseAllExpiredHolds({ now = new Date() } = {}) {
-  const list = await prisma.booking.findMany({ where: { status: 'request', holdUntil: { not: null, lte: now } }, select: { apartmentId: true } });
+export async function releaseAllExpiredHolds({ now = new Date(), accountId } = {}) {   // accountId — ленивое снятие при чтении (шаг 6)
+  const list = await prisma.booking.findMany({ where: { status: 'request', holdUntil: { not: null, lte: now }, ...(accountId ? { accountId } : {}) }, select: { apartmentId: true } });
   const apts = [...new Set(list.map(b => b.apartmentId))];
   for (const apartmentId of apts) await withApartmentTx(apartmentId, () => null);   // снятие выполняет сама withApartmentTx, под блокировкой квартиры
   return list.length;
@@ -133,14 +139,14 @@ export async function nextBookingNumber(accountId, db = prisma) {
 
 /** Создать заявку на бронь (статус request). Бросает 409, если даты заняты.
  *  Проверка и создание — в одной транзакции квартиры (withApartmentTx). holdUntil — срок удержания (сайт: +30 мин,
- *  шаг 4 прохода 4); null — без срока. */
-export async function createBookingRequest({ accountId, apartment, checkIn, checkOut, guestsCount, guest, source = 'site', pets = false, note, paymentMethod, currencyShown = 'KZT', amountShown = null, holdUntil = null }) {
+ *  шаг 4 прохода 4); null — без срока. onCreated(tx, booking) — записи в той же транзакции, её результат возвращается. */
+export async function createBookingRequest({ accountId, apartment, checkIn, checkOut, guestsCount, guest, source = 'site', pets = false, note, paymentMethod, currencyShown = 'KZT', amountShown = null, holdUntil = null, onCreated = null }) {
   const q = quote(apartment, checkIn, checkOut, pets);
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
       return await withApartmentTx(apartment.id, async (tx) => {
         if (!(await isAvailable(accountId, apartment.id, checkIn, checkOut, null, tx))) throw new HttpError(409, DATES_TAKEN);
-        return tx.booking.create({
+        const created = await tx.booking.create({
           data: {
             accountId, apartmentId: apartment.id, guestId: guest?.id, number: await nextBookingNumber(accountId, tx), token: randomToken(12),
             source, status: 'request', checkIn, checkOut, guestsCount, nightlyKzt: q.nightlyKzt, totalKzt: q.totalKzt, petFeeKzt: q.petFeeKzt,
@@ -148,6 +154,8 @@ export async function createBookingRequest({ accountId, apartment, checkIn, chec
           },
           include: { apartment: true, guest: true },
         });
+        // onCreated(tx, booking) — дополнительные записи В ТОЙ ЖЕ транзакции (личная ссылка, шаг 6): всё или ничего
+        return onCreated ? onCreated(tx, created) : created;
       });
     } catch (e) { if (e.code !== 'P2002' || attempt === 2) throw e; }   // номер брони заняли параллельно (другая квартира) — вся транзакция заново
   }
@@ -171,6 +179,11 @@ export async function confirmRequestInTx(tx, b, { actor = null } = {}) {
   const won = await tx.booking.updateMany({ where: { id: b.id, status: 'request' }, data: { status: 'confirmed', confirmedAt: new Date(), holdUntil: null } });
   if (!won.count) throw new HttpError(409, 'Подтвердить можно только новую заявку');   // под блокировкой квартиры не бывает; на всякий случай
   await ensureTurnover(tx, b);
+  // проход 4, шаг 6: личная ссылка этой брони active → completed (любой путь подтверждения оставляет ссылку согласованной)
+  const link = await tx.bookingLink.findUnique({ where: { bookingId: b.id }, select: { id: true } });
+  if (link && (await tx.bookingLink.updateMany({ where: { id: link.id, status: 'active' }, data: { status: 'completed', completedAt: new Date() } })).count) {
+    await enqueue(tx, { accountId: b.accountId, kind: 'event', payload: { name: 'link.completed', data: { accountId: b.accountId, bookingId: b.id, linkId: link.id } }, dedupeKey: `event:link.completed:${link.id}` });
+  }
   const [eventKey, dispatchKey] = confirmKeys(b.id);
   await enqueue(tx, { accountId: b.accountId, kind: 'event', payload: { name: 'booking.confirmed', data: { accountId: b.accountId, bookingId: b.id } }, dedupeKey: eventKey });
   await enqueue(tx, { accountId: b.accountId, kind: 'transfers.dispatch', payload: { bookingId: b.id, actor }, dedupeKey: dispatchKey });
@@ -203,7 +216,7 @@ export async function confirmBooking({ accountId, bookingId, events, dispatch = 
  *  В транзакции квартиры: перечитать, проверить правила, условная запись → cancelled (даты свободны), удалить только
  *  неначатую подготовку (assigned), строка журнала transfers.cancel. После коммита — отмена заказов водителям.
  *  Повтор — 409 «Бронь уже отменена» без каких-либо эффектов. */
-export async function cancelBooking({ accountId, bookingId, today, events = null, dispatch = null, actor = null, reason = 'Бронь отменена' }) {
+export async function cancelBooking({ accountId, bookingId, today, events = null, dispatch = null, actor = null, reason = 'Бронь отменена', onlyStatus = null }) {   // onlyStatus — отзыв ссылки: только заявку
   const b0 = await prisma.booking.findFirst({ where: { id: bookingId, accountId }, select: { apartmentId: true } });
   if (!b0) throw new HttpError(404, 'Бронь не найдена');
   const key = `transfers.cancel:${bookingId}`;
@@ -211,10 +224,15 @@ export async function cancelBooking({ accountId, bookingId, today, events = null
     const b = await tx.booking.findFirst({ where: { id: bookingId, accountId } });
     if (!b) throw new HttpError(404, 'Бронь не найдена');
     if (!BLOCKING.includes(b.status)) throw new HttpError(409, b.status === 'cancelled' ? 'Бронь уже отменена' : 'Бронь завершена — отменить нельзя');
+    if (onlyStatus && b.status !== onlyStatus) throw new HttpError(409, 'Бронь уже подтверждена');
     if (b.status === 'confirmed' && today && b.checkOut <= today) throw new HttpError(409, 'Гость уже выехал — отменить нельзя');
     const won = await tx.booking.updateMany({ where: { id: b.id, status: b.status }, data: { status: 'cancelled' } });
     if (!won.count) throw new HttpError(409, 'Бронь уже отменена');
     await tx.cleaningTask.deleteMany({ where: { bookingId: b.id, status: 'assigned' } });   // начатую и законченную подготовку не трогаем
+    // проход 4, шаг 6: личная ссылка закрывается — active → revoked, completed → cancelled (раздел 4.3)
+    const closed = { closedAt: new Date(), closedByName: actor?.name || null };
+    await tx.bookingLink.updateMany({ where: { bookingId: b.id, status: 'active' }, data: { status: 'revoked', ...closed } });
+    await tx.bookingLink.updateMany({ where: { bookingId: b.id, status: 'completed' }, data: { status: 'cancelled', ...closed } });
     await enqueue(tx, { accountId, kind: 'transfers.cancel', payload: { bookingId: b.id, actor, reason }, dedupeKey: key });
     return tx.booking.findUnique({ where: { id: b.id }, include: { apartment: true, guest: true } });
   });

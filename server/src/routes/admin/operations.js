@@ -10,6 +10,7 @@ import { parseDay, isoDay, addDays, todayIn } from '../../lib/dates.js';
 import { cancelBooking, confirmBooking, isAvailable, withApartmentTx } from '../../services/bookings.js';
 import { loadCurrency } from '../../site/config.js';
 import { cleaningReport } from '../../services/cleaning.js';
+import { logDatesChangedInTx } from '../../services/linkPrice.js';
 
 export default function operationsRouter({ events, dispatch, cleaning }) {
   const r = Router();
@@ -70,6 +71,7 @@ export default function operationsRouter({ events, dispatch, cleaning }) {
       const n = Math.round((co - ci) / 86400000);
       const upd = await tx.booking.update({ where: { id: cur.id }, data: { ...data, checkIn: ci, checkOut: co, totalKzt: cur.nightlyKzt * n + cur.petFeeKzt }, include: { apartment: true, guest: true } });
       await tx.cleaningTask.updateMany({ where: { bookingId: cur.id, status: { in: ['assigned', 'enroute'] } }, data: { date: upd.checkOut } });   // идущую подготовку не двигаем
+      await logDatesChangedInTx(tx, { old: cur, upd, actor: actorOf(req) });   // бронь по ссылке: сумма изменилась → журнал цены (проход 4, шаг 6); новый termsHash — гость соглашается заново
       return upd;
     });
     await dispatch.syncBookingDates({ accountId: req.accountId, booking: u, actor: actorOf(req) });   // водители и уведомления — после записи

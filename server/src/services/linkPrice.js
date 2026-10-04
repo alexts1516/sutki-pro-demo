@@ -43,6 +43,7 @@ export async function setLinkPriceInTx(tx, { accountId, bookingId, userId, total
   if (!link) throw new HttpError(409, 'Индивидуальная цена — только для брони по личной ссылке');
   if (b.status === 'confirmed' || b.status === 'completed' || link.status === 'completed') throw new HttpError(409, 'Бронь уже подтверждена — цену по ссылке менять нельзя');
   if (b.status !== 'request' || link.status !== 'active' || (b.holdUntil && b.holdUntil <= now)) throw new HttpError(409, 'Ссылка больше не действует — цену менять нельзя');
+  if (link.terms === 'deposit' && link.depositKzt && totalKzt < link.depositKzt) throw badRequest('Цена не может быть меньше залога');   // залог — 1…сумма (раздел 6.1)
   if (totalKzt === b.totalKzt) return { changed: false, booking: b, change: null };   // та же сумма — без записи
   const n = countNights(b.checkIn, b.checkOut);
   // цена за ночь пересчитывается, чтобы смена дат (существующее правило: цена за ночь × ночи + животные) осталась пропорциональной
@@ -66,4 +67,20 @@ export async function setLinkPrice({ accountId, bookingId, userId, totalKzt, rea
   const b = await prisma.booking.findFirst({ where: { id: bookingId, accountId }, select: { apartmentId: true } });
   if (!b) throw notFound('Бронь не найдена');
   return withApartmentTx(b.apartmentId, (tx) => setLinkPriceInTx(tx, { accountId, bookingId, userId, totalKzt, reason }));
+}
+
+/** Смена дат брони по ссылке (существующий PATCH дат, внутри его транзакции квартиры): сумма пересчитана существующим
+ *  правилом (цена за ночь × ночи + животные) — если изменилась, запись журнала reason 'dates_changed' (раздел 3а).
+ *  Права цены не нужно: даты меняют владелец и админ, как в проходе 3. old — бронь до записи, upd — после (с apartment). */
+export async function logDatesChangedInTx(tx, { old, upd, actor }) {
+  if (old.totalKzt === upd.totalKzt) return null;
+  const link = await tx.bookingLink.findUnique({ where: { bookingId: old.id }, select: { id: true, accountId: true } });
+  if (!link || link.accountId !== old.accountId) return null;
+  return tx.bookingPriceChange.create({
+    data: {
+      accountId: old.accountId, bookingId: old.id, linkId: link.id, oldTotalKzt: old.totalKzt, newTotalKzt: upd.totalKzt,
+      standardTotalKzt: quote(upd.apartment, upd.checkIn, upd.checkOut, upd.pets).totalKzt, reason: 'dates_changed',
+      byUserId: actor?.id || null, byName: actor?.name || null, byRole: actor?.type || null,
+    },
+  });
 }

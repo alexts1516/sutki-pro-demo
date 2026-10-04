@@ -341,6 +341,18 @@ ALTER TABLE "Booking" ADD CONSTRAINT booking_no_overlap
 
 В ответах `GET /api/admin/bookings*` у брони `source:'link'` — поле `link: LinkOut|null`.
 
+**Уточнения шага 6 (технические, сделано):**
+- Код: `src/services/bookingLinks.js` (ядро), `src/routes/admin/bookingLinks.js` (маршруты таблицы выше, `requireRole(...MANAGERS)`). Поле `link` в `GET /api/admin/bookings*` — на шаге 8 (вместе с интерфейсом); эндпоинта правки условий/комментария в 6.1 нет — не добавлялся.
+- Создание: `createBookingRequest(..., onCreated)` — в той же `withApartmentTx` создаются `Guest` (всегда; имя может быть пустым — тогда в `missing` есть `guest`), `Booking(request, source:'link', paymentMethod = terms, holdUntil = now + expiresInHours)` и `BookingLink`; при индивидуальной цене — `linkPrice.setLinkPriceInTx(reason:'link_created')`. Право цены проверяется той же функцией ещё до записей (в демо в памяти нет отката) и повторно внутри транзакции. Сумма, равная стандартной, — не индивидуальная: права не нужно, записи нет. `note` хранится только в ссылке. `depositKzt` для `cash_on_arrival` — 400; для `deposit` — целое 1…итоговая сумма; цену ниже залога поставить нельзя (400).
+- Ответ `create/rotate`: `{link, url}`, `url = PUBLIC_URL/link/<token>` (токен 43 символа), `Cache-Control: no-store`. В `LinkOut` и списках нет ни токена, ни `tokenHash`. `findLinkByToken(raw)` — внутренняя функция для шага 7: длина 40–64, поиск по `sha256`, истёкшая — снимается сразу.
+- `stage` (не хранится): `waiting_guest | guest_started | waiting_admin | ready`; у закрытой — её статус. `LinkOut` дополнительно: `bookingStatus`, `nights`, `guestsCount`, `note`, `termsAcceptedAt`, `depositMarkedBy`, `extraCheckedBy`, `closedAt`, `closedByName`, `createdAt`. Ещё не снятое истечение показывается как `expired`.
+- Истечение: `releaseExpiredHolds` переводит ссылку `active → expired` (`closedAt`) и пишет `event:link.expired:<linkId>` (условная запись, повтор ничего не меняет). Чтения (`GET /booking-links*`) сначала снимают истёкшие удержания аккаунта (`releaseAllExpiredHolds({accountId})`, транзакция квартиры на каждую). Действия идут в `withApartmentTx` и возвращают отказ из транзакции, чтобы снятие закоммитилось.
+- Продление: `holdUntil += hours`, только `active` с `now < holdUntil`, итог ≤ `createdAt + 7 суток`; истёкшая — 409 «Ссылка истекла — создайте новую».
+- Отзыв: `active` → `cancelBooking(onlyStatus:'request')` (она же закрывает ссылку; подтверждённую параллельно бронь отзыв не отменит). Повтор и уже `expired/revoked/cancelled` — 200 без эффектов. `completed` — 409 «отмените бронь обычной отменой» (раздел 4.3 отзыв подтверждённой не описывает; подтверждённая бронь не возвращается в заявку).
+- `cancelBooking()` закрывает ссылку: `active → revoked`, `completed → cancelled` (`closedAt`, `closedByName`). `confirmRequestInTx` при любом пути подтверждения (в том числе существующий `POST /bookings/:id/confirm`) переводит ссылку `active → completed` и пишет `event:link.completed:<linkId>`.
+- Отметки «Залог получен» / «Подтверждение получено»: кто (`depositMarkedBy`/`extraCheckedBy` = имя из входа) и когда ставит сервер; залог → `paymentStatus='prepaid'`. Повтор — 200 без эффектов (даже после подтверждения). Затем `completeIfReadyInTx`: подтверждение, если `submittedAt` есть, `missing()` пуст и `now < holdUntil`. Даты закрыты ремонтом — подтверждения нет, отметка остаётся, ответ 200 с полем `conflict`, строка `event:link.conflict:<linkId>` (одна на ссылку); пункт «Сегодня» — шаг 8.
+- Смена дат брони по ссылке (существующий PATCH, `withApartmentTx`): сумма — существующим правилом (цена за ночь × ночи + животные; при индивидуальной цене цена за ночь уже пропорциональна, шаг 5); если изменилась — запись `dates_changed` через `linkPrice.logDatesChangedInTx` в той же транзакции. `termsHash` не пересчитывается: он перестаёт совпадать — `missing` снова содержит `terms`.
+
 ### 6.2 Гость (без входа; `/api/special-link`, через `linkGuard`)
 
 Длина токена 40–64 символа, иначе 404 без запроса к базе; поиск по `sha256(token)`.
@@ -688,7 +700,7 @@ export async function withApartmentTx(apartmentId, fn) {
 - **Готово, когда:** миграции применяются; владелец выдаёт и забирает право; админ не может выдать его себе.
 - **Тесты:** A-RT-3, A-RT-4.
 
-### Шаг 6. Сервис ссылок и админ-API
+### Шаг 6. Сервис ссылок и админ-API — СДЕЛАН (уточнения — конец раздела 6.1)
 - **Цель:** создание, состояние, продление, новая ссылка, отзыв, залог, подтверждение, индивидуальная цена с журналом; подтверждение через транзакционную `confirmBooking`.
 - **Что меняется:**
   - `services/bookingLinks.js`, маршруты раздела 6.1;

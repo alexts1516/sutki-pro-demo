@@ -20,6 +20,7 @@ import teamRouter from './routes/admin/team.js';
 import staffRouter from './routes/staff.js';
 import publicRouter from './routes/public.js';
 import paymentsRouter from './routes/payments.js';
+import bookingLinksRouter from './routes/admin/bookingLinks.js';
 import workRequestsRouter from './routes/admin/workRequests.js';
 import taskLinkRouter from './routes/taskLink.js';
 import { createWorkflow } from './services/workRequests.js';
@@ -87,6 +88,7 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
   admin.use(teamRouter({ config }));
   admin.use(settingsRouter({ config, storage, flights }));
   admin.use(workRequestsRouter({ workflow, storage, config }));
+  admin.use(bookingLinksRouter({ events, dispatch, config }));   // личные ссылки (проход 4, шаг 6)
   app.use('/api/admin', admin);
   app.use('/api/staff/transfers', authenticate, staffTransfersRouter({ dispatch }));
   app.use('/api/staff', authenticate, staffRouter({ events, workflow, storage, config, cleaning }));
