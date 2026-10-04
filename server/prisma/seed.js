@@ -13,6 +13,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DEFAULT_BRAND } from '../src/site/defaults.js';
+import { DEFAULT_CHECKLIST } from '../src/services/cleaning.js';
+import { cleaningRate } from '../src/services/performerPayouts.js';
 
 const ASSETS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'assets');
 const BUILDING = fs.readFileSync(path.join(ASSETS, 'photos', 'highvill-g1-1200.jpg')); // фото дома (ЖК Хайвил, блок G-1)
@@ -80,6 +82,8 @@ async function main() {
         petsAllowed: pets.allowed, petFeeKzt: pets.fee || 0, petNote: pets.allowed ? `${pets.weight}, не больше ${pets.count}` : null,
         entrance: String(door.entrance), floor: door.floor, intercom: door.intercom, keyboxCode: door.keybox, lockCode: String(((a.id * 4817) % 9000) + 1000),
         wifiName: door.wifi, wifiPassword: `astana${a.num}`, sortOrder: a.id,
+        // у первой квартиры — свой доп. пункт подготовки (с обязательным фото)
+        cleaningExtraItems: a.id === d.apartments[0].id ? [{ label: 'Балкон: закрыть окна', photo: true }] : undefined,
       },
     });
     apt[a.id] = rec;
@@ -125,21 +129,23 @@ async function main() {
     });
   }
   // ---------- водители и трансферы «как в Uber» (статусы — src/services/transferJobs.js) ----------
-  // владелец и админ — в списке водителей; три нанятых водителя (роль driver) и внешний водитель без входа (по ссылке)
+  // владелец и админ — в списке водителей; три нанятых водителя (роль driver). Внешних водителей (таксопарк) нет — возят только свои.
+  // Машина: мест для пассажиров и багажа — заказ предлагается только тем, у кого всё помещается.
   await prisma.membership.updateMany({ where: { accountId: acc.id, role: { in: ['owner', 'admin'] } }, data: { canDrive: true } });
-  await prisma.membership.updateMany({ where: { accountId: acc.id, role: 'owner' }, data: { vehicle: 'Toyota Land Cruiser Prado, белый, 001 AZN 01' } });
+  await prisma.membership.updateMany({ where: { accountId: acc.id, role: 'owner' }, data: { vehicle: 'Toyota Land Cruiser Prado, белый, 001 AZN 01', vehicleSeats: 6, vehicleBags: 5, vehicleClass: 'minivan' } });
+  // настройки владельца: оплата подготовки (по размеру квартиры) и напоминание о невыплаченном через 3 часа
+  const settings = await prisma.accountSettings.create({ data: { accountId: acc.id, cleaningRateKzt: 5000, cleaningRates: { 'Студия': 4000, '1-комн.': 5000, '2-комн.': 6000, '3-комн.': 7000 }, payoutReminderHours: 3 } });
   const DRIVERS = [
     { login: 'ruslan', name: 'Руслан Тлеубаев', phone: '+77003000001', vehicle: 'Hyundai Sonata, белая, 777 AAA 01' },
     { login: 'bauyrzhan', name: 'Бауыржан Сеитов', phone: '+77003000002', vehicle: 'Toyota Camry, чёрная, 505 KZT 01' },
-    { login: 'kanat', name: 'Канат Ермеков', phone: '+77003000003', vehicle: 'Kia K5, серая, 123 ABK 01' },
+    { login: 'kanat', name: 'Канат Ермеков', phone: '+77003000003', vehicle: 'Hyundai Staria, серая, 123 ABK 01', seats: 7, bags: 7, cls: 'minivan' },
   ];
   const drv = {};
   for (const x of DRIVERS) {
     const u = await prisma.user.create({ data: { name: x.name, email: `${x.login}@astanastay.example`, phone: x.phone, passwordHash, locale: 'ru' } });
-    await prisma.membership.create({ data: { userId: u.id, accountId: acc.id, role: 'driver', canDrive: true, vehicle: x.vehicle } });
+    await prisma.membership.create({ data: { userId: u.id, accountId: acc.id, role: 'driver', canDrive: true, vehicle: x.vehicle, vehicleSeats: x.seats || 4, vehicleBags: x.bags || 3, vehicleClass: x.cls || 'sedan' } });
     drv[x.name.split(' ')[0]] = { ...u, vehicle: x.vehicle };
   }
-  const extDriver = await prisma.contractor.create({ data: { accountId: acc.id, name: 'Такси «Жол» (внешний водитель)', type: 'other', phone: '+7 701 909 09 09', note: 'Hyundai Staria, минивэн, 909 JOL 01', canDrive: true } });
   const ownerUser = Object.values(users).find(u => u.email.startsWith('azamat@'));
   const SYS = { type: 'system' };
   const nowMs = Date.now();
@@ -157,8 +163,7 @@ async function main() {
         accountId: acc.id, transferId: tr.id, bookingId: tr.bookingId, apartmentId: tr.apartmentId, status: x.status, pickupAt,
         freeWaitMin: tr.direction === 'out' ? 15 : (tr.place === 'station' ? 30 : 60), payoutKzt, commissionKzt: tr.priceKzt - payoutKzt, payoutRule: byOwner ? 'owner' : 'account', notes: x.notes || null,
         meetingPoint: tr.direction === 'in' && tr.place === 'airport' ? 'Зал прилёта, у выхода из зоны выдачи багажа, с табличкой' : null,
-        driverUserId: driver?.id || null, driverContractorId: x.ext ? extDriver.id : null, driverName: x.ext ? extDriver.name : driver?.name || null,
-        vehicle: x.ext ? extDriver.note : driver?.vehicle || null, linkToken: x.ext ? randomToken(18) : null,
+        driverUserId: driver?.id || null, driverName: driver?.name || null, vehicle: driver?.vehicle || null,
         offeredAt: x.offeredAt, escalatedAt: x.escalatedAt || null, acceptedAt: x.acceptedAt || null, enRouteAt: x.enRouteAt || null, etaAt: x.etaAt || null,
         arrivedAt: x.arrivedAt || null, pickedUpAt: x.pickedUpAt || null, doneAt: x.doneAt || null, cancelledAt: x.cancelledAt || null, cancelReason: x.cancelReason || null,
         paid, paidAt: paid ? x.doneAt : null,
@@ -166,8 +171,9 @@ async function main() {
     });
     // долг водителю — только за выполненную поездку и только если выплата > 0
     if (x.status === 'DONE' && payoutKzt > 0) {
-      await prisma.driverPayout.create({ data: { accountId: acc.id, jobId: job.id, driverUserId: job.driverUserId, driverContractorId: job.driverContractorId, driverName: job.driverName, amountKzt: payoutKzt,
-        status: paid ? 'PAID' : 'PENDING', paidAt: paid ? new Date(x.doneAt.getTime() + 3600000) : null, paidById: paid ? ownerUser.id : null, paidByName: paid ? ownerUser.name : null } });
+      const when = new Intl.DateTimeFormat('ru-RU', { timeZone: acc.timezone, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(pickupAt);
+      await prisma.payout.create({ data: { accountId: acc.id, kind: 'transfer', jobId: job.id, userId: job.driverUserId, name: job.driverName, title: `Трансфер ${when}`, amountKzt: payoutKzt, createdAt: x.doneAt,
+        status: paid ? 'PAID' : 'PENDING', method: paid ? 'cash' : null, paidAt: paid ? new Date(x.doneAt.getTime() + 3600000) : null, paidById: paid ? ownerUser.id : null, paidByName: paid ? ownerUser.name : null } });
     }
     // оплата гостя бизнесу: часть выполненных поездок оплачена (наличными водителю → в кассу, картой/переводом)
     if (x.guestPaid) await prisma.transfer.update({ where: { id: tr.id }, data: { guestPaymentStatus: 'PAID', guestPaymentMethod: x.guestPaid, paid: true, guestPaidAt: x.doneAt || x.offeredAt, guestPaidById: ownerUser.id, guestPaidByName: ownerUser.name } });
@@ -216,7 +222,7 @@ async function main() {
       await seedJob(tr, { status: 'OFFERED', offeredAt: minutes(-5 - (k % 10)) });
     } else if (!extOne && t.date - d.TODAY > 1) {
       extOne = true;
-      await seedJob(tr, { status: 'ACCEPTED', ext: true, offeredAt: minutes(-30 * 60), escalatedAt: minutes(-29.5 * 60), acceptedAt: minutes(-29 * 60) });
+      await seedJob(tr, { status: 'ACCEPTED', driver: 'Бауыржан', assigned: true, offeredAt: minutes(-30 * 60), escalatedAt: minutes(-29.5 * 60), acceptedAt: minutes(-29 * 60) });
     } else if (!ownerOne && t.date - d.TODAY > 1) {
       ownerOne = true;
       await seedJob(tr, { status: 'ACCEPTED', driver: 'owner', offeredAt: minutes(-10 * 60), acceptedAt: minutes(-9.8 * 60) });
@@ -247,15 +253,27 @@ async function main() {
   // заявка на бронь с трансфером — заказ водителям появится, когда хозяин/админ подтвердит бронь
   const reqWithTransfer = await prisma.booking.findFirst({ where: { accountId: acc.id, status: 'request' }, orderBy: { checkIn: 'asc' }, include: { guest: true, apartment: true } });
   if (reqWithTransfer) await mkTransfer(reqWithTransfer, reqWithTransfer.apartment, reqWithTransfer.guest.name, { dir: 'in', date: reqWithTransfer.checkIn, time: '21:35', flight: 'KC 921', pax: reqWithTransfer.guestsCount, price: 9500, phone: reqWithTransfer.guest.phone });
-  // уборки
+  // подготовка квартир (уборки): чек-лист по стандартному шаблону; за готовые — выплата специалисту (прошлые — выплачены, сегодняшние — к оплате)
+  const cleaningsDone = [];
   for (const c of d.cleanings) {
-    await prisma.cleaningTask.create({
+    const started = ['progress', 'done'].includes(c.status) ? new Date(Math.min(at(c.date, c.from).getTime(), nowMs - 40 * 60000)) : null;
+    const doneAt = c.doneAt ? new Date(Math.min(at(c.date, c.doneAt).getTime(), nowMs - 10 * 60000)) : null;
+    const t = await prisma.cleaningTask.create({
       data: {
         accountId: acc.id, apartmentId: apt[c.aptId].id, bookingId: bk[c.bookingId]?.id, assigneeId: users[c.cleaner]?.id, date: day(c.date),
-        fromTime: c.from, toTime: c.to, status: c.status, checklist: d.CHECKLIST.map((label, k) => ({ label, done: !!c.checked[k] })),
-        doneAt: c.doneAt ? at(c.date, c.doneAt) : null,
+        fromTime: c.from, toTime: c.to, status: c.status, startedAt: started && doneAt && started > doneAt ? new Date(doneAt.getTime() - 75 * 60000) : started, doneAt,
+        checklist: c.status === 'assigned' || c.status === 'enroute' ? null : DEFAULT_CHECKLIST.map((x, k) => ({ ...x, done: !!c.checked[k], doneAt: c.checked[k] ? (doneAt || started).toISOString() : null })),
       },
     });
+    if (c.status === 'done' && t.assigneeId) cleaningsDone.push({ t, c, apt: apt[c.aptId] });
+  }
+  let overdueOne = false;
+  for (const { t, c, apt: a } of cleaningsDone) {
+    const past = c.date < d.TODAY, amount = cleaningRate(a, settings);
+    const created = !past && !overdueOne ? new Date(nowMs - 4 * 3600000) : t.doneAt;   // одна сегодняшняя — не выплачена больше 3 ч (красным)
+    if (!past) overdueOne = true;
+    await prisma.payout.create({ data: { accountId: acc.id, kind: 'cleaning', cleaningTaskId: t.id, userId: t.assigneeId, name: c.cleaner, title: `Подготовка ${a.code ? 'кв. ' + a.code : a.title}`, amountKzt: amount,
+      status: past ? 'PAID' : 'PENDING', method: past ? 'cash' : null, paidAt: past ? new Date(t.doneAt.getTime() + 2 * 3600000) : null, paidById: past ? ownerUser.id : null, paidByName: past ? ownerUser.name : null, createdAt: created } });
   }
   // подрядчики, заявки мастерам, сметы (статусы — как в services/workRequests.js)
   const owner = Object.values(users).find(u => u.email.startsWith(d.STAFF_BASE.find(x => x.role === 'owner').login + '@'));
@@ -299,6 +317,19 @@ async function main() {
 <path d="M560 180c40 10 70 40 80 80" stroke="#3b4048" stroke-width="8" fill="none" opacity=".5"/><circle cx="560" cy="200" r="46" fill="#2b2b2b" opacity=".35"/>
 <text x="40" y="550" font-family="Inter,Arial,sans-serif" font-size="40" font-weight="700" fill="#2c3038">${title}</text><text x="40" y="585" font-family="Inter,Arial,sans-serif" font-size="22" fill="#4b5563">демо-фото проблемы</text></svg>`);
   const ago = (h) => new Date(Date.now() - h * 3600000);
+  // одна готовая подготовка — с фото и найденной проблемой (владелец сделает из неё заявку мастеру)
+  const withProblem = cleaningsDone.find(x => x.c.date === d.TODAY) || cleaningsDone.at(-1);
+  if (withProblem) {
+    const { t } = withProblem;
+    const s1 = await storage.save(`${acc.id}/cleaning/${t.id}/bath.svg`, problemSvg('Ванная — готово', 200), 'image/svg+xml');
+    await prisma.cleaningPhoto.create({ data: { accountId: acc.id, cleaningTaskId: t.id, kind: 'item', itemIndex: 2, url: s1.url, storageKey: s1.key, mimeType: 'image/svg+xml' } });
+    const s2 = await storage.save(`${acc.id}/cleaning/${t.id}/problem.svg`, problemSvg('Подтекает смеситель', 10), 'image/svg+xml');
+    const ph2 = await prisma.cleaningPhoto.create({ data: { accountId: acc.id, cleaningTaskId: t.id, kind: 'problem', url: s2.url, storageKey: s2.key, mimeType: 'image/svg+xml' } });
+    await prisma.cleaningTask.update({ where: { id: t.id }, data: {
+      report: 'Всё готово. Гости оставили зарядку — положила в шкаф.',
+      problems: [{ id: 'p1demo', text: 'Подтекает смеситель на кухне', photoIds: [ph2.id], at: t.doneAt.toISOString(), byName: withProblem.c.cleaner, repairTaskId: null }],
+    } });
+  }
   const meTasks = [
     { status: 'NEW', title: 'Не работает розетка на кухне', desc: 'Розетка у холодильника не даёт питание, автомат не выбивает.', occ: 'UNKNOWN', photos: 0 },
     { status: 'VISIT_INSPECTION', title: 'Мигает свет в спальне', desc: 'Люстра мигает при включении, иногда гаснет.', occ: 'OWNER_PRESENT', visit: true, arrived: true },

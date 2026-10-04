@@ -56,13 +56,26 @@ with sync_playwright() as p:
         t = pg.locator('#sutki-demo-overlay >> .toast').inner_text()
         return t
 
+    def feed_pay(*texts):
+        if pg.locator('#sutki-demo-overlay >> #sheet.on').count(): pg.click('#sutki-demo-overlay >> #close')
+        pg.click('#sutki-demo-overlay >> button.tg')
+        pg.wait_for_selector('#sutki-demo-overlay >> .msg')
+        card = pg.locator('#sutki-demo-overlay >> .msg', has=pg.locator('.kb'))
+        for t in texts: card = card.filter(has_text=t)
+        card = card.first
+        btn = card.locator('.kb button').first
+        label, msg = btn.inner_text(), card.inner_text()
+        btn.click()
+        pg.wait_for_selector('#sutki-demo-overlay >> .toast.on', timeout=10000)
+        return msg, label, pg.locator('#sutki-demo-overlay >> .toast').inner_text()
+
     # ---------- главная демо ----------
     print('Главная демо:', B)
     pg.goto(B)
     pg.wait_for_function("document.querySelector('#statusText').textContent.includes('Демо готово')", timeout=60000)
     pg.wait_for_function("document.querySelectorAll('#gApt option').length > 5", timeout=20000)
     ok('демо запустилось, данные заполнены сидом (квартир в форме гостя: %d)' % pg.locator('#gApt option').count())
-    check(pg.locator('#roles .role').count() == 7, '7 ролей на главной')
+    check(pg.locator('#roles .role').count() == 6, '6 ролей на главной')
     shot('01-landing.png')
     shot('01-landing-full.png', True)
 
@@ -152,6 +165,11 @@ with sync_playwright() as p:
     pg.click('[data-tab="repairs"]') if pg.locator('[data-tab="repairs"]').count() else None
     pg.click(f'[data-wr="{rid}"]'); pg.wait_for_selector('[data-wact="start"]')
     pg.click('[data-wact="start"]'); pg.wait_for_selector('[data-wact="extra"]')
+    sheet_txt = pg.inner_text('#sheet') if pg.locator('#sheet').count() else pg.inner_text('body')
+    r = db(f"return await p.repairTask.findUnique({{ where: {{ id: '{rid}' }} }});")
+    check(r['status'] == 'IN_PROGRESS' and r['startedAt'] and not r['doneAt'] and 'В работе' in sheet_txt and 'Завершить работу' in sheet_txt and 'Работа выполнена' not in sheet_txt,
+          '«Начать работу» → «🔧 В работе с …» и отдельная кнопка «Завершить работу» (не «выполнена»), время начала записано')
+    shot('10a-master-in-progress.png')
     pg.click('[data-wact="extra"]')
     pg.fill('#wrForm [name=amountKzt]', '3000'); pg.fill('#wrForm [name=description]', 'Заменить подрозетник'); pg.fill('#wrForm [name=reason]', 'Старый подрозетник оплавлен')
     pg.click('#wrForm button.primary'); pg.wait_for_timeout(800)
@@ -164,11 +182,22 @@ with sync_playwright() as p:
     overlay_role('Мастер Master Electric', '/app/')
     pg.click('[data-tab="repairs"]') if pg.locator('[data-tab="repairs"]').count() else None
     pg.click(f'[data-wr="{rid}"]'); pg.wait_for_selector('[data-wact="complete"]')
+    check('Завершить работу' in pg.locator('[data-wact="complete"]').inner_text(), 'кнопка «🏁 Завершить работу»')
     pg.click('[data-wact="complete"]'); pg.fill('#wrForm [name=report]', 'Заменил розетку и подрозетник, проверил — работает')
     pg.click('#wrForm button.primary'); pg.wait_for_timeout(900)
     r = db(f"return await p.repairTask.findUnique({{ where: {{ id: '{rid}' }} }});")
     check(r['status'] == 'DONE' and r['costKzt'] == 11000, f'«Выполнено» → DONE, сумма для финансов {r["costKzt"]} ₸ (смета 8 000 + доп. 3 000)')
+    check(r['doneAt'] and r['startedAt'] and r['doneAt'] >= r['startedAt'], 'записаны время начала и окончания работы')
     shot('11-master-done.png')
+    po = db(f"return await p.payout.findFirst({{ where: {{ repairTaskId: '{rid}' }} }});")
+    check(po and po['status'] == 'PENDING' and po['amountKzt'] == 11000, 'выплата мастеру создана сразу: «К оплате» 11 000 ₸')
+    msg, label, t = feed_pay('Master Electric', 'к оплате')
+    check('11 000' in msg and 'Оплатить' in label and 'ыплачено' in t, f'владельцу в Telegram: «{[l for l in msg.splitlines() if 'оплате' in l][0][:90]}…» → «{label}» → «{t}»')
+    shot('11a-telegram-payout.png')
+    pg.wait_for_timeout(1800)
+    po = db(f"return await p.payout.findFirst({{ where: {{ repairTaskId: '{rid}' }} }});")
+    rp = db(f"return (await p.repairTask.findUnique({{ where: {{ id: '{rid}' }} }})).paid;")
+    check(po['status'] == 'PAID' and po['method'] and rp, 'выплата отмечена (PAID, способ записан), заявка — «оплачено»')
 
     # ---------- сценарий 3: комиссия → финансы ----------
     print('Сценарий 3: настройки комиссии → финансы')
@@ -197,10 +226,40 @@ with sync_playwright() as p:
 
     # ---------- остальные роли и ссылки ----------
     print('Роли и ссылки без входа')
-    overlay_role('Уборщица Гульнара', '/app/'); pg.wait_for_selector('#view'); pg.wait_for_timeout(500)
-    check('Гульнара' in pg.inner_text('#who'), 'уборщица входит в приложение команды'); shot('14-cleaner.png')
-    overlay_role('Внешний водитель по ссылке', '/link/'); pg.wait_for_selector('.when, .card'); pg.wait_for_timeout(700)
-    check('Ссылка недействительна' not in pg.inner_text('#view'), 'внешний водитель открывает поездку по ссылке без входа'); shot('15-external-driver-link.png')
+    print('Подготовка квартиры → выплата → полный отчёт в календаре')
+    cl = db("const u = await p.user.findFirst({ where: { email: 'gulnara@astanastay.example' } }); const t = await p.cleaningTask.findFirst({ where: { assigneeId: u.id, status: { in: ['assigned', 'enroute'] } }, orderBy: { date: 'asc' } }); return { id: t.id, date: t.date };")
+    overlay_role('Подготовка — Гульнара', '/app/'); pg.wait_for_selector('#view'); pg.wait_for_timeout(500)
+    check('Гульнара' in pg.inner_text('#who') and 'Подготовка' in pg.inner_text('body'), 'специалист по подготовке входит в приложение команды («Подготовка»)'); shot('14-cleaner.png')
+    pg.click(f'[data-cl="{cl["id"]}"]'); pg.wait_for_selector('[data-go="start"]')
+    pg.click('[data-go="start"]'); pg.wait_for_selector('[data-ck]')
+    n = pg.locator('[data-ck]').count()
+    pg.click('[data-go="finish"]'); pg.wait_for_timeout(700)
+    check(db(f"return (await p.cleaningTask.findUnique({{ where: {{ id: '{cl['id']}' }} }})).status;") == 'progress', 'закончить с неотмеченными пунктами без комментария нельзя')
+    for i in range(n):
+        pg.locator(f'[data-ck="{i}"]').check(); pg.wait_for_timeout(350)
+    pg.set_input_files('[data-ph="0"]', files=[{'name': 'bed.png', 'mimeType': 'image/png', 'buffer': png_bytes(rgb=(60, 140, 200))}]); pg.wait_for_timeout(700)
+    pg.click('[data-go="problem"]'); pg.fill('#clForm [name=text]', 'Перегорела лампа в коридоре'); pg.click('#clForm button.primary'); pg.wait_for_timeout(800)
+    pg.fill('#clRep', 'Всё готово, лампу надо заменить'); shot('14a-cleaner-checklist.png', True)
+    pg.click('[data-go="finish"]'); pg.wait_for_timeout(900)
+    c = db(f"return await p.cleaningTask.findUnique({{ where: {{ id: '{cl['id']}' }}, include: {{ payout: true, photos: true }} }});")
+    check(c['status'] == 'done' and c['startedAt'] and c['doneAt'] and len(c['photos']) >= 1 and len(c['problems'] or []) == 1, f'чек-лист {n} пунктов отмечен, фото и проблема, «Закончить» → время начала и окончания записаны')
+    check(c['payout'] and c['payout']['status'] == 'PENDING' and c['payout']['amountKzt'] > 0, f'выплата за подготовку создана сразу: к оплате {c["payout"]["amountKzt"]} ₸')
+    msg, label, t = feed_pay('Гульнара', 'к оплате', 'подготовк')
+    check('Оплатить' in label and 'ыплачено' in t, f'владельцу: «{[l for l in msg.splitlines() if 'оплате' in l][0][:90]}» → «{label}» → «{t}»')
+    pg.wait_for_timeout(1800)
+    pg.click('[data-tab="payouts"]'); pg.wait_for_timeout(500)
+    check('Выплачено' in pg.inner_text('#view'), 'специалист видит свои выплаты «К оплате / Выплачено» с датами'); shot('14b-cleaner-payouts.png')
+    overlay_role('Владелец Азамат', '/admin/')
+    pg.goto(B + 'admin/#calendar'); pg.wait_for_selector(f'[data-open="cl:{cl["id"]}"]', timeout=15000)
+    pg.locator(f'[data-open="cl:{cl["id"]}"]').first.click(); pg.wait_for_selector('text=Чек-лист')
+    pg.wait_for_timeout(400); shot('14c-owner-cleaning-report.png')
+    dr = pg.evaluate("document.body.textContent")
+    if os.environ.get('DEBUG'): print(dr[-3000:])
+    check(all(x in dr for x in ['Гульнара', 'Начало', 'Окончание', 'Чек-лист', 'Проблемы', 'Перегорела лампа', 'ыплачено']), 'календарь: нажатие на «Готово» открывает полный отчёт на месте (кто, начало/окончание, чек-лист, фото, проблемы, выплата)')
+    pg.click('[data-mkwr]'); pg.wait_for_function("location.hash.startsWith('#repairs/')", timeout=10000); pg.wait_for_timeout(600)
+    check('Перегорела лампа' in pg.inner_text('#view'), 'проблема → «Сделать заявку мастеру» одним нажатием (заявка без мастера, можно выбрать)')
+    pg.goto(B + 'admin/#payouts'); pg.wait_for_selector('h1:has-text("Выплаты")'); pg.wait_for_timeout(500)
+    check('К оплате' in pg.inner_text('#view') or 'должны' in pg.inner_text('#view'), 'экран «Выплаты»: кому сколько должны'); shot('14d-owner-payouts.png')
     overlay_role('Внешний мастер по ссылке', '/link/'); pg.wait_for_timeout(900)
     check('Ссылка недействительна' not in pg.inner_text('#view'), 'внешний мастер открывает заявку по ссылке без входа'); shot('16-external-master-link.png')
 

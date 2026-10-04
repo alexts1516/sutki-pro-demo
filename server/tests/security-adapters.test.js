@@ -3,6 +3,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { makeApp, login, prisma, request, config, PASS, png, freeDates } from './helpers.js';
+import { extDriver } from './helpers.js';
 import { signV4, createS3Storage } from '../src/storage/s3.js';
 import { createFlightTracker } from '../src/flights/index.js';
 import { createAeroDataBox, parseArrival } from '../src/flights/aerodatabox.js';
@@ -49,7 +50,8 @@ test('страницы: приложение команды /app/ и одна з
   const l = await request(app).get(`/link/${task.linkToken}`);
   assert.equal(l.status, 200); assert.match(l.text, /link\.js/);
   assert.deepEqual((await request(app).get(`/api/link/${task.linkToken}`)).body, { kind: 'task' });
-  const job = await prisma.transferJob.findFirst({ where: { linkToken: { not: null } } });
+  // ссылка внешнего водителя (в демо-данных их нет — внешние водители выключены): ставим ссылку заказу напрямую
+  const job = await prisma.transferJob.update({ where: { id: (await prisma.transferJob.findFirst()).id }, data: { linkToken: 'tl_' + Date.now().toString(36) + 'abcdefgh', driverContractorId: (await extDriver((await prisma.transferJob.findFirst()).accountId)).id } });
   assert.deepEqual((await request(app).get(`/api/link/${job.linkToken}`)).body, { kind: 'transfer' });
   assert.equal((await request(app).get('/api/link/short')).status, 404);
 });

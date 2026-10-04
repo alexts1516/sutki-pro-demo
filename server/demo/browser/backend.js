@@ -10,6 +10,7 @@ import { createNotificationService } from '../../src/notifications/service.js';
 import { startScheduler } from '../../src/notifications/scheduler.js';
 import { createStorage } from '../../src/storage/index.js';
 import { handleTransferAccept } from '../../src/telegram/transferButtons.js';
+import { handlePayoutButton } from '../../src/telegram/payoutButtons.js';
 import { randomToken } from '../../src/lib/tokens.js';
 import { runSeed } from '../../prisma/seed.js';
 
@@ -110,7 +111,7 @@ const ready = (async () => {
   try { s = await idbGet(); } catch (e) { console.warn('[демо] IndexedDB недоступна — данные не сохранятся после перезагрузки', e); }
   if (s && s.v === DATA_VERSION) { prisma.$load(s.db); feed = s.feed || []; seededAt = s.seededAt; myRev = s.rev; }
   else { await seedFresh(); lsSet(LS.cookie, null); }
-  startScheduler({ prisma, events, dispatch, logger: quiet });
+  startScheduler({ prisma, events, dispatch, payouts: app.locals.payouts, logger: quiet });
 })();
 
 // ---------- «cookie» входа (как httpOnly-cookie сервера, общая для всех страниц демо) ----------
@@ -237,8 +238,12 @@ export const demo = {
   async press(msgId, data) {
     await ready; await syncFromOtherTabs();
     const msg = feed.find(m => m.id === msgId); if (!msg) throw new Error('Сообщение не найдено');
-    const m = /^tj:acc:([A-Za-z0-9_-]{8,40})$/.exec(data); if (!m) throw new Error('Эта кнопка в демо не работает');
-    const r = await handleTransferAccept({ prisma, dispatch, telegramUserId: msg.chatId, jobId: m[1], publicUrl: config.publicUrl });
+    const m = /^tj:acc:([A-Za-z0-9_-]{8,40})$/.exec(data), po = /^po:(cash|transfer):([A-Za-z0-9_-]{8,40})$/.exec(data);
+    if (!m && !po) throw new Error('Эта кнопка в демо не работает');
+    // «Оплатить» под «… — к оплате 5 000 ₸» — как в настоящем боте (только владелец)
+    const r = po ? await handlePayoutButton({ prisma, payouts: app.locals.payouts, telegramUserId: msg.chatId, method: po[1], payoutId: po[2] })
+      : await handleTransferAccept({ prisma, dispatch, telegramUserId: msg.chatId, jobId: m[1], publicUrl: config.publicUrl });
+    if (po && r.done) r.taken = true;
     await events.idle();
     if (r.ok || r.taken) msg.buttons = null;
     if (r.details) feed.push({ id: randomToken(8), chatId: msg.chatId, text: r.details, buttons: null, at: Date.now(), reply: true });
@@ -251,7 +256,7 @@ export const demo = {
     const users = await prisma.user.findMany({ where: { telegramId: { in: ids } }, include: { memberships: true, contractorOf: true } });
     const guests = await prisma.guest.findMany({ where: { telegramChatId: { in: ids } } });
     const out = {};
-    const ROLE = { owner: 'владелец', admin: 'администратор', driver: 'водитель', master: 'мастер', cleaning: 'клининг' };
+    const ROLE = { owner: 'владелец', admin: 'администратор', driver: 'водитель', master: 'мастер', cleaning: 'подготовка' };
     for (const u of users) out[u.telegramId] = { name: u.name, role: u.contractorOf.length ? 'подрядчик' : ROLE[u.memberships[0]?.role] || '', userId: u.id };
     for (const g of guests) out[g.telegramChatId] = { name: g.name, role: 'гость' };
     return out;

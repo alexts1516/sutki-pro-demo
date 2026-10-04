@@ -1,10 +1,10 @@
 // Комиссия с трансферов, скрытие номера квартиры до «Беру», настройки уведомлений и одобрения смет.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeApp, login, prisma, request, freeDates } from './helpers.js';
+import { makeApp, login, prisma, request, freeDates, extConfig, extDriver } from './helpers.js';
 import { computePayout } from '../src/services/payouts.js';
 
-const { app, events } = makeApp();
+const { app, events } = makeApp({ config: extConfig });   // внешние водители включены только для этих сценариев
 let acc, apt, owner, admin, ruslan, kanat, master;
 let start = 400;
 
@@ -105,7 +105,7 @@ test('фиксированная ставка водителю (режим FIXED
   await request(app).put('/api/admin/settings').set(owner.auth).send({ transferPayoutMode: 'FIXED', driverFixedKzt: 6000 });
   const { job } = await confirmedJob();
   assert.equal(job.payoutKzt, 6000); assert.equal(job.commissionKzt, job.transfer.priceKzt - 6000);
-  const ext = await prisma.contractor.findFirst({ where: { accountId: acc.id, canDrive: true } });
+  const ext = await extDriver(acc.id);
   assert.equal((await request(app).patch(`/api/admin/contractors/${ext.id}`).set(admin.auth).send({ payoutFixedKzt: 5000 })).status, 403);
   assert.equal((await request(app).patch(`/api/admin/contractors/${ext.id}`).set(owner.auth).send({ payoutFixedKzt: 5000 })).status, 200);
   const card = (await request(app).post(`/api/admin/transfer-jobs/${job.id}/assign`).set(owner.auth).send({ driverContractorId: ext.id })).body;
@@ -128,7 +128,7 @@ test('номер квартиры скрыт до «Беру» — в прило
   assert.ok(msgs.length >= 3);
   for (const m of msgs) { assert.doesNotMatch(m.text, new RegExp(`кв\\.?\\s*${apt.code}\\b`)); assert.doesNotMatch(m.text, /555 66 77/); }
   // внешний водитель: пока заказ у него в работе — видит квартиру; после — ссылка закрыта
-  const ext = await prisma.contractor.findFirst({ where: { accountId: acc.id, canDrive: true } });
+  const ext = await extDriver(acc.id);
   const card = (await request(app).post(`/api/admin/transfer-jobs/${job.id}/assign`).set(owner.auth).send({ driverContractorId: ext.id })).body;
   const v = (await request(app).get(`/api/transfer-link/${card.link.token}`)).body;
   assert.equal(v.apartment.apartmentNumber, apt.code); assert.equal(v.guestPhone, '+7 701 555 66 77');
@@ -184,7 +184,7 @@ test('ставки водителей и финансы — только вла�
   const fin = await request(app).get('/api/admin/finance').set(owner.auth);
   assert.equal(fin.status, 200);
   assert.equal(fin.body.transfersMarginKzt, fin.body.transfersRevenueKzt - fin.body.transfersPayoutKzt);
-  assert.equal(fin.body.netKzt, fin.body.revenueKzt + fin.body.transfersRevenueKzt - fin.body.transfersPayoutKzt - fin.body.repairsKzt);
+  assert.equal(fin.body.netKzt, fin.body.revenueKzt + fin.body.transfersRevenueKzt - fin.body.transfersPayoutKzt - fin.body.repairsKzt - fin.body.cleaningKzt);
   await request(app).patch(`/api/admin/team/${r.id}`).set(owner.auth).send({ payoutPercent: null });
 });
 

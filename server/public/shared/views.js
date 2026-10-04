@@ -7,7 +7,7 @@ export const money = (n) => String(Math.round(n || 0)).replace(/\B(?=(\d{3})+(?!
 const MON = ['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 export const fmtDay = (iso) => { if (!iso) return ''; const [y, m, d] = String(iso).slice(0, 10).split('-').map(Number); return `${d} ${MON[m - 1]}`; };
 export const hm = (d) => d ? new Date(d).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '';
-const dt = (d) => d ? new Date(d).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
+export const dt = (d) => d ? new Date(d).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 const telHref = (p) => 'tel:' + String(p).replace(/[^\d+]/g, '');
 
 export async function api(path, opts = {}) {
@@ -128,7 +128,7 @@ const EST_ST = { pending: ['amber', 'ждёт решения'], approved: ['gree
 const X_ST = { PENDING: ['amber', 'ждёт решения'], APPROVED: ['green', 'одобрен'], REJECTED: ['red', 'отклонён'] };
 const EV = { created: 'Заявка создана', occupancy_changed: 'Изменено «кто будет в квартире»', visit_requested: 'Запрошен выезд', arrived: 'Мастер приехал', inspected: 'Осмотр',
   estimate_submitted: 'Смета отправлена', approved: 'Смета одобрена', rejected: 'Смета отклонена', started: 'Работа начата', extra_submitted: 'Доп. расход', extra_approved: 'Доп. расход одобрен',
-  extra_rejected: 'Доп. расход отклонён', completed: 'Выполнено', cancelled: 'Отменена', paid: 'Оплачено мастеру' };
+  extra_rejected: 'Доп. расход отклонён', completed: 'Работа завершена', cancelled: 'Отменена', paid: 'Оплачено мастеру', unpaid: 'Оплата отменена', declined: 'Мастер отказался', assigned: 'Назначен мастер' };
 
 export function repairCard(t) {
   const tone = (WR_ST[t.status] || [''])[0];
@@ -143,23 +143,30 @@ export function repairDetail(t) {
   const est = (t.estimates || []).at(-1);
   const problem = (t.photos || []).filter(p => p.kind === 'problem');
   const btn = (a, label, cls = '') => acts.includes(a) ? `<button class="btn block ${cls}" data-wact="${a}">${label}</button>` : '';
+  const small = (a, label) => acts.includes(a) ? `<button class="btn sm" data-wact="${a}" style="margin-top:6px">${label}</button>` : '';
+  const times = t.startedAt || t.doneAt ? `<dt>Начало</dt><dd>${t.startedAt ? dt(t.startedAt) : '—'}</dd>${t.doneAt ? `<dt>Окончание</dt><dd>${dt(t.doneAt)}</dd>` : ''}` : '';
+  const rejected = t.status === 'REJECTED';
   return `<div class="row between"><h2 style="font-size:19px">${esc(t.title)}</h2>${wrBadge(t.status)}</div>
     ${t.status === 'AWAITING_OWNER_APPROVAL' ? '<div class="alert amber">Смета отправлена. Начать работу можно после одобрения хозяина — придёт уведомление.</div>' : ''}
-    ${t.status === 'REJECTED' && est?.rejectReason ? `<div class="alert red">Смета отклонена: ${esc(est.rejectReason)}</div>` : ''}
     ${t.status === 'APPROVED' ? '<div class="alert green">Смета одобрена — можно начинать работу.</div>' : ''}
+    ${t.status === 'IN_PROGRESS' ? `<div class="alert blue">🔧 <b>В работе</b> с ${hm(t.startedAt)}. Когда закончите — нажмите «Завершить работу».</div>` : ''}
+    ${t.status === 'DONE' ? `<div class="alert green">✅ Работа завершена ${dt(t.doneAt)}</div>` : ''}
+    ${rejected ? `<div class="alert red"><b>Смета отклонена</b>${est?.rejectReason ? `: ${esc(est.rejectReason)}` : ''}<br>Исправьте смету или откажитесь от заявки.</div>
+      <div class="steps">${btn('revise', '✏️ Исправить смету', 'primary big')}${btn('decline', '✋ Отказаться от заявки', 'danger')}${small('request-visit', 'Нужен выезд, чтобы оценить')}</div><div id="wrForm"></div>` : ''}
     <div class="card"><dl class="kv">${t.access ? `<dt>Адрес</dt><dd>${esc(t.access.address)}</dd>${t.access.apartmentNumber ? `<dt>Квартира</dt><dd><b>№ ${esc(t.access.apartmentNumber)}</b></dd>` : ''}` : ''}
       ${t.date ? `<dt>Когда</dt><dd>${fmtDay(t.date)}${t.timeWindow ? `, ${esc(t.timeWindow)}` : ''}</dd>` : ''}
-      <dt>В квартире</dt><dd>${esc(occ.label || 'Пока неизвестно')}</dd>${occ.accessInstructions ? `<dt>Как попасть</dt><dd>${esc(occ.accessInstructions)}</dd>` : ''}</dl>
+      <dt>В квартире</dt><dd>${esc(occ.label || 'Пока неизвестно')}</dd>${occ.accessInstructions ? `<dt>Как попасть</dt><dd>${esc(occ.accessInstructions)}</dd>` : ''}
+      ${t.arrivedAt ? `<dt>Приехал</dt><dd>${dt(t.arrivedAt)}</dd>` : ''}${times}</dl>
       ${t.description ? `<div style="white-space:pre-wrap">${esc(t.description)}</div>` : ''}${photosHtml(problem)}</div>
     ${est ? `<div class="card"><div class="row between"><b>Смета ${METHOD[est.method] || ''}</b><span class="chip ${EST_ST[est.status][0]}">${EST_ST[est.status][1]}</span></div>
       <div class="money">${money(est.totalKzt)}${est.maxKzt ? ` – ${money(est.maxKzt)}` : ''}</div><div class="sub">работа ${money(est.labourKzt)}${est.materialsIncluded ? ` · материалы ${money(est.materialsKzt)}` : ' · материалы отдельно'}</div>${est.items ? `<div class="small">${esc(est.items)}</div>` : ''}</div>` : ''}
     ${(t.extras || []).map(x => `<div class="card"><div class="row between"><b>Доп. расход ${money(x.amountKzt)}</b><span class="chip ${X_ST[x.status][0]}">${X_ST[x.status][1]}</span></div><div class="small">${esc(x.description)} — ${esc(x.reason)}</div>${x.decisionNote ? `<div class="sub">${esc(x.decisionNote)}</div>` : ''}</div>`).join('')}
     ${t.payableKzt != null ? `<div class="card"><dl class="kv"><dt>К оплате</dt><dd class="money">${money(t.payableKzt)}</dd></dl></div>` : ''}
-    <div class="steps">${btn('start', '▶️ Начать работу', 'primary big')}${btn('complete', '✅ Работа выполнена', 'success big')}${btn('arrive', '📍 Я приехал')}
+    ${rejected ? '' : `<div class="steps">${btn('start', '▶️ Начать работу', 'primary big')}${btn('complete', '🏁 Завершить работу', 'primary big')}
       ${btn('estimate:REMOTE', '🧾 Смета без выезда')}${btn('estimate:PHOTOS', '📷 Смета по фото')}${btn('inspect', '🔎 Осмотр')}${btn('estimate:VISIT', '🧾 Смета после осмотра')}
-      ${btn('request-visit', '🚪 Нужен выезд — не могу оценить без осмотра')}${btn('extra', '➕ Доп. расход (не по моей вине)')}</div>
-    <div id="wrForm"></div>
-    ${(t.events || []).length ? `<div class="h"><h2>Журнал</h2></div><div class="card"><ul class="log">${[...t.events].reverse().map(e => `<li><b>${EV[e.type] || e.type}</b>${e.actorName ? ` — ${esc(e.actorName)}` : ''}<div class="sub">${dt(e.createdAt)}${e.note ? ' · ' + esc(e.note) : ''}</div></li>`).join('')}</ul></div>` : ''}`;
+      ${btn('extra', '➕ Доп. расход (не по моей вине)')}${small('arrive', '📍 Я приехал (по желанию)')} ${small('request-visit', 'Нужен выезд — не могу оценить без осмотра')}</div>
+    <div id="wrForm"></div>`}
+    ${(t.events || []).length ? `<details class="card"><summary><b>Журнал шагов</b> · ${t.events.length}</summary><ul class="log">${[...t.events].reverse().map(e => `<li><b>${EV[e.type] || e.type}</b>${e.actorName ? ` — ${esc(e.actorName)}` : ''}<div class="sub">${dt(e.createdAt)}${e.note ? ' · ' + esc(e.note) : ''}</div></li>`).join('')}</ul></details>` : ''}`;
 }
 
 const fileInput = (label = 'Фото') => `<label>${label}</label><input type="file" name="photos" accept="image/*" capture="environment" multiple>`;
@@ -170,8 +177,6 @@ async function uploadPhotos(base, form, kind) {
   return (await api(`${base}/photos`, { method: 'POST', form: fd })).map(p => p.id);
 }
 const FORMS = {
-  arrive: { title: 'Я приехал', html: () => `<label>Заметка</label><input name="note" placeholder="На месте, начинаю осмотр">${fileInput('Фото по приезду (необязательно)')}`, kind: 'arrival',
-    body: (f, ids) => ({ note: f.note.value || undefined, photoIds: ids }), ok: 'Отмечено: вы на месте' },
   inspect: { title: 'Осмотр', html: () => `<label>Что увидели</label><textarea name="notes" required placeholder="Причина, что нужно сделать"></textarea>${fileInput('Фото осмотра')}`, kind: 'inspection',
     body: (f, ids) => ({ notes: f.notes.value, photoIds: ids }), ok: 'Осмотр сохранён' },
   'request-visit': { title: 'Нужен выезд', html: () => '<label>Почему нужен осмотр</label><textarea name="note" placeholder="По описанию не понять, нужно посмотреть на месте"></textarea>',
@@ -187,7 +192,9 @@ const FORMS = {
   extra: { path: 'extras', title: 'Доп. расход', html: () => `<label>Сумма, ₸</label><input name="amountKzt" type="number" min="1" step="100" required inputmode="numeric"><label>Что нужно</label><input name="description" required placeholder="Заменить участок трубы">
       <label>Почему возник (не по вашей вине)</label><input name="reason" required placeholder="Труба сгнила за стеной">${fileInput('Фото / чек')}`, kind: 'receipt',
     body: (f, ids) => ({ amountKzt: +f.amountKzt.value, description: f.description.value, reason: f.reason.value, photoIds: ids }), ok: 'Доп. расход отправлен на решение' },
-  complete: { title: 'Работа выполнена', html: (m, t) => `<label>Итоговая цена работы, ₸</label><input name="finalCostKzt" type="number" min="0" step="500" required inputmode="numeric" value="${(t.estimates || []).filter(e => e.status === 'approved').at(-1)?.totalKzt ?? ''}">
+  decline: { title: 'Отказаться от заявки', html: () => '<div class="sub">Заявка вернётся владельцу — он выберет другого мастера.</div><label>Причина</label><textarea name="reason" required placeholder="Не смогу дешевле / нет времени"></textarea>',
+    body: (f) => ({ reason: f.reason.value }), ok: 'Вы отказались от заявки' },
+  complete: { title: 'Завершить работу', html: (m, t) => `<label>Итоговая цена работы, ₸</label><input name="finalCostKzt" type="number" min="0" step="500" required inputmode="numeric" value="${(t.estimates || []).filter(e => e.status === 'approved').at(-1)?.totalKzt ?? ''}">
       <label>Что сделано</label><textarea name="report" required placeholder="Заменил смеситель, проверил — не течёт"></textarea>${fileInput('Фото «после»')}`, kind: 'after',
     body: (f, ids) => ({ finalCostKzt: +f.finalCostKzt.value, report: f.report.value, photoIds: ids }), ok: 'Готово! Хозяин получил отчёт' },
 };
@@ -197,9 +204,15 @@ export function bindRepair(root, t, { base, onChange }) {
   root.onclick = guard(async (e) => {
     const b = e.target.closest('[data-wact]'); if (!b) return;
     const [act, method] = b.dataset.wact.split(':');
-    if (act === 'start') { if (!confirm('Начать работу?')) return; return onChange(await api(`${base}/start`, { method: 'POST', body: {} }), 'Работа начата'); }
-    const F = FORMS[act]; const box = $('#wrForm', root);
-    box.innerHTML = `<form class="card" novalidate><h3>${F.title}</h3>${F.html(method, t)}<button class="btn primary block" style="margin-top:12px">Отправить</button></form>`;
+    if (act === 'start') { if (!confirm('Начать работу? Время начала запишется.')) return; return onChange(await api(`${base}/start`, { method: 'POST', body: {} }), 'Работа начата — статус «В работе»'); }
+    if (act === 'arrive') return onChange(await api(`${base}/arrive`, { method: 'POST', body: {} }), 'Отмечено: вы на месте');   // одно нажатие, без заметки и фото
+    // «Исправить смету» — та же форма сметы, тем же способом, что и отклонённая
+    const last = (t.estimates || []).at(-1);
+    const F = act === 'revise' ? { ...FORMS.estimate, path: 'estimate', title: 'Исправить смету' } : FORMS[act];
+    const m = act === 'revise' ? (last?.method || 'REMOTE') : method;
+    const box = $('#wrForm', root);
+    box.innerHTML = `<form class="card" novalidate><h3>${F.title}</h3>${F.html(m, t)}<button class="btn primary block" style="margin-top:12px">${act === 'decline' ? 'Отказаться' : act === 'complete' ? 'Завершить' : 'Отправить'}</button></form>`;
+    if (act === 'revise' && last) { const f = $('form', box).elements; f.labourKzt.value = last.labourKzt; if (last.comment) f.comment.value = last.comment; if (last.items) f.items.value = last.items; }
     const form = $('form', box); form.scrollIntoView({ behavior: 'smooth', block: 'start' });
     if (form.elements.materialsIncluded) form.elements.materialsIncluded.onchange = () => { $('[data-mat]', form).hidden = !form.elements.materialsIncluded.checked; };
     form.onsubmit = guard(async (ev) => {

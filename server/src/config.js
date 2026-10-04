@@ -45,6 +45,7 @@ export const config = {
     offerTimeoutMin: Number(env.TRANSFER_OFFER_TIMEOUT_MIN || 30),        // никто не взял за N минут → эскалация
     escalateBeforeHours: Number(env.TRANSFER_ESCALATE_BEFORE_HOURS || 3), // или до подачи осталось меньше X часов
     reminderBeforeMin: Number(env.TRANSFER_REMINDER_BEFORE_MIN || 120),   // напоминание водителю перед подачей
+    externalDrivers: env.TRANSFER_EXTERNAL_DRIVERS === '1',   // внешние водители (таксопарк) — выключено: возят только свои водители
   },
   // Слежение за рейсами (необязательно). Без ключа выключено — время подачи меняют водитель или админ вручную.
   flights: {

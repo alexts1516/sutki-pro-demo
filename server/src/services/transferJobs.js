@@ -43,6 +43,17 @@ export const fullInclude = { ...jobInclude, events: { orderBy: { createdAt: 'asc
 export const loadJob = (where, include = fullInclude) => prisma.transferJob.findFirst({ where, include });
 
 /** Кто может водить: активные участники с флагом canDrive или ролью driver */
+/** Машина водителя: мест и багажа (пусто — седан: 4 места, 3 места багажа) */
+export const CAR_CLASSES = ['sedan', 'minivan', 'bus'];
+export const CAR_CLASS_RU = { sedan: 'седан', minivan: 'минивэн', bus: 'микроавтобус' };
+export const vehicleCapacity = (m) => ({ seats: m?.vehicleSeats ?? 4, bags: m?.vehicleBags ?? 3, cls: m?.vehicleClass || 'sedan' });
+/** Помещаются ли пассажиры и багаж трансфера в машину водителя; заказ «минивэн» — только минивэну/микроавтобусу */
+export function vehicleFits(m, t) {
+  const c = vehicleCapacity(m);
+  if ((t?.pax || 1) > c.seats || (t?.bags || 0) > c.bags) return false;
+  return t?.carClass !== 'minivan' || c.cls !== 'sedan';
+}
+const jobWhen = (j, timeZone) => new Intl.DateTimeFormat('ru-RU', { timeZone, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(new Date(j.pickupAt));
 export const driverWhere = (accountId) => ({ accountId, active: true, OR: [{ canDrive: true }, { role: 'driver' }] });
 export const eligibleDrivers = (accountId) => prisma.membership.findMany({ where: driverWhere(accountId), include: { user: true }, orderBy: { createdAt: 'asc' } });
 export async function driverMembership(accountId, userId) {
@@ -161,7 +172,7 @@ export function jobForManager(job, { publicUrl = '' } = {}) {
     payoutRule: job.payoutRule || null, payoutManual: !!job.payoutManual, paid: job.paid, paidAt: job.paidAt, offerRound: job.offerRound,
     noPayout: NO_PAYOUT_RULES.includes(job.payoutRule),
     guestPayment: { status: t.guestPaymentStatus || 'UNPAID', method: t.guestPaymentMethod || null, paidAt: t.guestPaidAt || null, byName: t.guestPaidByName || null },
-    payoutRecord: job.payoutRecord ? { id: job.payoutRecord.id, amountKzt: job.payoutRecord.amountKzt, status: job.payoutRecord.status, paidAt: job.payoutRecord.paidAt, byName: job.payoutRecord.paidByName, driverName: job.payoutRecord.driverName } : null,
+    payoutRecord: job.payoutRecord ? { id: job.payoutRecord.id, amountKzt: job.payoutRecord.amountKzt, status: job.payoutRecord.status, paidAt: job.payoutRecord.paidAt, byName: job.payoutRecord.paidByName, driverName: job.payoutRecord.name, method: job.payoutRecord.method } : null,
     flightStatus: job.flightStatus || null, flightEta: job.flightEta || null, flightCheckedAt: job.flightCheckedAt || null,
     link: job.linkToken ? { token: job.linkToken, url: `${publicUrl}/link/${job.linkToken}` } : null,
     ...timeline(job), cancelReason: job.cancelReason, events: (job.events || []).map(eventOut), createdAt: job.createdAt,
@@ -211,10 +222,12 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
     const rec = job.payoutRecord;
     if (rec?.status === 'PAID') return rec;
     const owed = job.status === 'DONE' && (job.payoutKzt || 0) > 0;
-    if (!owed) { if (rec) await prisma.driverPayout.delete({ where: { id: rec.id } }); return null; }
-    const data = { amountKzt: job.payoutKzt, driverUserId: job.driverUserId, driverContractorId: job.driverContractorId, driverName: job.driverName };
-    return rec ? prisma.driverPayout.update({ where: { id: rec.id }, data })
-      : prisma.driverPayout.create({ data: { accountId: job.accountId, jobId: job.id, status: 'PENDING', ...data } });
+    if (!owed) { if (rec) await prisma.payout.delete({ where: { id: rec.id } }); return null; }
+    const data = { amountKzt: job.payoutKzt, userId: job.driverUserId, contractorId: job.driverContractorId, name: job.driverName, title: `Трансфер ${jobWhen(job, await tz(job.accountId))}` };
+    if (rec) return prisma.payout.update({ where: { id: rec.id }, data });
+    const p = await prisma.payout.create({ data: { accountId: job.accountId, kind: 'transfer', jobId: job.id, status: 'PENDING', ...data } });
+    emit('payout.created', { accountId: job.accountId, payoutId: p.id });
+    return p;
   }
   let flights = null;
   const setFlightTracker = (t) => { flights = t; };
@@ -254,8 +267,9 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
     const m = await driverMembership(accountId, user.id);
     if (!m) throw forbidden('Вы не в списке водителей');
     const now = new Date();
-    const cur = await prisma.transferJob.findFirst({ where: { id: jobId, accountId }, include: { transfer: { select: { priceKzt: true } } } });
+    const cur = await prisma.transferJob.findFirst({ where: { id: jobId, accountId }, include: { transfer: { select: { priceKzt: true, pax: true, bags: true, carClass: true } } } });
     if (!cur) throw notFound('Заказ не найден');
+    if (OPEN.includes(cur.status) && !vehicleFits(m, cur.transfer)) throw forbidden(`Машина не подходит: нужно мест ${cur.transfer.pax || 1}, багажа ${cur.transfer.bags || 0}`);
     const pay = await payoutFields(cur, cur.transfer.priceKzt, m);
     const r = await prisma.transferJob.updateMany({
       where: { id: jobId, accountId, status: { in: OPEN }, driverUserId: null, driverContractorId: null },
@@ -366,6 +380,7 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
       if (!m) throw badRequest('Этот человек не в списке водителей — включите «Водит» в разделе «Команда»');
       data = { driverUserId, driverContractorId: null, driverName: m.user.name, vehicle: m.vehicle || null, linkToken: null, ...(await payoutFields(job, job.transfer.priceKzt, m)) };
     } else if (driverContractorId) {
+      if (!cfg.externalDrivers) throw badRequest('Трансферы возят только свои водители');
       const c = await prisma.contractor.findFirst({ where: { id: driverContractorId, accountId: job.accountId, canDrive: true } });
       if (!c) throw badRequest('Внешний водитель не найден (нужен подрядчик с отметкой «водитель»)');
       data = { driverUserId: null, driverContractorId: c.id, driverName: c.name, vehicle: c.note || null, linkToken: job.driverContractorId === c.id && job.linkToken ? job.linkToken : randomToken(18), ...(await payoutFields(job, job.transfer.priceKzt, c)) };
@@ -420,12 +435,12 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
     return n;
   }
   /** Выплата водителю: долг (DriverPayout) PENDING → PAID и обратно. Нет долга (везёт владелец, выплата 0) — 409. */
-  async function markPaid({ job, actor, paid = true }) {
+  async function markPaid({ job, actor, paid = true, method = 'cash' }) {
     need(job, ['DONE'], 'Отметить выплату водителю можно после выполнения');
     const rec = job.payoutRecord || await syncPayoutRecord(job.id);
     if (!rec) throw conflict(NO_PAYOUT_RULES.includes(job.payoutRule) ? 'Выплата не требуется — вся сумма осталась бизнесу' : 'Выплаты водителю нет (сумма 0)');
     const now = paid ? new Date() : null;
-    await prisma.driverPayout.update({ where: { id: rec.id }, data: { status: paid ? 'PAID' : 'PENDING', paidAt: now, paidById: paid ? actor?.id || null : null, paidByName: paid ? actor?.name || null : null } });
+    await prisma.payout.update({ where: { id: rec.id }, data: { status: paid ? 'PAID' : 'PENDING', method: paid ? method : null, paidAt: now, paidById: paid ? actor?.id || null : null, paidByName: paid ? actor?.name || null : null } });
     await prisma.transferJob.update({ where: { id: job.id }, data: { paid, paidAt: now } });
     await log(job, actor, paid ? 'paid' : 'unpaid', null, { payoutKzt: rec.amountKzt });
     return reload(job.id);
@@ -509,5 +524,5 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
     return out;
   }
 
-  return { setFlightTracker, checkFlights, payoutFields, createForTransfer, createForBooking, accept, release, step, reschedule, update, assign, offerAgain, cancel, cancelForBooking, syncBookingDates, markPaid, guestPayment, syncPayoutRecord, newLink, runDispatch, config: cfg };
+  return { cfg, setFlightTracker, checkFlights, payoutFields, createForTransfer, createForBooking, accept, release, step, reschedule, update, assign, offerAgain, cancel, cancelForBooking, syncBookingDates, markPaid, guestPayment, syncPayoutRecord, newLink, runDispatch, config: cfg };
 }

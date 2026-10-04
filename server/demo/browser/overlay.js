@@ -6,9 +6,8 @@ export const ROLES = [
   { id: 'owner', icon: '👑', title: 'Владелец Азамат', sub: 'админка: брони, трансферы, мастера, финансы, настройки', email: 'azamat@astanastay.example', to: 'admin' },
   { id: 'admin', icon: '🗂️', title: 'Администратор Алина', sub: 'админка без финансов и настроек комиссии', email: 'alina@astanastay.example', to: 'admin' },
   { id: 'driver', icon: '🚗', title: 'Водитель Руслан', sub: 'приложение: заказы, «Беру», шаги поездки', email: 'ruslan@astanastay.example', to: 'app' },
-  { id: 'master', icon: '🔧', title: 'Мастер Master Electric', sub: 'подрядчик с входом: смета, доп. расходы, фото', email: 'electric@astanastay.example', to: 'app' },
-  { id: 'cleaner', icon: '🧹', title: 'Уборщица Гульнара', sub: 'приложение: уборки на сегодня', email: 'gulnara@astanastay.example', to: 'app' },
-  { id: 'extDriver', icon: '🔗', title: 'Внешний водитель по ссылке', sub: 'такси «Жол» — без входа, одна поездка', link: 'driver' },
+  { id: 'master', icon: '🔧', title: 'Мастер Master Electric', sub: 'подрядчик с входом: смета, «В работе», «Завершить», выплаты', email: 'electric@astanastay.example', to: 'app' },
+  { id: 'cleaner', icon: '✨', title: 'Подготовка — Гульнара', sub: 'специалист по подготовке: чек-лист, фото, выплаты', email: 'gulnara@astanastay.example', to: 'app' },
   { id: 'extMaster', icon: '🔗', title: 'Внешний мастер по ссылке', sub: 'сервис без входа — одна заявка', link: 'master' },
 ];
 

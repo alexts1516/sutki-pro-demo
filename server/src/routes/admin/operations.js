@@ -9,8 +9,9 @@ import { bookingOut } from '../../lib/serialize.js';
 import { parseDay, isoDay, addDays, todayIn } from '../../lib/dates.js';
 import { confirmBooking, isAvailable } from '../../services/bookings.js';
 import { loadCurrency } from '../../site/config.js';
+import { cleaningReport } from '../../services/cleaning.js';
 
-export default function operationsRouter({ events, dispatch }) {
+export default function operationsRouter({ events, dispatch, cleaning }) {
   const r = Router();
   const actorOf = (req) => ({ type: req.role, id: req.user.id, name: req.user.name });
   const day = (s, fallback) => (s ? parseDay(s) : null) || fallback;
@@ -99,9 +100,23 @@ export default function operationsRouter({ events, dispatch }) {
     if (!t) throw notFound('Уборка не найдена');
     if (assigneeId) {
       const m = await prisma.membership.findFirst({ where: { accountId: req.accountId, userId: assigneeId, role: 'cleaning', active: true } });
-      if (!m) throw badRequest('Исполнитель должен быть специалистом по клинингу этого аккаунта');
+      if (!m) throw badRequest('Исполнитель должен быть специалистом по подготовке этого аккаунта');
     }
     res.json(await prisma.cleaningTask.update({ where: { id: t.id }, data: { assigneeId } }));
+  });
+
+  // полный отчёт о подготовке: кто, начало/окончание, чек-лист, фото, проблемы, комментарии (+ выплата — владельцу)
+  r.get('/cleaning-tasks/:id', async (req, res) => {
+    const t = await prisma.cleaningTask.findFirst({ where: { id: req.params.id, accountId: req.accountId }, include: { apartment: true, photos: true, assignee: { select: { id: true, name: true } }, payout: true } });
+    if (!t) throw notFound('Подготовка не найдена');
+    res.json(cleaningReport(t, { payout: req.role === 'owner' ? t.payout : null }));
+  });
+  // проблема с подготовки → заявка мастеру одним нажатием (без исполнителя — владелец выберет мастера)
+  r.post('/cleaning-tasks/:id/problems/:pid/repair', async (req, res) => {
+    const t = await prisma.cleaningTask.findFirst({ where: { id: req.params.id, accountId: req.accountId } });
+    if (!t) throw notFound('Подготовка не найдена');
+    const rt = await cleaning.problemToRepair(t, req.params.pid, actorOf(req));
+    res.status(201).json({ repairTaskId: rt.id, title: rt.title });
   });
 
   // ремонты, сметы, доп. расходы и подрядчики — в workRequests.js
@@ -115,11 +130,13 @@ export default function operationsRouter({ events, dispatch }) {
   r.get('/finance', requireRole('owner'), async (req, res) => {
     const m = /^\d{4}-\d{2}$/.test(String(req.query.month)) ? String(req.query.month) : isoDay(todayIn(req.account.timezone)).slice(0, 7);
     const from = parseDay(m + '-01'); const to = new Date(Date.UTC(from.getUTCFullYear(), from.getUTCMonth() + 1, 1));
-    const [bookings, repairs, aptCount, transferJobs] = await Promise.all([
+    const [bookings, repairs, aptCount, transferJobs, cleaningPayouts, unpaidAll] = await Promise.all([
       prisma.booking.findMany({ where: { accountId: req.accountId, status: { in: ['confirmed', 'completed'] }, checkIn: { lt: to }, checkOut: { gt: from } } }),
       prisma.repairTask.findMany({ where: { accountId: req.accountId, date: { gte: from, lt: to }, costKzt: { gt: 0 }, status: { not: 'CANCELLED' } } }),
       prisma.apartment.count({ where: { accountId: req.accountId, active: true } }),
       prisma.transferJob.findMany({ where: { accountId: req.accountId, status: 'DONE', pickupAt: { gte: from, lt: to } }, include: { transfer: { select: { priceKzt: true, guestPaymentStatus: true } }, payoutRecord: true } }),
+      prisma.payout.findMany({ where: { accountId: req.accountId, kind: 'cleaning', cleaningTask: { date: { gte: from, lt: to } } } }),
+      prisma.payout.findMany({ where: { accountId: req.accountId, status: 'PENDING' } }),
     ]);
     let revenue = 0, nights = 0;
     for (const b of bookings) {
@@ -140,6 +157,8 @@ export default function operationsRouter({ events, dispatch }) {
     const transfersGuestPaidKzt = sum(transferJobs.filter(j => j.transfer?.guestPaymentStatus === 'PAID'), price);
     const transfersMarginKzt = transfersRevenueKzt - transfersKzt;   // осталось бизнесу (комиссия + поездки владельца целиком)
     const own = transferJobs.filter(j => ['owner', 'business'].includes(j.payoutRule));
+    const cleaningKzt = sum(cleaningPayouts, p => p.amountKzt);   // подготовка квартир (выплаты специалистам)
+    const cleaningUnpaidKzt = sum(cleaningPayouts.filter(p => p.status !== 'PAID'), p => p.amountKzt);
     const repairsUnpaidKzt = repairs.filter(x => !x.paid).reduce((s, x) => s + (x.costKzt || 0), 0);
     res.json({
       month: m, revenueKzt: revenue, nights, occupancy: aptCount ? nights / (aptCount * days) : 0, adrKzt: nights ? Math.round(revenue / nights) : 0,
@@ -147,7 +166,9 @@ export default function operationsRouter({ events, dispatch }) {
       transfersRevenueKzt, transfersGuestPaidKzt, transfersGuestUnpaidKzt: transfersRevenueKzt - transfersGuestPaidKzt,
       transfersKzt, transfersPayoutKzt: transfersKzt, transfersPaidOutKzt, transfersUnpaidKzt, transfersMarginKzt, transfers: transferJobs.length,
       transfersOwnTrips: own.length, transfersOwnKzt: sum(own, price),
-      netKzt: revenue + transfersRevenueKzt - repairsKzt - transfersKzt, bookings: bookings.length,
+      cleaningKzt, cleaningUnpaidKzt, cleanings: cleaningPayouts.length,
+      payoutsUnpaidKzt: sum(unpaidAll, p => p.amountKzt), payoutsUnpaid: unpaidAll.length,   // всего должны исполнителям (за все месяцы)
+      netKzt: revenue + transfersRevenueKzt - repairsKzt - transfersKzt - cleaningKzt, bookings: bookings.length,
     });
   });
   r.get('/payments', requireRole('owner'), async (req, res) => {

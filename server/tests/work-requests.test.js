@@ -54,7 +54,7 @@ test('смета без выезда с материалами → одобре�
   assert.equal(done.body.status, 'DONE'); assert.equal(done.body.payableKzt, 15000);
   const full = await adminCard(t.id);
   assert.equal(full.costKzt, 15000);
-  assert.deepEqual(full.events.map(x => x.type), ['created', 'occupancy_changed', 'estimate_submitted', 'approved', 'arrived', 'started', 'completed']);
+  assert.deepEqual(full.events.map(x => x.type), ['created', 'occupancy_changed', 'estimate_submitted', 'approved', 'started', 'completed']);   // смета без выезда — «приехал» не нужен
   assert.ok(full.events.every(x => x.actorName && x.createdAt), 'у каждого шага есть кто и когда');
   assert.equal(full.events.find(x => x.type === 'approved').actorType, 'owner');
   const month = new Date(full.date).toISOString().slice(0, 7);

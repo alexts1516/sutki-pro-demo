@@ -5,7 +5,9 @@
 //  NEW ─┬─ смета без выезда (REMOTE) или по фото (PHOTOS) ─────────────────────────► AWAITING_OWNER_APPROVAL
 //       └─ «нужен выезд» / «приехал» ─► VISIT_INSPECTION ─ осмотр, смета (VISIT) ─► AWAITING_OWNER_APPROVAL
 //  AWAITING_OWNER_APPROVAL ─ одобрено ─► APPROVED ─ мастер начал ─► IN_PROGRESS ─ итог + отчёт (+ фото) ─► DONE
-//  AWAITING_OWNER_APPROVAL ─ отклонено ─► REJECTED ─ новая смета ─► AWAITING_OWNER_APPROVAL (или «нужен выезд» ─► VISIT_INSPECTION)
+//  AWAITING_OWNER_APPROVAL ─ отклонено ─► REJECTED ─┬ «Исправить смету» ─► AWAITING_OWNER_APPROVAL (или «нужен выезд» ─► VISIT_INSPECTION)
+//                                                   └ «Отказаться от заявки» (с причиной) ─► NEW без исполнителя (владелец выберет другого)
+//  «Я приехал» — по желанию, одно нажатие (обязателен только для сметы после осмотра и простой работы).
 //  quickJob (простая работа): VISIT_INSPECTION + отмечен приезд ─► IN_PROGRESS без сметы; итоговая цена обязательна.
 //  Любой незавершённый статус ─ отмена владельцем/админом ─► CANCELLED.
 //  Доп. расходы (не по вине мастера) — только в IN_PROGRESS; решает владелец/админ, одобренные прибавляются к сумме.
@@ -57,9 +59,11 @@ export function payable(task) {
 /** Какие шаги сейчас доступны исполнителю (для кнопок в приложении мастера) */
 export function masterActions(task) {
   const s = task.status, a = [];
-  if (['NEW', 'REJECTED'].includes(s)) a.push('estimate:REMOTE', ...(task.photos?.some(p => p.kind === 'problem') ? ['estimate:PHOTOS'] : []), 'request-visit');
-  if (['NEW', 'VISIT_INSPECTION', 'REJECTED', 'APPROVED'].includes(s)) a.push('arrive');
-  if (['VISIT_INSPECTION', 'REJECTED'].includes(s) && task.arrivedAt) a.push('inspect', 'estimate:VISIT');
+  // после отказа владельца — ровно два действия: исправить смету или отказаться (+ маленькая ссылка «нужен выезд»)
+  if (s === 'REJECTED') return ['revise', 'decline', 'request-visit'];
+  if (s === 'NEW') a.push('estimate:REMOTE', ...(task.photos?.some(p => p.kind === 'problem') ? ['estimate:PHOTOS'] : []), 'request-visit');
+  if (['NEW', 'VISIT_INSPECTION', 'APPROVED'].includes(s) && !task.arrivedAt) a.push('arrive');
+  if (s === 'VISIT_INSPECTION' && task.arrivedAt) a.push('inspect', 'estimate:VISIT');
   if (s === 'APPROVED' || (s === 'VISIT_INSPECTION' && task.quickJob && task.arrivedAt)) a.push('start');
   if (s === 'IN_PROGRESS') a.push('extra', 'complete');
   return [...new Set(a)];
@@ -82,7 +86,10 @@ async function recalc(taskId) {
 }
 const setStatus = (task, status, extra = {}) => prisma.repairTask.update({ where: { id: task.id }, data: { status, ...extra } });
 
-export function createWorkflow({ events }) {
+/** Последняя смета (для «Исправить смету» — тем же способом) */
+export const lastEstimate = (task) => [...(task.estimates || [])].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)).at(-1) || null;
+
+export function createWorkflow({ events, payouts = null }) {
   const emit = (name, payload) => events?.emit(name, payload);
 
   const wf = {
@@ -181,9 +188,8 @@ export function createWorkflow({ events }) {
       if (task.quickJob && task.status === 'NEW') throw conflict('Простая работа: сначала отметьте приезд, потом начинайте');
       if (!quick && (task.status !== 'APPROVED' || !approvedEstimate(task))) throw conflict('Нельзя начать работу без одобренной хозяином сметы');
       if (quick && !task.arrivedAt) throw conflict('Простая работа: сначала отметьте приезд, потом начинайте');
-      const now = new Date();
-      if (!task.arrivedAt) await log(task, actor, 'arrived', 'Приезд отмечен при начале работ');
-      await setStatus(task, 'IN_PROGRESS', { startedAt: now, arrivedAt: task.arrivedAt || now });
+      // приезд не обязателен (смета без выезда / по фото): время начала — отдельно, приезд не подставляем
+      await setStatus(task, 'IN_PROGRESS', { startedAt: new Date() });
       await log(task, actor, 'started', null, quick ? { quickJob: true } : { estimateId: approvedEstimate(task).id });
     },
 
@@ -206,6 +212,7 @@ export function createWorkflow({ events }) {
       const u = await prisma.extraExpense.update({ where: { id: extra.id }, data: { status: approve ? 'APPROVED' : 'REJECTED', decisionNote: note || null, decidedAt: new Date(), decidedById: actor.id } });
       await log(task, actor, approve ? 'extra_approved' : 'extra_rejected', note, { extraId: extra.id, amountKzt: extra.amountKzt });
       await recalc(task.id);
+      if (task.status === 'DONE') await payouts?.forRepair(task.id);   // итог изменился — пересчитать «к оплате»
       emit('extra.decided', { accountId: task.accountId, extraId: extra.id });
       return u;
     },
@@ -217,6 +224,7 @@ export function createWorkflow({ events }) {
       await setStatus(task, 'DONE', { finalCostKzt, report, doneAt: new Date() });
       await log(task, actor, 'completed', report, { finalCostKzt, photoIds: photoIds || [], pendingExtras: pendingExtras(task).length });
       const t = await recalc(task.id);
+      await payouts?.forRepair(task.id);   // сразу «к оплате» мастеру (если работу делал не владелец)
       emit('repair.reported', { accountId: task.accountId, taskId: task.id });
       return t;
     },
@@ -234,8 +242,28 @@ export function createWorkflow({ events }) {
       need(task, ['DONE'], 'Оплатить можно только выполненную заявку');
       if (pendingExtras(task).length) throw conflict('Сначала одобрите или отклоните доп. расходы — потом отмечайте оплату');
       if (task.paid) throw conflict('Уже отмечено как оплаченное');
-      await prisma.repairTask.update({ where: { id: task.id }, data: { paid: true, paidAt: new Date() } });
+      const now = new Date();
+      await prisma.repairTask.update({ where: { id: task.id }, data: { paid: true, paidAt: now } });
+      await prisma.payout.updateMany({ where: { repairTaskId: task.id, status: 'PENDING' }, data: { status: 'PAID', method: 'cash', paidAt: now, paidById: actor.id || null, paidByName: actor.name || null } });
       await log(task, actor, 'paid', null, { amountKzt: payable(task) });
+    },
+
+    /** Мастер отказался от заявки после отклонённой сметы: заявка возвращается владельцу без исполнителя */
+    async decline(task, actor, { reason }) {
+      need(task, ['REJECTED'], 'Отказаться можно после отклонённой сметы');
+      if (!reason?.trim()) throw badRequest('Напишите причину отказа');
+      await setStatus(task, 'NEW', { assigneeId: null, contractorId: null, assigneeLabel: null, declinedAt: new Date(), arrivedAt: null, visitRequestedAt: null, linkToken: randomToken(18) });
+      await log(task, actor, 'declined', reason.trim());
+      emit('repair.declined', { accountId: task.accountId, taskId: task.id, by: actor.name, reason: reason.trim() });
+    },
+
+    /** Владелец/админ выбирает мастера (или подрядчика) для заявки без исполнителя / меняет до начала работ */
+    async assign(task, actor, { assigneeId = null, contractorId = null }) {
+      need(task, ['NEW', 'VISIT_INSPECTION', 'REJECTED'], 'Сменить мастера можно до одобрения сметы');
+      if (!assigneeId && !contractorId) throw badRequest('Выберите мастера');
+      await setStatus(task, 'NEW', { assigneeId, contractorId, assigneeLabel: null, arrivedAt: null, visitRequestedAt: null, linkToken: randomToken(18) });
+      await log(task, actor, 'assigned');
+      emit('repair.assigned', { accountId: task.accountId, taskId: task.id });
     },
 
     /** Фото к заявке. problem — только владелец/админ; остальные типы — исполнитель */
@@ -283,7 +311,7 @@ function common(t) {
   return {
     id: t.id, title: t.title, description: t.description, type: t.type, priority: t.priority, status: t.status, statusLabel: STATUS_RU[t.status],
     quickJob: t.quickJob, date: t.date, timeWindow: t.timeWindow, visitRequestedAt: t.visitRequestedAt, arrivedAt: t.arrivedAt, inspectionNotes: t.inspectionNotes,
-    startedAt: t.startedAt, finalCostKzt: t.finalCostKzt, report: t.report, doneAt: t.doneAt, cancelReason: t.cancelReason,
+    startedAt: t.startedAt, declinedAt: t.declinedAt, finalCostKzt: t.finalCostKzt, report: t.report, doneAt: t.doneAt, cancelReason: t.cancelReason,
     estimates: (t.estimates || []).map(estimateOut), extras: (t.extras || []).map(extraOut), photos: (t.photos || []).map(photoOut),
     events: (t.events || []).map(eventOut), executor: executorOut(t), createdAt: t.createdAt,
   };

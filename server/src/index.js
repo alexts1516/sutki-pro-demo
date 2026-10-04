@@ -28,6 +28,8 @@ const app = createApp({ config, events, storage, payments, telegramWebhook, flig
 if (bot) {
   const { registerTransferButtons } = await import('./telegram/transferButtons.js');
   registerTransferButtons(bot, { prisma, dispatch: app.locals.dispatch, publicUrl: config.publicUrl });   // кнопка «Беру» под предложением трансфера
+  const { registerPayoutButtons } = await import('./telegram/payoutButtons.js');
+  registerPayoutButtons(bot, { prisma, payouts: app.locals.payouts });   // «Оплатить» под уведомлением «к оплате»
 }
 const server = app.listen(config.port, async () => {
   console.log(`\n  Сервер запущен: http://localhost:${config.port}`);
@@ -43,7 +45,7 @@ const server = app.listen(config.port, async () => {
     startTelegram({ bot, mode: config.telegram.mode, publicUrl: config.publicUrl }).catch(e => console.error('[telegram] не удалось запустить:', e.message));
   }
 });
-const stopScheduler = startScheduler({ prisma, events, dispatch: app.locals.dispatch });
+const stopScheduler = startScheduler({ prisma, events, dispatch: app.locals.dispatch, payouts: app.locals.payouts });
 
 const shutdown = async () => {
   stopScheduler(); if (bot && config.telegram.mode === 'polling') await bot.stop().catch(() => {});

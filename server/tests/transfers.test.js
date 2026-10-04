@@ -2,9 +2,9 @@
 // первый «Беру» получает заказ, эскалация «никто не взял», отмена/перенос брони, выплата водителю, ссылка внешнего водителя.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeApp, login, prisma, request, freeDates } from './helpers.js';
+import { makeApp, login, prisma, request, freeDates, extConfig, extDriver } from './helpers.js';
 
-const { app, events } = makeApp();
+const { app, events } = makeApp({ config: extConfig });   // внешние водители включены только для этих сценариев
 let acc, apt, owner, admin, ruslan, bauyrzhan, kanat, cleaner, master, ownerB;
 let start = 40;
 
@@ -245,7 +245,7 @@ test('водитель отказался до выезда → заказ сн�
 
 test('внешний водитель по ссылке: назначение, шаги, ссылка закрывается после выполнения', async () => {
   const { job } = await confirmedJob();
-  const ext = await prisma.contractor.findFirst({ where: { accountId: acc.id, canDrive: true } });
+  const ext = await extDriver(acc.id);
   const a = await request(app).post(`/api/admin/transfer-jobs/${job.id}/assign`).set(owner.auth).send({ driverContractorId: ext.id });
   assert.equal(a.status, 200); assert.equal(a.body.driver.kind, 'contractor'); assert.ok(a.body.link.token);
   const url = `/api/transfer-link/${a.body.link.token}`;
@@ -265,7 +265,6 @@ test('календарь админки: брони, уборки, заявки 
   const drivers = (await request(app).get('/api/admin/drivers').set(admin.auth)).body;
   assert.ok(drivers.team.some(d => d.role === 'driver') && drivers.team.some(d => d.role === 'owner'));
   assert.ok(!drivers.team.some(d => d.role === 'cleaning'));
-  assert.equal(drivers.external.length, 1);
   const list = (await request(app).get('/api/admin/transfer-jobs?status=UNASSIGNED,OFFERED').set(admin.auth)).body;
   assert.ok(list.items.every(i => ['UNASSIGNED', 'OFFERED'].includes(i.status)));
 });

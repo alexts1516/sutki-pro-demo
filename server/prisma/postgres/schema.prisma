@@ -57,22 +57,27 @@ model Account {
   transferJobs   TransferJob[]
   transferEvents TransferEvent[]
   settings       AccountSettings?
-  driverPayouts  DriverPayout[]
+  payouts        Payout[]
+  cleaningPhotos CleaningPhoto[]
 }
 
 /// Настройки владельца: комиссия с трансферов, кому слать уведомления менеджерам, кто одобряет сметы.
 model AccountSettings {
-  id                       String    @id @default(cuid())
-  accountId                String    @unique
-  transferPayoutMode       String    @default("PERCENT") /// PERCENT (бизнес оставляет ownerCommissionPercent от цены) | FIXED (водителю фиксированно driverFixedKzt)
-  ownerCommissionPercent   Float? /// 0–100; пусто — не настроено (считается 0%: водителю вся цена)
-  driverFixedKzt           Int? /// фиксированная ставка водителю за поездку (режим FIXED)
-  commissionConfiguredAt   DateTime? /// когда владелец впервые задал комиссию (пусто — в настройках подсказка «не настроено»)
-  managerNotify            String    @default("BOTH") /// кому уведомления «для менеджера»: OWNER (только владельцу) | ADMIN (только админам) | BOTH
-  approvalBy               String    @default("OWNER_AND_ADMIN") /// кто одобряет сметы и доп. расходы: OWNER_ONLY | OWNER_AND_ADMIN
-  flightTracking           Boolean   @default(true) /// следить за рейсами (работает, только если на сервере задан ключ AeroDataBox)
-  ownerDrivesKeepsAll      Boolean   @default(true) /// везёт сам владелец — выплаты нет, вся цена трансфера остаётся бизнесу
-  updatedAt                DateTime  @updatedAt
+  id                     String    @id @default(cuid())
+  accountId              String    @unique
+  transferPayoutMode     String    @default("PERCENT") /// PERCENT (бизнес оставляет ownerCommissionPercent от цены) | FIXED (водителю фиксированно driverFixedKzt)
+  ownerCommissionPercent Float? /// 0–100; пусто — не настроено (считается 0%: водителю вся цена)
+  driverFixedKzt         Int? /// фиксированная ставка водителю за поездку (режим FIXED)
+  commissionConfiguredAt DateTime? /// когда владелец впервые задал комиссию (пусто — в настройках подсказка «не настроено»)
+  managerNotify          String    @default("BOTH") /// кому уведомления «для менеджера»: OWNER (только владельцу) | ADMIN (только админам) | BOTH
+  approvalBy             String    @default("OWNER_AND_ADMIN") /// кто одобряет сметы и доп. расходы: OWNER_ONLY | OWNER_AND_ADMIN
+  flightTracking         Boolean   @default(true) /// следить за рейсами (работает, только если на сервере задан ключ AeroDataBox)
+  ownerDrivesKeepsAll    Boolean   @default(true) /// везёт сам владелец — выплаты нет, вся цена трансфера остаётся бизнесу
+  cleaningChecklist      Json? /// шаблон чек-листа подготовки: [{label, photo}] (пусто — стандартный)
+  cleaningRateKzt        Int? /// оплата специалисту по подготовке за квартиру (если не задано по размеру или у квартиры)
+  cleaningRates          Json? /// оплата по размеру: {"Студия":4000,"1-комн.":5000,…}
+  payoutReminderHours    Int       @default(3) /// напомнить владельцу о невыплаченном через N часов
+  updatedAt              DateTime  @updatedAt
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
 }
@@ -100,17 +105,20 @@ model User {
 
 /// Роль пользователя в конкретном аккаунте.
 model Membership {
-  id        String   @id @default(cuid())
-  userId    String
-  accountId String
-  role      String /// owner | admin | cleaning | master | driver
-  active    Boolean  @default(true)
-  canDrive  Boolean  @default(false) /// в списке водителей: получает предложения трансферов (владелец/админ — по умолчанию да, роль driver — всегда)
-  vehicle   String? /// машина водителя для гостя: «Toyota Camry, белая, 123 ABC 01»
+  id             String   @id @default(cuid())
+  userId         String
+  accountId      String
+  role           String /// owner | admin | cleaning | master | driver
+  active         Boolean  @default(true)
+  canDrive       Boolean  @default(false) /// в списке водителей: получает предложения трансферов (владелец/админ — по умолчанию да, роль driver — всегда)
+  vehicle        String? /// машина водителя для гостя: «Toyota Camry, белая, 123 ABC 01»
+  vehicleSeats   Int? /// мест для пассажиров (пусто — 4)
+  vehicleBags    Int? /// мест для багажа (пусто — 3)
+  vehicleClass   String? /// sedan | minivan | bus (седан / минивэн / микроавтобус; пусто — седан)
   payoutPercent  Float? /// своя ставка водителя: бизнес оставляет столько % от цены трансфера (перекрывает настройку аккаунта)
   payoutFixedKzt Int? /// или своя фиксированная сумма за поездку (важнее процента)
-  paidAsDriver   Boolean @default(true) /// платим как водителю; false — человек «от бизнеса» (например, совладелец): выплаты нет, вся цена бизнесу
-  createdAt DateTime @default(now())
+  paidAsDriver   Boolean  @default(true) /// платим как водителю; false — человек «от бизнеса» (например, совладелец): выплаты нет, вся цена бизнесу
+  createdAt      DateTime @default(now())
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -152,37 +160,39 @@ model Guest {
 }
 
 model Apartment {
-  id            String   @id @default(cuid())
-  accountId     String
-  code          String? /// номер квартиры, например «45» — его (и адрес) видит мастер по своей заявке
-  title         String
-  titleEn       String?
-  complex       String?
-  address       String
-  district      String
-  rooms         String /// «Студия», «1-комн.», «2-комн.», «3-комн.»
-  maxGuests     Int
-  areaM2        Int?
-  basePriceKzt  Int
-  description   String?
-  descriptionEn String?
-  petsAllowed   Boolean  @default(false)
-  petFeeKzt     Int      @default(0)
-  petNote       String?
+  id                 String   @id @default(cuid())
+  accountId          String
+  code               String? /// номер квартиры, например «45» — его (и адрес) видит мастер по своей заявке
+  title              String
+  titleEn            String?
+  complex            String?
+  address            String
+  district           String
+  rooms              String /// «Студия», «1-комн.», «2-комн.», «3-комн.»
+  maxGuests          Int
+  areaM2             Int?
+  basePriceKzt       Int
+  description        String?
+  descriptionEn      String?
+  petsAllowed        Boolean  @default(false)
+  petFeeKzt          Int      @default(0)
+  petNote            String?
   // доступ в квартиру — видят владелец, админ, клининг по своей уборке и гость в день заезда.
   // Мастерам/подрядчикам эти поля НЕ отдаются: они видят только адрес и номер квартиры (code).
-  lockCode      String?
-  keyboxCode    String?
-  intercom      String?
-  entrance      String?
-  floor         Int?
-  wifiName      String?
-  wifiPassword  String?
-  accessNote    String?
-  active        Boolean  @default(true)
-  sortOrder     Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  lockCode           String?
+  keyboxCode         String?
+  intercom           String?
+  entrance           String?
+  floor              Int?
+  wifiName           String?
+  wifiPassword       String?
+  accessNote         String?
+  cleaningExtraItems Json? /// доп. пункты чек-листа подготовки этой квартиры: [{label, photo}]
+  cleaningRateKzt    Int? /// оплата подготовки этой квартиры (важнее настройки по размеру)
+  active             Boolean  @default(true)
+  sortOrder          Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   account       Account          @relation(fields: [accountId], references: [id], onDelete: Cascade)
   photos        ApartmentPhoto[]
@@ -258,34 +268,34 @@ model Booking {
 }
 
 model Transfer {
-  id          String   @id @default(cuid())
-  accountId   String
-  bookingId   String?
-  guestId     String?
-  apartmentId String?
-  direction   String /// in (встреча) | out (проводы)
-  place       String   @default("airport") /// airport | station
-  date        DateTime
-  time        String
-  flight      String?
-  pax         Int      @default(1)
-  bags        Int      @default(1)
-  childSeats  Int      @default(0)
-  carClass    String   @default("standard") /// standard | minivan
-  priceKzt    Int
-  status      String   @default("requested") /// requested | planned | driver | done | cancelled — зеркало статуса TransferJob для гостя
-  driverName  String?
-  sign        String?
-  address     String?
-  guestName   String?
-  guestPhone  String?
-  paid        Boolean  @default(false) /// зеркало guestPaymentStatus = PAID
+  id                 String    @id @default(cuid())
+  accountId          String
+  bookingId          String?
+  guestId            String?
+  apartmentId        String?
+  direction          String /// in (встреча) | out (проводы)
+  place              String    @default("airport") /// airport | station
+  date               DateTime
+  time               String
+  flight             String?
+  pax                Int       @default(1)
+  bags               Int       @default(1)
+  childSeats         Int       @default(0)
+  carClass           String    @default("standard") /// standard | minivan
+  priceKzt           Int
+  status             String    @default("requested") /// requested | planned | driver | done | cancelled — зеркало статуса TransferJob для гостя
+  driverName         String?
+  sign               String?
+  address            String?
+  guestName          String?
+  guestPhone         String?
+  paid               Boolean   @default(false) /// зеркало guestPaymentStatus = PAID
   guestPaymentStatus String    @default("UNPAID") /// оплата гостя БИЗНЕСУ за трансфер: UNPAID | PAID (водителю не показывается)
   guestPaymentMethod String? /// cash (наличные) | card (карта/перевод) | online (онлайн-оплата)
   guestPaidAt        DateTime?
   guestPaidById      String? /// кто отметил (владелец/админ)
   guestPaidByName    String?
-  createdAt   DateTime @default(now())
+  createdAt          DateTime  @default(now())
 
   account   Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
   booking   Booking?     @relation(fields: [bookingId], references: [id], onDelete: SetNull)
@@ -345,7 +355,7 @@ model TransferJob {
   driverUser       User?           @relation("TransferDriver", fields: [driverUserId], references: [id], onDelete: SetNull)
   driverContractor Contractor?     @relation(fields: [driverContractorId], references: [id], onDelete: SetNull)
   events           TransferEvent[]
-  payoutRecord     DriverPayout?
+  payoutRecord     Payout?
 
   @@index([accountId, pickupAt])
   @@index([accountId, status])
@@ -354,25 +364,36 @@ model TransferJob {
 
 /// Долг бизнеса водителю за выполненный трансфер. Создаётся при завершении заказа, только если выплата > 0
 /// (везёт владелец или человек «от бизнеса» — записи нет, вся цена — выручка бизнеса).
-model DriverPayout {
-  id                 String    @id @default(cuid())
-  accountId          String
-  jobId              String    @unique
-  driverUserId       String?
-  driverContractorId String?
-  driverName         String?
-  amountKzt          Int
-  status             String    @default("PENDING") /// PENDING (должны водителю) | PAID (выплачено)
-  paidAt             DateTime?
-  paidById           String?
-  paidByName         String?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
+/// Выплата исполнителю (водителю, мастеру, специалисту по подготовке): «К оплате» (PENDING) → «Выплачено» (PAID).
+/// Создаётся сразу после завершения работы, если сумма > 0 и работу делал не владелец. Таблица исторически называется DriverPayout.
+model Payout {
+  id             String    @id @default(cuid())
+  accountId      String
+  kind           String    @default("transfer") /// transfer | cleaning | repair
+  jobId          String?   @unique /// заказ водителю
+  cleaningTaskId String?   @unique /// подготовка квартиры
+  repairTaskId   String?   @unique /// заявка мастеру
+  userId         String?   @map("driverUserId") /// исполнитель из команды
+  contractorId   String?   @map("driverContractorId") /// или подрядчик
+  name           String?   @map("driverName")
+  title          String? /// за что: «Подготовка кв. 12», «Трансфер 5 окт 14:30», «Розетка — кв. 45»
+  amountKzt      Int
+  status         String    @default("PENDING") /// PENDING (к оплате) | PAID (выплачено)
+  method         String? /// cash | transfer
+  paidAt         DateTime?
+  paidById       String?
+  paidByName     String?
+  remindedAt     DateTime? /// когда напомнили владельцу о долге
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
-  account Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  job     TransferJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  job          TransferJob?  @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  cleaningTask CleaningTask? @relation(fields: [cleaningTaskId], references: [id], onDelete: Cascade)
+  repairTask   RepairTask?   @relation(fields: [repairTaskId], references: [id], onDelete: Cascade)
 
   @@index([accountId, status])
+  @@map("DriverPayout")
 }
 
 /// Журнал заказа на трансфер: предложено, взял, отказался, назначен, выехал, на месте, гость в машине, завершён, отменён, эскалация, изменение времени.
@@ -404,33 +425,56 @@ model CleaningTask {
   fromTime    String    @default("12:00")
   toTime      String    @default("18:00")
   status      String    @default("assigned") /// assigned | enroute | progress | done
-  checklist   Json? /// [{label, done}]
+  checklist   Json? /// [{label, photo, done, doneAt}] — снимок шаблона + пунктов квартиры при начале
+  problems    Json? /// [{id, text, photoIds, at, byName, repairTaskId}] — проблемы, найденные при подготовке
   report      String?
+  finishNote  String? /// почему не всё отмечено (если закончили с неотмеченными пунктами)
+  startedAt   DateTime?
   doneAt      DateTime?
   createdAt   DateTime  @default(now())
 
-  account   Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  apartment Apartment @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
-  booking   Booking?  @relation(fields: [bookingId], references: [id], onDelete: SetNull)
-  assignee  User?     @relation("CleaningAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  account   Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  apartment Apartment       @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  booking   Booking?        @relation(fields: [bookingId], references: [id], onDelete: SetNull)
+  assignee  User?           @relation("CleaningAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  photos    CleaningPhoto[]
+  payout    Payout?
 
   @@index([accountId, date])
   @@index([assigneeId])
 }
 
+/// Фото подготовки: к пункту чек-листа (itemIndex), к проблеме (kind=problem) или общее
+model CleaningPhoto {
+  id             String   @id @default(cuid())
+  accountId      String
+  cleaningTaskId String
+  kind           String   @default("item") /// item | problem | general
+  itemIndex      Int?
+  url            String
+  storageKey     String?
+  mimeType       String?
+  createdAt      DateTime @default(now())
+
+  account Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  task    CleaningTask @relation(fields: [cleaningTaskId], references: [id], onDelete: Cascade)
+
+  @@index([cleaningTaskId])
+}
+
 model Contractor {
-  id        String   @id @default(cuid())
-  accountId String
-  name      String
-  type      String /// plumb | elec | appl | furn | other
-  phone     String?
-  note      String?
-  regular   Boolean  @default(false)
-  canDrive  Boolean  @default(false) /// внешний водитель: можно назначить на трансфер (работает по ссылке)
+  id             String   @id @default(cuid())
+  accountId      String
+  name           String
+  type           String /// plumb | elec | appl | furn | other
+  phone          String?
+  note           String?
+  regular        Boolean  @default(false)
+  canDrive       Boolean  @default(false) /// внешний водитель: можно назначить на трансфер (работает по ссылке)
   payoutPercent  Float? /// своя комиссия бизнеса с этого водителя, %
   payoutFixedKzt Int? /// или фиксированная сумма водителю за поездку
-  userId    String? /// пользователь с ролью master, под которым подрядчик входит в приложение команды
-  createdAt DateTime @default(now())
+  userId         String? /// пользователь с ролью master, под которым подрядчик входит в приложение команды
+  createdAt      DateTime @default(now())
 
   account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
   user         User?         @relation("ContractorUser", fields: [userId], references: [id], onDelete: SetNull)
@@ -467,6 +511,7 @@ model RepairTask {
   arrivedAt            DateTime?
   inspectionNotes      String?
   startedAt            DateTime?
+  declinedAt           DateTime? /// мастер отказался — заявка вернулась владельцу без исполнителя
   cancelReason         String?
   createdById          String?
   // кто будет в квартире во время визита мастера (одно общее поле: последнее изменение побеждает)
@@ -488,6 +533,7 @@ model RepairTask {
   events             RepairEvent[]
   photos             RepairPhoto[]
   extras             ExtraExpense[]
+  payout             Payout?
 
   @@index([accountId, date])
   @@index([assigneeId])

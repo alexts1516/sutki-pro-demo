@@ -30,6 +30,9 @@ const ApartmentSchema = z.object({
   lockCode: opt(z.string().max(40)), keyboxCode: opt(z.string().max(40)), intercom: opt(z.string().max(40)), entrance: opt(z.string().max(20)),
   floor: opt(z.coerce.number().int().min(-5).max(200)), wifiName: opt(z.string().max(60)), wifiPassword: opt(z.string().max(60)), accessNote: opt(z.string().max(1000)),
   active: bool.optional(), sortOrder: z.coerce.number().int().optional(),
+  // подготовка: доп. пункты чек-листа этой квартиры и своя оплата специалисту
+  cleaningExtraItems: opt(z.array(z.object({ label: z.string().trim().min(1).max(80), photo: z.boolean().default(false) })).max(20)),
+  cleaningRateKzt: opt(z.coerce.number().int().min(0).max(1_000_000)),
 });
 
 export default function apartmentsRouter({ storage, config }) {

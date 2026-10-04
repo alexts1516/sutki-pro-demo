@@ -4,16 +4,18 @@
 import { render } from './templates.js';
 import { consoleTransport } from './transports.js';
 import { nights } from '../lib/dates.js';
-import { route, driverWhere, PLACE_RU } from '../services/transferJobs.js';
+import { route, driverWhere, vehicleFits, PLACE_RU } from '../services/transferJobs.js';
 import { managerRoles, getSettings } from '../services/settings.js';
 import { computePayout } from '../services/payouts.js';
 import { config } from '../config.js';
+import { payoutButtons } from '../telegram/payoutButtons.js';
 
 export const EVENTS = ['booking.requested', 'booking.confirmed', 'checkin.upcoming', 'guest.checkin_instructions', 'transfer.requested',
   'transfer.assigned', 'cleaning.reported', 'repair.assigned', 'repair.visit_requested', 'estimate.submitted', 'estimate.decided',
   'extra.submitted', 'extra.decided', 'repair.reported', 'repair.cancelled', 'repair.occupancy_changed', 'payment.succeeded',
   'transfer.offered', 'transfer.accepted', 'transfer.driver_assigned', 'transfer.driver_removed', 'transfer.unassigned', 'transfer.released',
-  'transfer.updated', 'transfer.cancelled', 'transfer.reminder', 'transfer.en_route', 'transfer.driver_arrived'];
+  'transfer.updated', 'transfer.cancelled', 'transfer.reminder', 'transfer.en_route', 'transfer.driver_arrived',
+  'cleaning.problem', 'repair.declined', 'payout.created', 'payout.reminder'];
 
 export function createNotificationService({ prisma, transport = null, logger = console, quiet = false }) {
   const fallback = consoleTransport({ quiet });
@@ -42,14 +44,14 @@ export function createNotificationService({ prisma, transport = null, logger = c
 
   /** Владельцу и/или админам — кому именно, решает настройка «Кому уведомления» (владелец / админ / оба).
    *  roles — задать явно (например, оплаты — только владельцу); alsoOwner — владелец получит в любом случае (сметы при «одобряет только владелец»). */
-  async function toManagers(accountId, event, data, { roles = null, alsoOwner = false, dedupeKey = null } = {}) {
+  async function toManagers(accountId, event, data, { roles = null, alsoOwner = false, dedupeKey = null, buttons = null } = {}) {
     roles = roles || await managerRoles(accountId, prisma);
     if (alsoOwner && !roles.includes('owner')) roles = [...roles, 'owner'];
     const members = await prisma.membership.findMany({ where: { accountId, active: true, role: { in: roles } }, include: { user: true } });
     const out = [];
     for (const m of members) {
       out.push(await deliver({ accountId, event, recipientType: m.role, recipientId: m.userId, recipientName: m.user.name, chatId: m.user.telegramId, lang: m.user.locale, data,
-        dedupeKey: dedupeKey ? `${dedupeKey}:${m.userId}` : null }));
+        dedupeKey: dedupeKey ? `${dedupeKey}:${m.userId}` : null, buttons }));
     }
     return out;
   }
@@ -84,6 +86,15 @@ export function createNotificationService({ prisma, transport = null, logger = c
 
   const loadBooking = (accountId, id) => prisma.booking.findFirst({ where: { id, accountId }, include: { apartment: true, guest: true, transfers: true } });
   const bookingData = (b) => ({ booking: b, apartment: b.apartment, guest: b.guest, nights: nights(b.checkIn, b.checkOut) });
+
+  async function payoutNotice(accountId, payoutId, event) {
+    const p = await prisma.payout.findFirst({ where: { id: payoutId, accountId } }); if (!p || p.status === 'PAID') return;
+    let apartment = null, task = null;
+    if (p.cleaningTaskId) apartment = (await prisma.cleaningTask.findUnique({ where: { id: p.cleaningTaskId }, include: { apartment: true } }))?.apartment;
+    if (p.repairTaskId) { task = await prisma.repairTask.findUnique({ where: { id: p.repairTaskId }, include: { apartment: true } }); apartment = task?.apartment; }
+    const { payoutReminderHours: hours } = await getSettings(accountId, prisma);
+    return toManagers(accountId, event, { payout: p, apartment, task, hours }, { roles: ['owner'], dedupeKey: `${event}:${p.id}`, buttons: payoutButtons(p.id) });
+  }
 
   const handlers = {
     async 'booking.requested'({ accountId, bookingId }) {
@@ -120,7 +131,7 @@ export function createNotificationService({ prisma, transport = null, logger = c
       const settings = await getSettings(accountId, prisma);
       const out = [];
       for (const m of drivers) {
-        if (m.userId === exceptUserId) continue;
+        if (m.userId === exceptUserId || !vehicleFits(m, j.transfer)) continue;   // не помещаются пассажиры/багаж
         // до «Беру»: без номера квартиры и телефона гостя; выплата — по ставке этого водителя; цена для гостя не показывается
         const p = computePayout({ priceKzt: j.transfer.priceKzt, settings, driver: m, manualKzt: j.payoutManual ? j.payoutKzt : null });
         const data = jobData({ ...j, payoutKzt: p.payoutKzt, payoutRule: p.rule }, {}, { hideUnit: true });
@@ -181,6 +192,18 @@ export function createNotificationService({ prisma, transport = null, logger = c
       const task = await prisma.cleaningTask.findFirst({ where: { id: taskId, accountId }, include: { apartment: true, assignee: true } }); if (!task) return;
       return toManagers(accountId, 'cleaning.reported', { task, apartment: task.apartment, assignee: task.assignee });
     },
+    async 'cleaning.problem'({ accountId, taskId, problemId }) {
+      const task = await prisma.cleaningTask.findFirst({ where: { id: taskId, accountId }, include: { apartment: true, assignee: true } }); if (!task) return;
+      const problem = (task.problems || []).find(p => p.id === problemId); if (!problem) return;
+      return toManagers(accountId, 'cleaning.problem', { task, apartment: task.apartment, assignee: task.assignee, problem });
+    },
+    async 'repair.declined'({ accountId, taskId, by, reason }) {
+      const t = await loadRepair(accountId, taskId); if (!t) return;
+      return toManagers(accountId, 'repair.declined', { ...repairData(t), by, reason }, { alsoOwner: true });
+    },
+    /** Работа закончена — владельцу «к оплате» с кнопками «Оплатить» (наличные / перевод); через N часов — напоминание */
+    async 'payout.created'({ accountId, payoutId }) { return payoutNotice(accountId, payoutId, 'payout.created'); },
+    async 'payout.reminder'({ accountId, payoutId }) { return payoutNotice(accountId, payoutId, 'payout.reminder'); },
     async 'repair.assigned'({ accountId, taskId }) { return toExecutor(accountId, taskId, 'repair.assigned'); },
     async 'repair.visit_requested'({ accountId, taskId }) {
       const t = await loadRepair(accountId, taskId); if (!t) return;

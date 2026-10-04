@@ -26,6 +26,15 @@ const way = (d) => T(d).from ? `\n📍 ${e(T(d).from)} → ${e(T(d).to)}` : '';
 const pax = (d, l) => l === 'en'
   ? `👤 ${e(d.transfer.guestName || '')} · ${d.transfer.pax} pax · ${d.transfer.bags ?? 0} bags${d.transfer.childSeats ? ` · child seats: ${d.transfer.childSeats}` : ''}`
   : `👤 ${e(d.transfer.guestName || '')} · ${d.transfer.pax} пасс. · багаж ${d.transfer.bags ?? 0}${d.transfer.childSeats ? ` · детских кресел: ${d.transfer.childSeats}` : ''}`;
+const kv = (a) => (a?.code ? `кв. ${e(a.code)}` : e(a?.title || ''));
+const ticks = (t) => { const l = t.checklist || []; return `${l.filter(x => x.done).length}/${l.length}`; };
+// выплата исполнителю: «Гульнара закончила подготовку кв. 12 — к оплате 5 000 ₸»
+const fem = (n) => /[аяАЯ]$/.test(String(n || '').trim().split(/\s+/)[0] || '');
+const payoutLine = (d) => {
+  const n = d.payout.name || 'Исполнитель', f = fem(n), done = f ? 'закончила' : 'закончил';
+  const what = d.payout.kind === 'cleaning' ? `${done} подготовку ${kv(d.apartment)}` : d.payout.kind === 'repair' ? `${done} работу «${e(d.task?.title || '')}» ${kv(d.apartment)}` : `${f ? 'выполнила' : 'выполнил'} ${e((d.payout.title || 'трансфер').replace(/^Трансфер/, 'трансфер'))}`;
+  return `${e(n)} ${what} — к оплате <b>${money(d.payout.amountKzt)}</b>`;
+};
 const aptNo = (a) => `${e(a.title)}${a.address ? `\n📍 ${e(a.address)}` : ''}`;
 
 export const templates = {
@@ -68,8 +77,13 @@ export const templates = {
     'transfer.en_route': d => `🚗 <b>Водитель выехал</b>\n${e(J(d).driverName || '')}${J(d).vehicle ? `, ${e(J(d).vehicle)}` : ''}${J(d).etaAt ? `\nБудет примерно в ${hm(J(d).etaAt)}` : ''}`,
     'transfer.driver_arrived': d => `📍 <b>Водитель на месте</b>\n${e(J(d).driverName || '')}${J(d).vehicle ? `, ${e(J(d).vehicle)}` : ''}${d.transfer.sign ? `\n🪧 Табличка: ${e(d.transfer.sign)}` : ''}` +
       `${J(d).meetingPoint ? `\n📌 ${e(J(d).meetingPoint)}` : ''}${J(d).freeWaitMin ? `\n⏱ Бесплатно ждёт ${J(d).freeWaitMin} мин` : ''}`,
-    'cleaning.reported': d => `🧹 <b>Уборка ${d.task.status === 'done' ? 'завершена' : 'обновлена'}</b>\n🏠 ${e(d.apartment.title)}\n👤 ${e(d.assignee?.name || '—')}` +
-      `${d.task.report ? `\n💬 ${e(d.task.report)}` : ''}`,
+    'cleaning.reported': d => `✨ <b>Подготовка ${kv(d.apartment)} — ${e(d.assignee?.name || '—')}: ${d.task.status === 'done' ? 'готово' : 'обновлено'}</b>` +
+      `${d.task.startedAt || d.task.doneAt ? `\n🕐 ${hm(d.task.startedAt) || '—'} – ${hm(d.task.doneAt) || '—'}` : ''}${(d.task.checklist || []).length ? `\n✅ Чек-лист: ${ticks(d.task)}` : ''}` +
+      `${(d.task.problems || []).length ? `\n⚠️ Проблем: ${d.task.problems.length}` : ''}${d.task.finishNote ? `\n📝 Не всё отмечено: ${e(d.task.finishNote)}` : ''}${d.task.report && d.task.report !== d.task.finishNote ? `\n💬 ${e(d.task.report)}` : ''}`,
+    'cleaning.problem': d => `⚠️ <b>Проблема — подготовка ${kv(d.apartment)}</b>\n👤 ${e(d.problem.byName || d.assignee?.name || '—')}\n💬 ${e(d.problem.text)}${d.problem.photoIds?.length ? `\n📷 Фото: ${d.problem.photoIds.length}` : ''}\n\nВ админке: «Календарь» → подготовка → «Сделать заявку мастеру».`,
+    'repair.declined': d => `↩️ <b>Мастер отказался от заявки</b>\n🔧 ${e(d.task.title)} · ${kv(d.apartment)}\n👤 ${e(d.by || '—')}\n💬 ${e(d.reason || '')}\n\nВыберите другого мастера в админке.`,
+    'payout.created': d => `💵 ${payoutLine(d)}\n\nОтметьте выплату кнопкой ниже или в админке → «Выплаты».`,
+    'payout.reminder': d => `⏰ <b>Не выплачено больше ${d.hours} ч</b>\n${payoutLine(d)}\n\nОтметьте выплату кнопкой ниже или в админке → «Выплаты».`,
     'repair.assigned': d => `🛠 <b>Новая заявка</b>${d.task.quickJob ? ' · простая работа' : ''}\n🔧 ${e(d.task.title)}\n🏠 ${aptNo(d.apartment)}\n👥 ${OCC.ru[d.task.occupancy] || ''}` +
       `${d.task.description ? `\n💬 ${e(d.task.description)}` : ''}\n\nОцените без выезда, по фото или запросите выезд.`,
     'repair.visit_requested': d => `🚗 <b>Мастеру нужен выезд</b>\n🔧 ${e(d.task.title)} · ${e(d.apartment.title)}\n👤 ${e(d.assignee?.name || '—')}${d.note ? `\n💬 ${e(d.note)}` : ''}\n\nУкажите, кто будет в квартире.`,
@@ -121,7 +135,11 @@ export const templates = {
     'transfer.en_route': d => `🚗 <b>Your driver is on the way</b>\n${e(J(d).driverName || '')}${J(d).vehicle ? `, ${e(J(d).vehicle)}` : ''}${J(d).etaAt ? `\nExpected around ${hm(J(d).etaAt)}` : ''}`,
     'transfer.driver_arrived': d => `📍 <b>Your driver has arrived</b>\n${e(J(d).driverName || '')}${J(d).vehicle ? `, ${e(J(d).vehicle)}` : ''}${d.transfer.sign ? `\n🪧 Name sign: ${e(d.transfer.sign)}` : ''}` +
       `${J(d).meetingPoint ? `\n📌 ${e(J(d).meetingPoint)}` : ''}${J(d).freeWaitMin ? `\n⏱ Free waiting: ${J(d).freeWaitMin} min` : ''}`,
-    'cleaning.reported': d => `🧹 <b>Cleaning ${d.task.status === 'done' ? 'finished' : 'updated'}</b>\n🏠 ${e(d.apartment.titleEn || d.apartment.title)}\n👤 ${e(d.assignee?.name || '—')}${d.task.report ? `\n💬 ${e(d.task.report)}` : ''}`,
+    'cleaning.problem': d => `⚠️ <b>Problem found during preparation</b> · ${e(d.apartment.titleEn || d.apartment.title)}\n💬 ${e(d.problem.text)}`,
+    'repair.declined': d => `↩️ <b>The handyman declined the request</b>\n🔧 ${e(d.task.title)}\n💬 ${e(d.reason || '')}\n\nPick another handyman in the admin panel.`,
+    'payout.created': d => `💵 ${e(d.payout.name || '')}: ${e(d.payout.title || '')} — to pay <b>${money(d.payout.amountKzt)}</b>`,
+    'payout.reminder': d => `⏰ <b>Unpaid for over ${d.hours} h</b>\n${e(d.payout.name || '')}: ${e(d.payout.title || '')} — ${money(d.payout.amountKzt)}`,
+    'cleaning.reported': d => `✨ <b>Preparation ${d.task.status === 'done' ? 'finished' : 'updated'}</b>\n🏠 ${e(d.apartment.titleEn || d.apartment.title)}\n👤 ${e(d.assignee?.name || '—')}${d.task.report ? `\n💬 ${e(d.task.report)}` : ''}`,
     'repair.assigned': d => `🛠 <b>New work request</b>${d.task.quickJob ? ' · quick job' : ''}\n🔧 ${e(d.task.title)}\n🏠 ${aptNo(d.apartment)}\n👥 ${OCC.en[d.task.occupancy] || ''}` +
       `${d.task.description ? `\n💬 ${e(d.task.description)}` : ''}\n\nEstimate remotely, from photos, or request a visit.`,
     'repair.visit_requested': d => `🚗 <b>The handyman needs a visit</b>\n🔧 ${e(d.task.title)} · ${e(d.apartment.titleEn || d.apartment.title)}\n👤 ${e(d.assignee?.name || '—')}${d.note ? `\n💬 ${e(d.note)}` : ''}\n\nSet who will be in the apartment.`,

@@ -33,7 +33,7 @@ async function showTask() {
     const t = await api(base);
     $('#title').textContent = t.title;
     const root = view(repairDetail(t));
-    bindRepair(root, t, { base, onChange: async (u, msg) => { toast(msg); return showTask(); } });
+    bindRepair(root, t, { base, onChange: async (u, msg) => { toast(msg); if (u?.declined) return closed('Вы отказались от заявки. Спасибо, что предупредили!'); return showTask(); } });
   } catch (e) { if (e.status === 410) return closed('Заявка закрыта — спасибо за работу!'); throw e; }
 }
 start();

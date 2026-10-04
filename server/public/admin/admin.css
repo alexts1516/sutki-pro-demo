@@ -204,3 +204,5 @@ label.check{flex-direction:row;gap:8px;align-items:center;margin:4px 0 8px;font-
 .card.fin{padding:14px 16px}.fin-v{font-size:22px;font-weight:800;margin:4px 0}.card.fin.green .fin-v{color:#15803d}.card.fin.amber .fin-v{color:#b45309}.card.fin.red .fin-v{color:#b91c1c}
 .money-kv dd b{font-size:15px}
 .nav-app{display:block;margin:10px 12px 0;padding:8px 10px;border-radius:9px;font-size:13px;color:var(--muted);text-decoration:none;border:1px dashed var(--border)}.nav-app:hover{color:inherit}
+.cl-report{list-style:none;margin:0;padding:0}.cl-report li{padding:6px 0;border-bottom:1px dashed var(--border)}.cl-report li:last-child{border:none}
+tr.row-red td{background:#fef2f2}.overdue{color:#b91c1c;font-weight:650}

@@ -20,13 +20,16 @@ export async function runReminders({ prisma, events, now = new Date() }) {
 }
 
 /** dispatch — диспетчер трансферов (эскалация «никто не взял», напоминания водителям); проверяем каждые 5 минут */
-export function startScheduler({ prisma, events, dispatch = null, everyMs = 30 * 60 * 1000, dispatchEveryMs = 5 * 60 * 1000, logger = console }) {
+export function startScheduler({ prisma, events, dispatch = null, payouts = null, everyMs = 30 * 60 * 1000, dispatchEveryMs = 5 * 60 * 1000, logger = console }) {
   const tick = () => runReminders({ prisma, events }).catch(e => logger.error('[scheduler]', e.message));
   const t = setInterval(tick, everyMs); t.unref?.();
   setTimeout(tick, 5000).unref?.();
   let t2 = null;
   if (dispatch) {
-    const tick2 = () => dispatch.runDispatch().catch(e => logger.error('[scheduler:transfers]', e.message));
+    const tick2 = () => {
+      dispatch.runDispatch().catch(e => logger.error('[scheduler:transfers]', e.message));
+      payouts?.remind().catch(e => logger.error('[scheduler:payouts]', e.message));   // «не выплачено N часов» — владельцу
+    };
     t2 = setInterval(tick2, dispatchEveryMs); t2.unref?.();
     setTimeout(tick2, 7000).unref?.();
   }

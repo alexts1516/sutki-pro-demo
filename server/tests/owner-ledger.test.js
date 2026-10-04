@@ -68,7 +68,7 @@ test('везёт сам владелец: выплаты нет, долга во
   await finish(job.id);
   c = await card(job.id);
   assert.equal(c.payoutRecord, null);
-  assert.equal(await prisma.driverPayout.count({ where: { jobId: job.id } }), 0);
+  assert.equal(await prisma.payout.count({ where: { jobId: job.id } }), 0);
   assert.equal((await request(app).post(`/api/admin/transfer-jobs/${job.id}/paid`).set(owner.auth).send({ paid: true })).status, 409);
   const f = await finance(month);
   assert.equal(f.transfersRevenueKzt - before.transfersRevenueKzt, 10000);
@@ -138,7 +138,7 @@ test('человек «от бизнеса»: владелец выключае�
   const c = await card(job.id);
   assert.equal(c.payoutRule, 'business'); assert.equal(c.payoutKzt, 0); assert.equal(c.commissionKzt, 10000);
   await finish(job.id);
-  assert.equal(await prisma.driverPayout.count({ where: { jobId: job.id } }), 0);
+  assert.equal(await prisma.payout.count({ where: { jobId: job.id } }), 0);
   await request(app).patch(`/api/admin/team/${users.alina.id}`).set(owner.auth).send({ paidAsDriver: true });
 });
 

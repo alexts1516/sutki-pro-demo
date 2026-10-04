@@ -52,3 +52,7 @@ textarea{min-height:84px;resize:vertical}input[type=checkbox]{width:auto;transfo
 .sign b{font-size:min(16vw,120px);line-height:1.05;word-break:break-word}.sign small{color:var(--muted);margin-top:16px;font-size:16px}
 .steps{display:grid;gap:8px;margin-top:10px}
 @media (min-width:700px){body{font-size:15px}.wrap{padding:16px 20px}}
+details.card>summary{cursor:pointer;padding:2px 0}details.card[open]>summary{margin-bottom:6px}
+.cl-item{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px dashed var(--border)}.cl-item:last-child{border:none}.cl-item input[type=checkbox]{width:22px;height:22px;flex:none}
+.cl-item .grow{flex:1}.cl-item .cam{font-size:12px;color:var(--muted)}.cl-item.done .grow{color:var(--muted)}
+.row-red{background:#fdecec}.overdue{color:#c62828;font-weight:650}

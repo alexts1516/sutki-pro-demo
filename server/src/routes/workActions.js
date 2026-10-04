@@ -19,6 +19,7 @@ export const schemas = {
   arrive: z.object({ note: z.string().max(1000).optional(), photoIds: ids }),
   inspect: z.object({ notes: z.string().min(2).max(3000), photoIds: ids }),
   extra: z.object({ amountKzt: z.coerce.number().int().min(1).max(100_000_000), description: z.string().min(3).max(500), reason: z.string().min(3).max(500), photoIds: ids }),
+  decline: z.object({ reason: z.string().trim().min(3, 'Напишите причину отказа').max(1000) }),
   complete: z.object({ finalCostKzt: money, report: z.string().min(3).max(3000), photoIds: ids }),
 };
 
@@ -35,6 +36,12 @@ export function mountWorkActions(r, { prefix, resolve, workflow, storage, config
   r.post(`${prefix}/start`, step((t, a) => workflow.start(t, a)));
   r.post(`${prefix}/extras`, step(async (t, a, req) => { await workflow.addExtra(t, a, parse(schemas.extra, req.body)); return { httpStatus: 201 }; }));
   r.post(`${prefix}/complete`, step((t, a, req) => workflow.complete(t, a, parse(schemas.complete, req.body))));
+  // отказ: заявка уходит владельцу без исполнителя — мастеру больше не показываем карточку
+  r.post(`${prefix}/decline`, async (req, res) => {
+    const { task, actor } = await resolve(req);
+    await workflow.decline(task, actor, parse(schemas.decline, req.body));
+    res.json({ declined: true, message: 'Вы отказались от заявки. Владелец выберет другого мастера.' });
+  });
   r.post(`${prefix}/photos`, upload.array('photos', 10), async (req, res) => {
     const { task, actor } = await resolve(req);
     const kind = parse(z.object({ kind: z.enum(MASTER_PHOTO_KINDS) }), req.body).kind;

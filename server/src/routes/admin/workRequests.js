@@ -4,6 +4,7 @@
 //   GET    /api/admin/repairs/:id                    — карточка: сметы, доп. расходы, фото, журнал шагов, сумма к оплате
 //   PATCH  /api/admin/repairs/:id/occupancy          — { occupancy: OWNER_PRESENT|EMPTY|UNKNOWN, accessInstructions } (последнее изменение побеждает)
 //   POST   /api/admin/repairs/:id/photos             — фото проблемы (multipart: photos[], captions[]) — для сметы по фото
+//   POST   /api/admin/repairs/:id/assign             — { assigneeId | contractorId } выбрать мастера (заявка без исполнителя, например после отказа)
 //   POST   /api/admin/repairs/:id/cancel             — { reason }
 //   POST   /api/admin/repairs/:id/paid               — отметить «оплачено мастеру» (нельзя при нерешённых доп. расходах)
 //   POST   /api/admin/repairs/:id/link               — новая ссылка на задачу без входа (старая перестаёт работать)
@@ -73,6 +74,15 @@ export default function workRequestsRouter({ workflow, storage, config }) {
     const t = await find(req);
     await workflow.addPhotos(t, actorOf(req), { storage, files: req.files, kind: 'problem', captions: [].concat(req.body.captions ?? []), makeKey, looksLikeImage });
     await out(res, t.id, 201);
+  });
+  r.post('/repairs/:id/assign', async (req, res) => {
+    const d = parse(z.object({ assigneeId: z.string().optional().nullable(), contractorId: z.string().optional().nullable() }), req.body || {});
+    if (d.assigneeId && d.contractorId) throw badRequest('Назначьте либо мастера из команды, либо подрядчика');
+    if (d.assigneeId && !(await prisma.membership.findFirst({ where: { accountId: req.accountId, userId: d.assigneeId, role: { in: ['master', 'owner', 'admin'] }, active: true } }))) throw badRequest('Мастер не найден в команде');
+    if (d.contractorId && !(await prisma.contractor.findFirst({ where: { id: d.contractorId, accountId: req.accountId } }))) throw badRequest('Подрядчик не найден');
+    const t = await find(req);
+    await workflow.assign(t, actorOf(req), d);
+    await out(res, t.id);
   });
   r.post('/repairs/:id/cancel', async (req, res) => {
     const t = await find(req);

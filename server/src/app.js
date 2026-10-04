@@ -27,10 +27,15 @@ import calendarRouter from './routes/admin/calendar.js';
 import staffTransfersRouter from './routes/staffTransfers.js';
 import transferLinkRouter from './routes/transferLink.js';
 import { createTransferDispatch } from './services/transferJobs.js';
+import { createPayouts } from './services/performerPayouts.js';
+import { createCleaning } from './services/cleaning.js';
+import payoutsRouter from './routes/admin/payouts.js';
 
 export function createApp({ config = defaultConfig, events, storage, payments = null, telegramWebhook = null, flights = null, logger = console }) {
   const app = express();
-  const workflow = createWorkflow({ events });
+  const payouts = createPayouts({ events });   // единые выплаты исполнителям
+  const workflow = createWorkflow({ events, payouts });
+  const cleaning = createCleaning({ events, payouts, workflow });
   const dispatch = createTransferDispatch({ events, config });
   dispatch.setFlightTracker(flights);   // слежение за рейсами — только если задан ключ AeroDataBox
   app.disable('x-powered-by');
@@ -70,7 +75,8 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
   admin.use(authenticate, requireRole(...MANAGERS));
   admin.use(apartmentsRouter({ storage, config }));
   admin.use(siteRouter({ storage, config }));
-  admin.use(operationsRouter({ events, dispatch }));
+  admin.use(operationsRouter({ events, dispatch, cleaning }));
+  admin.use(payoutsRouter({ payouts }));
   admin.use(transfersRouter({ dispatch, config }));
   admin.use(calendarRouter());
   admin.use(teamRouter({ config }));
@@ -78,7 +84,7 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
   admin.use(workRequestsRouter({ workflow, storage, config }));
   app.use('/api/admin', admin);
   app.use('/api/staff/transfers', authenticate, staffTransfersRouter({ dispatch }));
-  app.use('/api/staff', authenticate, staffRouter({ events, workflow, storage, config }));
+  app.use('/api/staff', authenticate, staffRouter({ events, workflow, storage, config, cleaning }));
   // ссылки без входа: лимит запросов с IP и отдельно — на неверные ссылки (защита от перебора)
   const guard = linkGuard({ max: config.rateLimit?.linkMax ?? 120, badMax: config.rateLimit?.linkBadMax ?? 20, windowMin: config.rateLimit?.linkWindowMin ?? 15 });
   app.use('/api/link', guard, linkKindRouter());
@@ -98,7 +104,8 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
 
   // 404 и ошибки — всегда JSON для /api
   app.use('/api', (_req, _res, next) => next(new HttpError(404, 'Нет такого адреса API')));
-  app.locals.dispatch = dispatch;   // диспетчер трансферов — для расписания и тестов
+  app.locals.dispatch = dispatch;
+  app.locals.payouts = payouts;     // напоминания о невыплаченном — по расписанию   // диспетчер трансферов — для расписания и тестов
   app.use((err, req, res, _next) => {
     let status = err.status || err.statusCode || 500;
     let message = err.message;

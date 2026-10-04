@@ -48,3 +48,10 @@ export async function freeDates(accountId, apartmentId, len = 2, startIn = 30) {
   }
   throw new Error('нет свободных дат');
 }
+
+/** Внешние водители (таксопарк) по умолчанию выключены — для старых сценариев включаем флагом и создаём такого водителя */
+export const extConfig = { ...config, transfers: { ...config.transfers, externalDrivers: true } };
+export async function extDriver(accountId) {
+  return (await prisma.contractor.findFirst({ where: { accountId, canDrive: true } }))
+    || prisma.contractor.create({ data: { accountId, name: 'Такси «Жол» (внешний водитель)', type: 'other', phone: '+7 701 909 09 09', note: 'Hyundai Staria, минивэн', canDrive: true } });
+}

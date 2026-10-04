@@ -3,13 +3,16 @@
 //                               а также что подключено на сервере (Telegram, слежение за рейсами, хранилище фото)
 //   PUT /api/admin/settings   — только владелец: { transferPayoutMode: PERCENT|FIXED, ownerCommissionPercent 0–100, driverFixedKzt,
 //                               managerNotify: OWNER|ADMIN|BOTH, approvalBy: OWNER_ONLY|OWNER_AND_ADMIN, flightTracking,
-//                               ownerDrivesKeepsAll — везёт владелец: выплаты нет, вся сумма бизнесу }
+//                               ownerDrivesKeepsAll — везёт владелец: выплаты нет, вся сумма бизнесу,
+//                               cleaningChecklist [{label, photo}] — шаблон чек-листа подготовки, cleaningRateKzt / cleaningRates {размер: ₸} — оплата подготовки,
+//                               payoutReminderHours — через сколько часов напомнить о невыплаченном (0 — не напоминать) }
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireRole } from '../../auth/middleware.js';
 import { badRequest, parse } from '../../lib/errors.js';
 import { getSettings, saveSettings, PAYOUT_MODES, MANAGER_NOTIFY, APPROVAL_BY } from '../../services/settings.js';
 import { accountRuleLabel } from '../../services/payouts.js';
+import { templateOf } from '../../services/cleaning.js';
 
 export default function settingsRouter({ config, storage, flights = null }) {
   const r = Router();
@@ -19,6 +22,7 @@ export default function settingsRouter({ config, storage, flights = null }) {
       transferPayoutMode: s.transferPayoutMode, ownerCommissionPercent: s.ownerCommissionPercent, driverFixedKzt: s.driverFixedKzt,
       commissionConfigured: !!s.commissionConfiguredAt, commissionLabel: accountRuleLabel(s),
       managerNotify: s.managerNotify, approvalBy: s.approvalBy, flightTracking: s.flightTracking, ownerDrivesKeepsAll: s.ownerDrivesKeepsAll,
+      cleaningChecklist: templateOf(s), cleaningRateKzt: s.cleaningRateKzt, cleaningRates: s.cleaningRates || {}, payoutReminderHours: s.payoutReminderHours,
       canEdit: req.role === 'owner',
       server: {
         telegram: !!config.telegram.token, telegramBot: config.telegram.username || null,
@@ -33,6 +37,10 @@ export default function settingsRouter({ config, storage, flights = null }) {
       ownerCommissionPercent: z.number().min(0, 'Комиссия от 0 до 100%').max(100, 'Комиссия от 0 до 100%').nullable().optional(),
       driverFixedKzt: z.number().int().min(0).max(10_000_000).nullable().optional(),
       managerNotify: z.enum(MANAGER_NOTIFY).optional(), approvalBy: z.enum(APPROVAL_BY).optional(), flightTracking: z.boolean().optional(), ownerDrivesKeepsAll: z.boolean().optional(),
+      cleaningChecklist: z.array(z.object({ label: z.string().trim().min(1).max(80), photo: z.boolean().default(false) })).max(40).nullable().optional(),
+      cleaningRateKzt: z.number().int().min(0).max(1_000_000).nullable().optional(),
+      cleaningRates: z.record(z.string().max(30), z.number().int().min(0).max(1_000_000)).nullable().optional(),
+      payoutReminderHours: z.number().int().min(0).max(168).optional(),
     }), req.body);
     const cur = await getSettings(req.accountId);
     const mode = d.transferPayoutMode || cur.transferPayoutMode;

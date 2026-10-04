@@ -18,10 +18,12 @@ import { z } from 'zod';
 import { prisma } from '../../db.js';
 import { notFound, badRequest, HttpError, parse } from '../../lib/errors.js';
 import { parseDay, isoDay, addDays, todayIn } from '../../lib/dates.js';
-import { loadJob, jobForManager, jobListItem, jobInclude, driverWhere, STATUSES, ACTIVE, GUEST_PAY_METHODS } from '../../services/transferJobs.js';
+import { loadJob, jobForManager, jobListItem, jobInclude, driverWhere, STATUSES, ACTIVE, GUEST_PAY_METHODS, vehicleCapacity, CAR_CLASS_RU } from '../../services/transferJobs.js';
 
 const HM = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Время ЧЧ:ММ');
 const DAY = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Дата ГГГГ-ММ-ДД');
+
+const capOut = (m) => { const c = vehicleCapacity(m); return { vehicleSeats: c.seats, vehicleBags: c.bags, vehicleClass: c.cls, vehicleClassLabel: CAR_CLASS_RU[c.cls] }; };
 
 export default function transfersRouter({ dispatch, config }) {
   const r = Router();
@@ -96,12 +98,12 @@ export default function transfersRouter({ dispatch, config }) {
   r.get('/drivers', async (req, res) => {
     const [team, external, busy] = await Promise.all([
       prisma.membership.findMany({ where: driverWhere(req.accountId), include: { user: true }, orderBy: { createdAt: 'asc' } }),
-      prisma.contractor.findMany({ where: { accountId: req.accountId, canDrive: true }, orderBy: { name: 'asc' } }),
+      dispatch.cfg.externalDrivers ? prisma.contractor.findMany({ where: { accountId: req.accountId, canDrive: true }, orderBy: { name: 'asc' } }) : [],   // внешние водители выключены
       prisma.transferJob.groupBy({ by: ['driverUserId'], where: { accountId: req.accountId, status: { in: ACTIVE }, driverUserId: { not: null } }, _count: true }),
     ]);
     const load = Object.fromEntries(busy.map(b => [b.driverUserId, b._count]));
     res.json({
-      team: team.map(m => ({ userId: m.userId, name: m.user.name, role: m.role, phone: m.user.phone, vehicle: m.vehicle, telegramLinked: !!m.user.telegramId, activeJobs: load[m.userId] || 0, payoutPercent: m.payoutPercent, payoutFixedKzt: m.payoutFixedKzt })),
+      team: team.map(m => ({ userId: m.userId, name: m.user.name, role: m.role, phone: m.user.phone, vehicle: m.vehicle, telegramLinked: !!m.user.telegramId, activeJobs: load[m.userId] || 0, payoutPercent: m.payoutPercent, payoutFixedKzt: m.payoutFixedKzt, ...capOut(m) })),
       external: external.map(c => ({ contractorId: c.id, name: c.name, phone: c.phone, note: c.note, payoutPercent: c.payoutPercent, payoutFixedKzt: c.payoutFixedKzt })),
     });
   });

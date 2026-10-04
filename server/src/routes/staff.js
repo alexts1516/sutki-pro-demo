@@ -1,7 +1,14 @@
 // Приложение команды: каждый видит только свои задачи.
 //   GET  /api/staff/tasks                         — мои уборки (клининг) / мои заявки (мастер, подрядчик); владелец/админ — все
 //   GET  /api/staff/cleaning/:id                  — карточка уборки с доступом в квартиру (только исполнителю и менеджерам)
-//   POST /api/staff/cleaning/:id/status           — { status: enroute|progress|done, report }
+//   POST /api/staff/cleaning/:id/status           — { status: enroute|progress|done, report } (progress = начать, done = закончить)
+//   Подготовка квартиры (специалист по подготовке):
+//   POST /api/staff/cleaning/:id/start            — начать (время начала, чек-лист из шаблона + пункты квартиры)
+//   POST /api/staff/cleaning/:id/check            — { index, done } отметить пункт
+//   POST /api/staff/cleaning/:id/photos           — multipart: photos[], itemIndex (к пункту) или kind=general|problem
+//   POST /api/staff/cleaning/:id/problem          — { text, photoIds } сообщить о проблеме (владелец сделает заявку мастеру)
+//   POST /api/staff/cleaning/:id/finish           — { report, note } закончить (неотмеченные пункты — только с note)
+//   GET  /api/staff/payouts                       — мои выплаты: «К оплате» / «Выплачено»
 //   Заявки мастеру (только исполнитель заявки; владелец/админ — только чтение):
 //   GET  /api/staff/repairs/:id                   — карточка: адрес + номер квартиры, кто будет в квартире, сметы, доп. расходы, журнал
 //   POST /api/staff/repairs/:id/request-visit     — { note } нужен выезд (не могу оценить без осмотра)
@@ -20,14 +27,19 @@ import { accessInfo } from '../lib/serialize.js';
 import { todayIn, addDays, parseDay } from '../lib/dates.js';
 import { MANAGERS } from '../auth/roles.js';
 import { mountWorkActions } from './workActions.js';
+import { imageUpload } from '../lib/upload.js';
+import { makeKey, looksLikeImage } from '../storage/index.js';
+import { cleaningReport } from '../services/cleaning.js';
+import { payoutOut } from '../services/performerPayouts.js';
 import { loadTask, isExecutor, executorWhere, taskListItem, taskForManager } from '../services/workRequests.js';
 
-export default function staffRouter({ events, workflow, storage, config }) {
+export default function staffRouter({ events, workflow, storage, config, cleaning }) {
   const r = Router();
+  const upload = imageUpload({ maxMb: config.storage.maxUploadMb, maxFiles: 10 });
   const isManager = (req) => MANAGERS.includes(req.role);
 
   async function ownCleaning(req) {
-    const t = await prisma.cleaningTask.findFirst({ where: { id: req.params.id, accountId: req.accountId }, include: { apartment: true } });
+    const t = await prisma.cleaningTask.findFirst({ where: { id: req.params.id, accountId: req.accountId }, include: { apartment: true, photos: true, assignee: { select: { id: true, name: true } } } });
     if (!t) throw notFound('Уборка не найдена');
     if (!isManager(req) && t.assigneeId !== req.user.id) throw forbidden('Это не ваша задача');
     return t;
@@ -38,7 +50,7 @@ export default function staffRouter({ events, workflow, storage, config }) {
     const from = (req.query.date && parseDay(req.query.date)) || addDays(today, -1);
     const to = addDays(from, req.query.date ? 1 : 3);
     const mine = isManager(req) ? {} : { assigneeId: req.user.id };
-    const aptSel = { select: { id: true, title: true, address: true } };
+    const aptSel = { select: { id: true, title: true, address: true, code: true } };
     const cleaning = req.role === 'master' ? [] : await prisma.cleaningTask.findMany({ where: { accountId: req.accountId, date: { gte: from, lt: to }, ...mine }, include: { apartment: aptSel }, orderBy: [{ date: 'asc' }, { fromTime: 'asc' }] });
     const repairs = req.role === 'cleaning' ? [] : await prisma.repairTask.findMany({
       where: { accountId: req.accountId, status: { notIn: ['DONE', 'CANCELLED'] }, ...(isManager(req) ? {} : executorWhere(req.user.id)) },
@@ -48,16 +60,49 @@ export default function staffRouter({ events, workflow, storage, config }) {
     res.json({ cleaning, repairs: repairs.map(t => taskListItem(t, isManager(req))) });
   });
 
-  r.get('/cleaning/:id', async (req, res) => {
-    const t = await ownCleaning(req);
-    res.json({ ...t, apartment: { id: t.apartment.id, title: t.apartment.title }, access: accessInfo(t.apartment) });
-  });
+  const cleaningOut = async (id) => {
+    const t = await cleaning.load(id);
+    return { ...cleaningReport(t), access: accessInfo(t.apartment), apartment: { id: t.apartment.id, title: t.apartment.title, code: t.apartment.code } };
+  };
+  r.get('/cleaning/:id', async (req, res) => { const t = await ownCleaning(req); res.json(await cleaningOut(t.id)); });
   r.post('/cleaning/:id/status', async (req, res) => {
     const t = await ownCleaning(req);
     const d = parse(z.object({ status: z.enum(['assigned', 'enroute', 'progress', 'done']), report: z.string().max(2000).optional(), checklist: z.array(z.object({ label: z.string(), done: z.boolean() })).optional() }), req.body);
-    const u = await prisma.cleaningTask.update({ where: { id: t.id }, data: { status: d.status, report: d.report ?? t.report, checklist: d.checklist ?? undefined, doneAt: d.status === 'done' ? new Date() : null } });
-    if (d.status === 'done' || d.report) events.emit('cleaning.reported', { accountId: req.accountId, taskId: t.id });
-    res.json(u);
+    await cleaning.setStatus(t, d.status, d);
+    res.json(await cleaningOut(t.id));
+  });
+  r.post('/cleaning/:id/start', async (req, res) => { const t = await ownCleaning(req); await cleaning.start(t); res.json(await cleaningOut(t.id)); });
+  r.post('/cleaning/:id/check', async (req, res) => {
+    const t = await ownCleaning(req);
+    const d = parse(z.object({ index: z.number().int().min(0).max(60), done: z.boolean().default(true) }), req.body);
+    await cleaning.check(t, d.index, d.done);
+    res.json(await cleaningOut(t.id));
+  });
+  r.post('/cleaning/:id/photos', upload.array('photos', 10), async (req, res) => {
+    const t = await ownCleaning(req);
+    const d = parse(z.object({ itemIndex: z.coerce.number().int().min(0).max(60).optional(), kind: z.enum(['item', 'general', 'problem']).optional() }), req.body || {});
+    const photos = await cleaning.addPhotos(t, { storage, files: req.files, itemIndex: d.itemIndex ?? null, kind: d.kind || 'general', makeKey, looksLikeImage });
+    res.status(201).json(photos.map(p => ({ id: p.id, url: p.url, itemIndex: p.itemIndex, kind: p.kind })));
+  });
+  r.post('/cleaning/:id/problem', async (req, res) => {
+    const t = await ownCleaning(req);
+    const d = parse(z.object({ text: z.string().trim().min(3, 'Опишите проблему').max(2000), photoIds: z.array(z.string()).max(10).optional() }), req.body);
+    await cleaning.reportProblem(t, { type: req.role, id: req.user.id, name: req.user.name }, d);
+    res.status(201).json(await cleaningOut(t.id));
+  });
+  r.post('/cleaning/:id/finish', async (req, res) => {
+    const t = await ownCleaning(req);
+    const d = parse(z.object({ report: z.string().max(2000).optional(), note: z.string().max(1000).optional() }), req.body || {});
+    await cleaning.finish(t, d);
+    res.json(await cleaningOut(t.id));
+  });
+  // мои выплаты (любой исполнитель): к оплате / выплачено
+  r.get('/payouts', async (req, res) => {
+    const contractors = await prisma.contractor.findMany({ where: { accountId: req.accountId, userId: req.user.id }, select: { id: true } });
+    const list = await prisma.payout.findMany({ where: { accountId: req.accountId, OR: [{ userId: req.user.id }, ...(contractors.length ? [{ contractorId: { in: contractors.map(c => c.id) } }] : [])] }, orderBy: { createdAt: 'desc' }, take: 200 });
+    const out = list.map(p => { const o = payoutOut(p, 0); delete o.overdue; return o; });
+    const sum = (st) => out.filter(p => p.status === st).reduce((s, p) => s + p.amountKzt, 0);
+    res.json({ pendingKzt: sum('PENDING'), paidKzt: sum('PAID'), items: out });
   });
   // ---------- заявки мастеру ----------
   async function resolve(req, { read = false } = {}) {

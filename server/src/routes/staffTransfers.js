@@ -12,7 +12,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { forbidden, notFound, parse } from '../lib/errors.js';
-import { loadJob, jobForDriver, jobInclude, driverMembership, isJobDriver, OPEN } from '../services/transferJobs.js';
+import { loadJob, jobForDriver, jobInclude, driverMembership, isJobDriver, vehicleFits, OPEN } from '../services/transferJobs.js';
 import { getSettings } from '../services/settings.js';
 
 export default function staffTransfersRouter({ dispatch }) {
@@ -23,7 +23,7 @@ export default function staffTransfersRouter({ dispatch }) {
     const [job, m] = await Promise.all([loadJob({ id: req.params.id, accountId: req.accountId }), driverMembership(req.accountId, req.user.id)]);
     if (!job) throw notFound('Заказ не найден');
     if (!m && !isJobDriver(job, req.user.id)) throw forbidden('Вы не в списке водителей');
-    return { job, eligible: !!m, viewer: { membership: m, settings: await getSettings(req.accountId) } };
+    return { job, eligible: !!m && (!OPEN.includes(job.status) || vehicleFits(m, job.transfer)), viewer: { membership: m, settings: await getSettings(req.accountId) } };
   }
   const mineOnly = (req, job) => { if (!isJobDriver(job, req.user.id)) throw forbidden('Это не ваш заказ'); };
   const view = async (req, id, eligible, viewer) => jobForDriver(await loadJob({ id }), req.user.id, { eligible, viewer });
@@ -37,7 +37,7 @@ export default function staffTransfersRouter({ dispatch }) {
       prisma.transferJob.findMany({ where: { accountId: req.accountId, driverUserId: req.user.id, status: { not: 'CANCELLED' }, pickupAt: { gt: recent } }, include: jobInclude, orderBy: { pickupAt: 'asc' } }),
       m ? prisma.transferJob.findMany({ where: { accountId: req.accountId, status: { in: ['ACCEPTED', 'EN_ROUTE', 'ARRIVED', 'PICKED_UP'] }, NOT: { driverUserId: req.user.id }, pickupAt: { gt: since } }, include: jobInclude, orderBy: { pickupAt: 'asc' }, take: 20 }) : [],
     ]);
-    res.json({ eligible: !!m, offers: offers.map(j => jobForDriver(j, req.user.id, { eligible: true, viewer })), mine: mine.map(j => jobForDriver(j, req.user.id, { eligible: !!m })), taken: taken.map(j => jobForDriver(j, req.user.id, { eligible: true })) });
+    res.json({ eligible: !!m, offers: offers.filter(j => vehicleFits(m, j.transfer)).map(j => jobForDriver(j, req.user.id, { eligible: true, viewer })), mine: mine.map(j => jobForDriver(j, req.user.id, { eligible: !!m })), taken: taken.map(j => jobForDriver(j, req.user.id, { eligible: true })) });
   });
   r.get('/:id', async (req, res) => { const { job, eligible, viewer } = await ctx(req); res.json(jobForDriver(job, req.user.id, { eligible, viewer })); });
   r.post('/:id/accept', async (req, res) => {

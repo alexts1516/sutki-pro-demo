@@ -1,10 +1,11 @@
-// Приложение команды (водитель, мастер, клининг; владелец и админ — как водители). Только нужное в дороге:
-// новые заказы с кнопкой «Беру», свои поездки по шагам, заявки мастеру по шагам, уборки на сегодня.
-import { $, esc, api, toast, guard, sheet, closeSheet, fmtDay, transferCard, transferDetail, bindTransfer, repairCard, repairDetail, bindRepair } from '/shared/views.js';
+// Приложение команды (водитель, мастер, специалист по подготовке; владелец и админ — как водители). Только нужное в дороге:
+// новые заказы с кнопкой «Беру», свои поездки по шагам, заявки мастеру по шагам, подготовка квартир с чек-листом, мои выплаты.
+import { $, esc, api, toast, guard, sheet, closeSheet, fmtDay, hm, dt, money, transferCard, transferDetail, bindTransfer, repairCard, repairDetail, bindRepair } from '/shared/views.js';
 
-const ROLE = { owner: 'Владелец', admin: 'Администратор', cleaning: 'Клининг', master: 'Мастер', driver: 'Водитель' };
-const CL = { assigned: ['', 'Запланирована'], enroute: ['blue', 'В пути'], progress: ['blue', 'Идёт уборка'], done: ['green', 'Готово'] };
-const S = { me: null, tab: null, tr: null, tasks: null, timer: null };
+const ROLE = { owner: 'Владелец', admin: 'Администратор', cleaning: 'Специалист по подготовке', master: 'Мастер', driver: 'Водитель' };
+const CL = { assigned: ['', 'Запланирована'], enroute: ['blue', 'В пути'], progress: ['blue', 'Идёт подготовка'], done: ['green', 'Готово'] };
+const S = { me: null, tab: null, tr: null, tasks: null, pay: null, timer: null };
+const kv = (a) => (a?.code ? `кв. ${a.code}` : a?.title || '');
 const isManager = () => ['owner', 'admin'].includes(S.me?.role);
 
 function showLogin() { $('#app').hidden = true; $('#login').hidden = false; document.body.classList.add('nonav'); }
@@ -29,14 +30,15 @@ async function boot() {
   S.timer = setInterval(() => { if (document.visibilityState === 'visible' && ($('#sheet')?.hidden ?? true)) load().then(render).catch(() => {}); }, 30000);
 }
 async function load() {
-  const [tr, tasks] = await Promise.all([api('/api/staff/transfers'), isManager() ? Promise.resolve({ cleaning: [], repairs: [] }) : api('/api/staff/tasks')]);
-  S.tr = tr; S.tasks = tasks;
+  const [tr, tasks, pay] = await Promise.all([api('/api/staff/transfers'), isManager() ? Promise.resolve({ cleaning: [], repairs: [] }) : api('/api/staff/tasks'), isManager() ? null : api('/api/staff/payouts')]);
+  S.tr = tr; S.tasks = tasks; S.pay = pay;
 }
 function tabList() {
   const t = [];
   if (S.tr.eligible || S.tr.mine.length) t.push(['transfers', '🚗', 'Трансферы', S.tr.offers.length]);
   if (S.me.role === 'master' || S.tasks.repairs.length) t.push(['repairs', '🛠', 'Заявки', S.tasks.repairs.filter(r => ['NEW', 'APPROVED', 'REJECTED'].includes(r.status)).length]);
-  if (S.me.role === 'cleaning' || S.tasks.cleaning.length) t.push(['cleaning', '🧹', 'Уборки', 0]);
+  if (S.me.role === 'cleaning' || S.tasks.cleaning.length) t.push(['cleaning', '✨', 'Подготовка', 0]);
+  if (S.pay && (S.pay.items.length || !isManager())) t.push(['payouts', '💵', 'Выплаты', 0]);
   return t;
 }
 function render() {
@@ -44,7 +46,7 @@ function render() {
   $('#nav').innerHTML = tabs.length > 1 ? tabs.map(([k, i, l, n]) => `<button class="${S.tab === k ? 'active' : ''}" data-tab="${k}"><span>${i}</span>${l}${n ? `<b class="cnt">${n}</b>` : ''}</button>`).join('') : '';
   document.body.classList.toggle('nonav', tabs.length < 2);
   if (!tabs.length) return view(`<div class="empty">Пока для вас нет задач.<br>${isManager() ? 'Включите себе «Водит» в админке («Команда»), чтобы получать заказы на трансфер.' : 'Когда владелец назначит задачу, она появится здесь.'}</div>`);
-  ({ transfers: renderTransfers, repairs: renderRepairs, cleaning: renderCleaning })[S.tab]();
+  ({ transfers: renderTransfers, repairs: renderRepairs, cleaning: renderCleaning, payouts: renderPayouts })[S.tab]();
 }
 $('#nav').addEventListener('click', (e) => { const b = e.target.closest('[data-tab]'); if (!b) return; S.tab = b.dataset.tab; history.replaceState(null, '', '#' + S.tab); render(); window.scrollTo(0, 0); });
 const view = (html) => { $('#view').innerHTML = html; };
@@ -90,25 +92,84 @@ function renderRepairs() {
 async function openRepair(id) {
   const t = await api(`/api/staff/repairs/${id}`);
   const body = sheet(repairDetail(t));
-  bindRepair(body, t, { base: `/api/staff/repairs/${id}`, onChange: async (u, msg) => { toast(msg); await load(); render(); openRepair(id); } });
+  bindRepair(body, t, { base: `/api/staff/repairs/${id}`, onChange: async (u, msg) => { toast(msg); await load(); render(); if (u?.declined) return closeSheet(); openRepair(id); } });
 }
 
-// ---------- уборки ----------
+// ---------- подготовка квартир ----------
 function renderCleaning() {
   const list = S.tasks.cleaning;
-  view(list.length ? `<div class="h"><h2>Уборки</h2></div>${list.map(c => `<div class="card tap t-${CL[c.status][0] || 'violet'}" data-cl="${c.id}"><div class="row between"><b>${esc(c.apartment.title)}</b><span class="chip ${CL[c.status][0]}">${CL[c.status][1]}</span></div>
-    <div class="sub">${fmtDay(c.date)} · ${esc(c.fromTime)}–${esc(c.toTime)}</div></div>`).join('')}` : '<div class="card empty">Уборок на ближайшие дни нет</div>');
+  view(list.length ? `<div class="h"><h2>Подготовка квартир</h2></div>${list.map(c => `<div class="card tap t-${CL[c.status][0] || 'violet'}" data-cl="${c.id}"><div class="row between"><b>Подготовка ${esc(kv(c.apartment))}</b><span class="chip ${CL[c.status][0]}">${CL[c.status][1]}</span></div>
+    <div class="sub">${esc(c.apartment.title)} · ${fmtDay(c.date)} · ${esc(c.fromTime)}–${esc(c.toTime)}</div></div>`).join('')}` : '<div class="card empty">На ближайшие дни подготовки нет</div>');
   $('#view').onclick = (e) => { const c = e.target.closest('[data-cl]'); if (c) guard(openCleaning)(c.dataset.cl); };
+}
+const photoRow = (list) => list?.length ? `<div class="photos">${list.map(p => `<a href="${esc(p.url)}" target="_blank" rel="noopener"><img src="${esc(p.url)}" alt="" loading="lazy"></a>`).join('')}</div>` : '';
+async function uploadCl(id, files, extra) {
+  const fd = new FormData(); for (const [k, v] of Object.entries(extra)) fd.append(k, v); for (const f of files) fd.append('photos', f);
+  return api(`/api/staff/cleaning/${id}/photos`, { method: 'POST', form: fd });
 }
 async function openCleaning(id) {
   const c = await api(`/api/staff/cleaning/${id}`);
   const a = c.access || {};
-  const next = { assigned: ['enroute', '🚶 Выхожу'], enroute: ['progress', '🧹 Начала уборку'], progress: ['done', '✅ Готово'] }[c.status];
-  const body = sheet(`<div class="row between"><h2 style="font-size:19px">${esc(c.apartment.title)}</h2><span class="chip ${CL[c.status][0]}">${CL[c.status][1]}</span></div>
-    <div class="sub">${fmtDay(c.date)} · ${esc(c.fromTime)}–${esc(c.toTime)}</div>
-    <div class="card"><dl class="kv">${Object.entries({ Адрес: a.address, Подъезд: a.entrance, Этаж: a.floor, Домофон: a.intercom, 'Код замка': a.lockCode, 'Сейф для ключей': a.keyboxCode, 'Wi‑Fi': a.wifiName && `${a.wifiName} / ${a.wifiPassword || ''}`, Заметка: a.accessNote }).filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl></div>
-    ${next ? `${next[0] === 'done' ? '<label>Отчёт (что заметили, что закончилось)</label><textarea id="clRep"></textarea>' : ''}<button class="btn ${next[0] === 'done' ? 'success' : 'primary'} block big" id="clNext" style="margin-top:10px">${next[1]}</button>` : '<div class="alert green">Уборка завершена</div>'}`);
-  if (next) $('#clNext', body).onclick = guard(async () => { await api(`/api/staff/cleaning/${id}/status`, { method: 'POST', body: { status: next[0], report: $('#clRep', body)?.value || undefined } }); toast('Сохранено'); await load(); render(); openCleaning(id); });
+  const base = `/api/staff/cleaning/${id}`;
+  const refresh = async (msg) => { if (msg) toast(msg); await load(); render(); return openCleaning(id); };
+  const items = c.checklist.map((x, i) => `<div class="cl-item ${x.done ? 'done' : ''}"><input type="checkbox" data-ck="${i}" ${x.done ? 'checked' : ''} ${c.status === 'done' ? 'disabled' : ''}>
+      <div class="grow">${esc(x.label)}${x.photo ? ` <span class="cam">📷 фото обязательно</span>` : ''}${photoRow(x.photos)}</div>
+      ${c.status === 'progress' ? `<label class="btn sm" style="margin:0">📷<input type="file" accept="image/*" capture="environment" data-ph="${i}" hidden></label>` : ''}</div>`).join('');
+  const body = sheet(`<div class="row between"><h2 style="font-size:19px">Подготовка ${esc(kv(c.apartment))}</h2><span class="chip ${CL[c.status][0]}">${CL[c.status][1]}</span></div>
+    <div class="sub">${esc(c.apartment.title)} · ${fmtDay(c.date)} · ${esc(c.fromTime)}–${esc(c.toTime)}</div>
+    ${c.startedAt ? `<div class="alert ${c.status === 'done' ? 'green' : 'blue'}">Начало ${hm(c.startedAt)}${c.doneAt ? ` · окончание ${hm(c.doneAt)}` : ' · идёт подготовка'}</div>` : ''}
+    ${c.status !== 'done' ? `<div class="card"><dl class="kv">${Object.entries({ Адрес: a.address, Подъезд: a.entrance, Этаж: a.floor, Домофон: a.intercom, 'Код замка': a.lockCode, 'Сейф для ключей': a.keyboxCode, 'Wi‑Fi': a.wifiName && `${a.wifiName} / ${a.wifiPassword || ''}`, Заметка: a.accessNote }).filter(([, v]) => v).map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join('')}</dl></div>` : ''}
+    ${c.checklist.length ? `<div class="card"><b>Чек-лист</b> · ${c.checklist.filter(x => x.done).length}/${c.checklist.length}${items}</div>` : ''}
+    ${(c.problems || []).map(p => `<div class="alert amber">⚠️ ${esc(p.text)}${photoRow(p.photos)}</div>`).join('')}
+    ${c.status === 'done' ? `${c.report ? `<div class="card">💬 ${esc(c.report)}</div>` : ''}<div class="alert green">Подготовка закончена</div>` : ''}
+    <div class="steps">
+      ${c.status === 'assigned' ? '<button class="btn block" data-go="enroute">🚶 Выхожу</button>' : ''}
+      ${['assigned', 'enroute'].includes(c.status) ? '<button class="btn primary block big" data-go="start">▶️ Начать подготовку</button>' : ''}
+      ${c.status === 'progress' ? `<button class="btn sm" data-go="problem">⚠️ Сообщить о проблеме</button>
+        <label>Комментарий${c.missing.length ? ' — если что-то не сделано, напишите почему' : ''}</label><textarea id="clRep" placeholder="Что заметили, что закончилось"></textarea>
+        <button class="btn success block big" data-go="finish" style="margin-top:10px">🏁 Закончить подготовку</button>` : ''}
+    </div><div id="clForm"></div>`);
+  body.onchange = guard(async (e) => {
+    const ck = e.target.closest('[data-ck]');
+    if (ck) { await api(`${base}/check`, { method: 'POST', body: { index: +ck.dataset.ck, done: ck.checked } }); return refresh(); }
+    const ph = e.target.closest('[data-ph]');
+    if (ph && ph.files.length) { await uploadCl(id, ph.files, { itemIndex: ph.dataset.ph }); return refresh('Фото добавлено'); }
+  });
+  body.onclick = guard(async (e) => {
+    const b = e.target.closest('[data-go]'); if (!b) return;
+    const go = b.dataset.go;
+    if (go === 'enroute') { await api(`${base}/status`, { method: 'POST', body: { status: 'enroute' } }); return refresh('Хорошей дороги'); }
+    if (go === 'start') { await api(`${base}/start`, { method: 'POST', body: {} }); return refresh('Начали — время записано'); }
+    if (go === 'finish') {
+      try { await api(`${base}/finish`, { method: 'POST', body: { report: $('#clRep', body).value || undefined } }); }
+      catch (err) { if (err.status === 409) { $('#clRep', body).focus(); return toast(err.message, true); } throw err; }
+      return refresh('Готово! Владелец получил отчёт');
+    }
+    if (go === 'problem') {
+      const box = $('#clForm', body);
+      box.innerHTML = `<form class="card" novalidate><h3>Проблема</h3><label>Что не так</label><textarea name="text" required placeholder="Подтекает смеситель на кухне"></textarea>
+        <label>Фото</label><input type="file" name="photos" accept="image/*" capture="environment" multiple><button class="btn primary block" style="margin-top:12px">Отправить владельцу</button></form>`;
+      const f = $('form', box); f.scrollIntoView({ behavior: 'smooth' });
+      f.onsubmit = guard(async (ev) => {
+        ev.preventDefault(); if (!f.text.value.trim()) return toast('Опишите проблему', true);
+        const ids = f.photos.files.length ? (await uploadCl(id, f.photos.files, { kind: 'problem' })).map(p => p.id) : [];
+        await api(`${base}/problem`, { method: 'POST', body: { text: f.text.value, photoIds: ids } });
+        return refresh('Отправлено владельцу');
+      });
+    }
+  });
+}
+
+// ---------- мои выплаты ----------
+function renderPayouts() {
+  const p = S.pay || { items: [] };
+  const pend = p.items.filter(x => x.status === 'PENDING'), paid = p.items.filter(x => x.status === 'PAID');
+  const row = (x) => `<div class="card"><div class="row between"><b>${esc(x.title || x.kindLabel)}</b><span class="money">${money(x.amountKzt)}</span></div>
+    <div class="sub">${x.status === 'PAID' ? `Выплачено ${dt(x.paidAt)}${x.methodLabel ? ` · ${x.methodLabel}` : ''}` : `К оплате с ${dt(x.createdAt)}`}</div></div>`;
+  view(`<div class="card"><dl class="kv"><dt>К оплате</dt><dd class="money">${money(p.pendingKzt)}</dd><dt>Выплачено</dt><dd>${money(p.paidKzt)}</dd></dl></div>
+    ${pend.length ? `<div class="h"><h2>К оплате</h2><span class="chip amber">${pend.length}</span></div>${pend.map(row).join('')}` : ''}
+    ${paid.length ? `<div class="h"><h2>Выплачено</h2></div>${paid.map(row).join('')}` : ''}
+    ${!p.items.length ? '<div class="card empty">Выплат пока нет. Они появятся сразу после завершения работы.</div>' : ''}`);
 }
 
 boot().catch(() => showLogin());
