@@ -5,7 +5,7 @@ import express, { Router } from 'express';
 import { prisma } from '../db.js';
 import { applyPaymentResult } from '../payments/index.js';
 
-export default function paymentsRouter({ payments, events, logger = console }) {
+export default function paymentsRouter({ payments, events, dispatch = null, logger = console }) {
   const r = Router();
   r.use(express.raw({ type: () => true, limit: '1mb' }));
 
@@ -13,7 +13,7 @@ export default function paymentsRouter({ payments, events, logger = console }) {
     if (!payments || payments.name !== providerName) return res.status(404).json({ error: 'Провайдер оплаты не подключён' });
     const out = await payments.handleWebhook({ kind, rawBody: req.body, headers: req.headers, prisma });
     if (out.error) logger.warn(`[payments] ${providerName}/${kind}: ${out.error}`);
-    if (out.result) await applyPaymentResult({ prisma, events, result: out.result });
+    if (out.result) await applyPaymentResult({ prisma, events, dispatch, result: out.result });
     res.status(out.status).json(out.body);
   };
   for (const kind of ['check', 'pay', 'fail']) r.post(`/cloudpayments/${kind}`, handle('cloudpayments', kind));

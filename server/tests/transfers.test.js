@@ -2,7 +2,7 @@
 // первый «Беру» получает заказ, эскалация «никто не взял», отмена/перенос брони, выплата водителю, ссылка внешнего водителя.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeApp, login, prisma, request, freeDates, extConfig, extDriver } from './helpers.js';
+import { makeApp, login, prisma, request, freeDates, extConfig, extDriver, pickupSoon } from './helpers.js';
 
 const { app, events } = makeApp({ config: extConfig });   // внешние водители включены только для этих сценариев
 let acc, apt, owner, admin, ruslan, bauyrzhan, kanat, cleaner, master, ownerB;
@@ -202,6 +202,7 @@ test('шаги водителя: выехал (ETA) → на месте → го
   assert.equal(tm.status, 200); assert.equal(tm.body.time, '16:45');
   await events.idle();
   assert.ok((await logs({ event: 'transfer.updated', recipientType: 'owner' })).some(l => l.text.includes('16:45')));
+  await pickupSoon(job.id);
   const en = await request(app).post(`/api/staff/transfers/${job.id}/en-route`).set(bauyrzhan.auth).send({ etaMinutes: 40 });
   assert.equal(en.body.status, 'EN_ROUTE'); assert.ok(en.body.etaAt);
   assert.equal((await request(app).post(`/api/staff/transfers/${job.id}/release`).set(bauyrzhan.auth)).status, 409, 'после выезда отказаться нельзя');
@@ -251,6 +252,7 @@ test('внешний водитель по ссылке: назначение, �
   const url = `/api/transfer-link/${a.body.link.token}`;
   const v = await request(app).get(url);
   assert.equal(v.status, 200); assert.equal(v.body.guestPhone, '+7 701 222 33 44'); assert.equal(v.body.apartment.apartmentNumber, apt.code);
+  await pickupSoon(job.id);
   for (const s of ['en-route', 'arrived', 'picked-up', 'done']) assert.equal((await request(app).post(`${url}/${s}`).send({})).status, 200, s);
   assert.equal((await request(app).get(url)).status, 410);
   assert.equal((await request(app).get('/api/transfer-link/nope')).status, 404);

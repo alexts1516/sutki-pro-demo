@@ -2,12 +2,15 @@
 //   assigned ─ «Выхожу» ─► enroute ─ «Начать» (время начала, снимок чек-листа) ─► progress ─ «Закончить» (время окончания) ─► done
 // Чек-лист = шаблон аккаунта (владелец меняет в настройках) + доп. пункты квартиры. Пункт может требовать фото.
 // Закончить с неотмеченными пунктами или без обязательных фото можно только с комментарием «почему».
-// Проблема (текст + фото) → владелец/админ одним нажатием делает из неё заявку мастеру.
+// Проблема (текст + фото + срочность) → недочёт квартиры (services/defects.js): висит, пока не решён; срочный — квартира не готова.
+// Порядок и время: начать можно только в день подготовки (по времени аккаунта), закончить — только после «Начать»;
+// после «Готово» шаги, отметки и фото чек-листа не меняются (сообщить о проблеме — можно).
 import { prisma } from '../db.js';
-import { HttpError, badRequest, notFound } from '../lib/errors.js';
-import { randomToken } from '../lib/tokens.js';
+import { HttpError, badRequest } from '../lib/errors.js';
 import { getSettings } from './settings.js';
 import { aptShort } from './performerPayouts.js';
+import { todayIn, isoDay } from '../lib/dates.js';
+import { defectOut } from './defects.js';
 
 export const DEFAULT_CHECKLIST = ['Смена белья', 'Полотенца', 'Ванная и туалет', 'Кухня и посуда', 'Полы', 'Мусор', 'Расходники'].map(label => ({ label, photo: false }));
 export const STATUS_RU = { assigned: 'Назначена', enroute: 'В пути', progress: 'Идёт подготовка', done: 'Готово' };
@@ -27,24 +30,41 @@ export function missingItems(task, photos = task.photos || []) {
     .map(x => (x.done ? `${x.label} — нужно фото` : x.label));
 }
 
-export function createCleaning({ events, payouts, workflow }) {
+const MON = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
+const dayRu = (d) => { const x = new Date(d); return `${x.getUTCDate()} ${MON[x.getUTCMonth()]}`; };
+/** Можно ли начинать: только в день подготовки или позже (по времени аккаунта) */
+export async function canStartCleaning(task, now = new Date()) {
+  const acc = await prisma.account.findUnique({ where: { id: task.accountId }, select: { timezone: true } });
+  return isoDay(todayIn(acc?.timezone || 'Asia/Almaty', now)) >= isoDay(task.date);
+}
+
+export function createCleaning({ events, payouts, workflow, defects }) {
   const emit = (n, p) => events?.emit(n, p);
-  const load = (id) => prisma.cleaningTask.findUnique({ where: { id }, include: { apartment: true, photos: true, assignee: { select: { id: true, name: true } } } });
+  const load = (id) => prisma.cleaningTask.findUnique({ where: { id }, include: { apartment: true, photos: true, assignee: { select: { id: true, name: true } }, defects: { orderBy: { createdAt: 'asc' } } } });
+  const notDone = (task) => { if (task.status === 'done') throw conflict('Подготовка уже закончена — изменить нельзя'); };
+  async function notEarly(task) {
+    if (!(await canStartCleaning(task))) throw conflict(`Подготовка запланирована на ${dayRu(task.date)} — начать можно в этот день`);
+  }
 
   async function setStatus(task, status, { report, checklist } = {}) {
     if (status === 'progress') return start(task);
-    if (status === 'done') return finish(task, { report, checklist });
+    if (status === 'done') { if (task.status !== 'done' && task.status !== 'progress') task = { ...task, ...(await start(task)) }; return finish(task, { report, checklist }); }
+    notDone(task);
+    if (status === 'assigned' && task.status !== 'enroute') throw conflict('Вернуть назад можно только из «В пути»');
+    if (status === 'enroute') { if (task.status === 'progress') throw conflict('Подготовка уже идёт'); await notEarly(task); }
     return prisma.cleaningTask.update({ where: { id: task.id }, data: { status, ...(report !== undefined ? { report } : {}) } });
   }
   async function start(task) {
-    if (task.status === 'done') throw conflict('Подготовка уже закончена');
+    notDone(task);
+    if (task.status === 'progress') return task;   // повторное нажатие
+    await notEarly(task);
     let checklist = task.checklist;
     const fresh = !Array.isArray(checklist) || !checklist.length || checklist.every(x => !x.done);
     if (fresh) checklist = buildChecklist(await getSettings(task.accountId), task.apartment || await prisma.apartment.findUnique({ where: { id: task.apartmentId } }));
     return prisma.cleaningTask.update({ where: { id: task.id }, data: { status: 'progress', startedAt: task.startedAt || new Date(), checklist } });
   }
   async function check(task, index, done) {
-    if (task.status === 'done') throw conflict('Подготовка уже закончена');
+    notDone(task);
     if (task.status !== 'progress') task = await start(task);
     const list = [...(task.checklist || [])];
     if (!list[index]) throw badRequest('Нет такого пункта');
@@ -53,6 +73,10 @@ export function createCleaning({ events, payouts, workflow }) {
   }
   async function addPhotos(task, { storage, files, itemIndex = null, kind = 'item', makeKey, looksLikeImage }) {
     if (!files?.length) throw badRequest('Выберите фото');
+    if (kind !== 'problem' || itemIndex != null) {
+      notDone(task);
+      if (task.status !== 'progress') throw conflict('Сначала нажмите «Начать подготовку»');
+    }
     const out = [];
     for (const f of files) {
       if (!looksLikeImage(f.buffer)) throw badRequest(`Файл «${f.originalname}» не похож на картинку`);
@@ -61,16 +85,15 @@ export function createCleaning({ events, payouts, workflow }) {
     }
     return out;
   }
-  async function reportProblem(task, actor, { text, photoIds = [] }) {
+  /** Проблема → недочёт квартиры (висит, пока не решён). priority: urgent — срочно (квартира не готова) | later */
+  async function reportProblem(task, actor, { text, photoIds = [], priority = 'later' }) {
     if (!text?.trim()) throw badRequest('Опишите проблему');
-    const problems = [...(task.problems || []), { id: randomToken(6), text: text.trim(), photoIds, at: new Date().toISOString(), byName: actor.name, repairTaskId: null }];
     if (photoIds.length) await prisma.cleaningPhoto.updateMany({ where: { id: { in: photoIds }, cleaningTaskId: task.id }, data: { kind: 'problem', itemIndex: null } });
-    const u = await prisma.cleaningTask.update({ where: { id: task.id }, data: { problems } });
-    emit('cleaning.problem', { accountId: task.accountId, taskId: task.id, problemId: problems.at(-1).id });
-    return u;
+    return defects.create({ accountId: task.accountId, apartmentId: task.apartmentId, cleaningTaskId: task.id, text, priority, photoIds, actor });
   }
   async function finish(task, { report, note, checklist } = {}) {
-    if (task.status === 'done') return task;
+    if (task.status === 'done') return task;   // повторное нажатие — ничего не меняем
+    if (task.status !== 'progress') throw conflict('Сначала нажмите «Начать подготовку»');
     if (checklist && !(task.checklist || []).length) task = await prisma.cleaningTask.update({ where: { id: task.id }, data: { checklist }, include: { photos: true } });
     if (!task.photos) task = await load(task.id);
     const missing = missingItems(task);
@@ -82,24 +105,17 @@ export function createCleaning({ events, payouts, workflow }) {
     emit('cleaning.reported', { accountId: task.accountId, taskId: task.id });
     return u;
   }
-  /** Проблема → заявка мастеру (без исполнителя: владелец выберет мастера). Фото копируются как «фото проблемы». */
+  /** Проблема с подготовки → заявка мастеру (то же, что «Заявка мастеру» у недочёта) */
   async function problemToRepair(task, problemId, actor) {
-    const list = [...(task.problems || [])];
-    const i = list.findIndex(p => p.id === problemId);
-    if (i < 0) throw notFound('Проблема не найдена');
-    if (list[i].repairTaskId) return prisma.repairTask.findUnique({ where: { id: list[i].repairTaskId } });
-    const p = list[i];
-    const r = await workflow.create({ accountId: task.accountId, actor, data: {
-      apartmentId: task.apartmentId, title: p.text.split('\n')[0].slice(0, 80), description: `${p.text}\n\nНашли при подготовке ${task.date.toISOString().slice(0, 10)} (${p.byName || 'специалист'}).`,
-      date: new Date(), priority: 'medium', type: 'other',
-    } });
-    const photos = await prisma.cleaningPhoto.findMany({ where: { id: { in: p.photoIds || [] } } });
-    for (const ph of photos) await prisma.repairPhoto.create({ data: { accountId: task.accountId, repairTaskId: r.id, kind: 'problem', url: ph.url, storageKey: ph.storageKey || '', caption: 'с подготовки', uploadedBy: actor.type, mimeType: ph.mimeType } });
-    list[i] = { ...p, repairTaskId: r.id };
-    await prisma.cleaningTask.update({ where: { id: task.id }, data: { problems: list } });
-    return r;
+    const d = await defects.get(task.accountId, problemId);
+    return defects.toRepair(task.accountId, d.id, actor);
   }
-  return { load, setStatus, start, check, addPhotos, reportProblem, finish, problemToRepair };
+  /** Закончили не полностью → владелец/админ принимает отчёт (без этого квартира «не готова») */
+  async function review(task, actor) {
+    if (task.status !== 'done') throw conflict('Подготовка ещё не закончена');
+    return prisma.cleaningTask.update({ where: { id: task.id }, data: { reviewedAt: new Date(), reviewedBy: actor?.name || null } });
+  }
+  return { load, setStatus, start, check, addPhotos, reportProblem, finish, problemToRepair, review };
 }
 
 const photoOut = (p) => ({ id: p.id, url: p.url, kind: p.kind, itemIndex: p.itemIndex });
@@ -114,7 +130,7 @@ export function cleaningReport(t, { payout = null } = {}) {
     startedAt: t.startedAt, doneAt: t.doneAt, report: t.report, finishNote: t.finishNote,
     checklist: (t.checklist || []).map((x, i) => ({ ...x, photos: photos.filter(p => p.itemIndex === i).map(photoOut) })),
     photos: photos.filter(p => p.itemIndex == null && p.kind !== 'problem').map(photoOut),
-    problems: (t.problems || []).map(p => ({ ...p, photos: photos.filter(ph => (p.photoIds || []).includes(ph.id)).map(photoOut) })),
+    problems: (t.defects || []).map(d => defectOut(d, photos)), reviewedAt: t.reviewedAt, reviewedBy: t.reviewedBy,
     missing: t.status === 'done' ? [] : missingItems(t, photos),
     payout: payout ? { id: payout.id, amountKzt: payout.amountKzt, status: payout.status, paidAt: payout.paidAt, method: payout.method } : null,
   };

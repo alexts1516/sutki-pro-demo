@@ -18,6 +18,7 @@ import { busyRanges, createBookingRequest, isAvailable, quote } from '../service
 import { transferLegPrice } from '../services/transfers.js';
 import { loadBrand, loadTexts, loadCurrency } from '../site/config.js';
 import { deepLink } from '../telegram/linking.js';
+import { applyPaymentResult } from '../payments/index.js';
 
 const phoneRe = /^[+\d][\d\s()-]{5,20}$/;
 const BookingSchema = z.object({
@@ -25,6 +26,7 @@ const BookingSchema = z.object({
   name: z.string().trim().min(2).max(80), phone: z.string().trim().regex(phoneRe, 'Телефон в формате +7 700 000 00 00'), email: z.string().email().optional().or(z.literal('').transform(() => undefined)),
   comment: z.string().max(1000).optional(), pets: z.boolean().optional(), currency: z.enum(['KZT', 'RUB', 'USD', 'EUR']).default('KZT'),
   paymentMethod: z.enum(['card', 'cash', 'kaspi', 'telegram', 'whatsapp', 'transfer']).default('cash'), lang: z.enum(['ru', 'en']).default('ru'),
+  earlyCheckIn: z.string().regex(/^\d{2}:\d{2}$/, 'Время в формате ЧЧ:ММ').optional(),   // «можно заехать в 10 утра?» — согласует админ
 });
 const TransferSchema = z.object({
   bookingToken: z.string().optional(), direction: z.enum(['in', 'out']), place: z.enum(['airport', 'station']).default('airport'),
@@ -105,6 +107,7 @@ export default function publicRouter({ events, payments, config, dispatch }) {
       accountId: req.accountId, apartment: apt, checkIn: ci, checkOut: co, guestsCount: d.guests, guest, pets: d.pets,
       note: d.comment, paymentMethod: d.paymentMethod, currencyShown: d.currency, amountShown,
     });
+    if (d.earlyCheckIn && d.earlyCheckIn < booking.checkInTime) await prisma.booking.update({ where: { id: booking.id }, data: { earlyCheckIn: d.earlyCheckIn, earlyCheckInStatus: 'requested' } });
     events.emit('booking.requested', { accountId: req.accountId, bookingId: booking.id });
     res.status(201).json({
       number: booking.number, token: booking.token, status: booking.status, checkIn: isoDay(ci), checkOut: isoDay(co),
@@ -127,11 +130,17 @@ export default function publicRouter({ events, payments, config, dispatch }) {
     if (!payments) throw new HttpError(409, 'Онлайн-оплата пока не подключена');
     const b = await byToken(req);
     if (b.paymentStatus === 'paid') throw new HttpError(409, 'Бронь уже оплачена');
+    if (!['request', 'confirmed'].includes(b.status)) throw new HttpError(409, 'Бронь отменена — оплатить нельзя');
     const currency = 'KZT';   // списываем в тенге; валюта гостя — только для показа
     const payment = await prisma.payment.create({ data: { accountId: req.accountId, bookingId: b.id, provider: payments.name, amountKzt: b.totalKzt, currency, amount: b.totalKzt, status: 'created' } });
     const lang = b.guest?.locale || 'ru';
     const description = lang === 'en' ? `Booking #${b.number}, ${b.apartment.titleEn || b.apartment.title}` : `Бронь №${b.number}, ${b.apartment.title}`;
     const intent = await payments.createPayment({ payment, booking: b, guest: b.guest, description, lang, returnUrl: `${config.publicUrl}/api/public/${req.account.slug}/bookings/${b.token}` });
+    if (intent.type === 'instant') {   // тестовая оплата (демо): сразу успешна → бронь подтверждается
+      await applyPaymentResult({ prisma, events, dispatch, result: { paymentId: payment.id, status: 'succeeded' } });
+      const nb = await prisma.booking.findUnique({ where: { id: b.id } });
+      return res.status(201).json({ paymentId: payment.id, type: 'done', paid: true, status: nb.status });
+    }
     res.status(201).json({ paymentId: payment.id, ...intent });
   });
 

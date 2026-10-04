@@ -86,7 +86,7 @@ test('аккаунт Б не видит данные аккаунта А (и н�
   assert.equal((await request(app).get(`/api/admin/apartments/${aptA.id}`).set(ownerB.auth)).status, 404);
   assert.equal((await request(app).patch(`/api/admin/apartments/${aptA.id}`).set(ownerB.auth).send({ title: 'взлом' })).status, 404);
   assert.equal((await request(app).delete(`/api/admin/photos/${aptA.photos[0].id}`).set(ownerB.auth)).status, 404);
-  const bookA = await prisma.booking.findFirst({ where: { accountId: accA.id, status: 'request' } });
+  const bookA = await prisma.booking.findFirst({ where: { accountId: accA.id, status: 'confirmed' } });
   assert.equal((await request(app).post(`/api/admin/bookings/${bookA.id}/confirm`).set(ownerB.auth)).status, 404);
   const bookingsB = await request(app).get('/api/admin/bookings').set(ownerB.auth);
   assert.ok(bookingsB.body.every(b => b.number === 1001));

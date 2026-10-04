@@ -15,6 +15,7 @@
 import { prisma } from '../db.js';
 import { HttpError, badRequest, forbidden } from '../lib/errors.js';
 import { randomToken } from '../lib/tokens.js';
+import { syncDefectsWithRepair } from './defects.js';
 
 export const STATUSES = ['NEW', 'VISIT_INSPECTION', 'AWAITING_OWNER_APPROVAL', 'REJECTED', 'APPROVED', 'IN_PROGRESS', 'DONE', 'CANCELLED'];
 export const STATUS_RU = {
@@ -225,6 +226,7 @@ export function createWorkflow({ events, payouts = null }) {
       await log(task, actor, 'completed', report, { finalCostKzt, photoIds: photoIds || [], pendingExtras: pendingExtras(task).length });
       const t = await recalc(task.id);
       await payouts?.forRepair(task.id);   // сразу «к оплате» мастеру (если работу делал не владелец)
+      await syncDefectsWithRepair(task.id, 'DONE', actor.name);   // недочёт, из которого сделали заявку, — решён
       emit('repair.reported', { accountId: task.accountId, taskId: task.id });
       return t;
     },
@@ -234,6 +236,7 @@ export function createWorkflow({ events, payouts = null }) {
       await setStatus(task, 'CANCELLED', { cancelReason: reason || null });
       await log(task, actor, 'cancelled', reason);
       await recalc(task.id);
+      await syncDefectsWithRepair(task.id, 'CANCELLED');
       emit('repair.cancelled', { accountId: task.accountId, taskId: task.id });
     },
 

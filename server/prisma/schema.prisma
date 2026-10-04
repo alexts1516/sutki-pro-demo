@@ -57,6 +57,7 @@ model Account {
   settings       AccountSettings?
   payouts        Payout[]
   cleaningPhotos CleaningPhoto[]
+  defects        Defect[]
 }
 
 /// Настройки владельца: комиссия с трансферов, кому слать уведомления менеджерам, кто одобряет сметы.
@@ -75,6 +76,7 @@ model AccountSettings {
   cleaningRateKzt        Int? /// оплата специалисту по подготовке за квартиру (если не задано по размеру или у квартиры)
   cleaningRates          Json? /// оплата по размеру: {"Студия":4000,"1-комн.":5000,…}
   payoutReminderHours    Int       @default(3) /// напомнить владельцу о невыплаченном через N часов
+  driverStartWindowMin   Int       @default(120) /// за сколько минут до подачи водителю открывается «Выехал» (дальше шаги строго по порядку)
   updatedAt              DateTime  @updatedAt
 
   account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -199,6 +201,7 @@ model Apartment {
   repairTasks   RepairTask[]
   transfers     Transfer[]
   transferJobs  TransferJob[]
+  defects       Defect[]
 
   @@index([accountId])
 }
@@ -231,7 +234,7 @@ model Booking {
   guestId       String?
   number        Int /// номер брони для людей (1040, 1041…), уникален в аккаунте
   token         String    @unique /// секрет для ссылки гостя: t.me/<бот>?start=b_<token>
-  source        String /// site | airbnb | booking | telegram | whatsapp | direct
+  source        String /// site | airbnb | booking | telegram | whatsapp | direct | link (личная ссылка — особая бронь)
   status        String    @default("request") /// request | confirmed | cancelled | completed
   checkIn       DateTime /// дата заезда (00:00 UTC этого дня)
   checkOut      DateTime /// дата выезда
@@ -247,6 +250,8 @@ model Booking {
   pets          Boolean   @default(false)
   petFeeKzt     Int       @default(0)
   note          String?
+  earlyCheckIn       String? /// пожелание гостя: заехать раньше, «ЧЧ:ММ»
+  earlyCheckInStatus String? /// requested (ждёт решения) | approved (время заезда сдвинуто) | declined
   cleanerName   String? /// кто уберёт после выезда (демо-данные)
   confirmedAt   DateTime?
   createdAt     DateTime  @default(now())
@@ -429,6 +434,8 @@ model CleaningTask {
   finishNote  String? /// почему не всё отмечено (если закончили с неотмеченными пунктами)
   startedAt   DateTime?
   doneAt      DateTime?
+  reviewedAt  DateTime? /// закончили не полностью → владелец/админ принял отчёт («ПОДТВЕРЖДЕНИЕ»), квартира снова может быть «готова»
+  reviewedBy  String?
   createdAt   DateTime  @default(now())
 
   account   Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -437,6 +444,7 @@ model CleaningTask {
   assignee  User?           @relation("CleaningAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   photos    CleaningPhoto[]
   payout    Payout?
+  defects   Defect[]
 
   @@index([accountId, date])
   @@index([assigneeId])
@@ -532,6 +540,7 @@ model RepairTask {
   photos             RepairPhoto[]
   extras             ExtraExpense[]
   payout             Payout?
+  defects            Defect[]
 
   @@index([accountId, date])
   @@index([assigneeId])
@@ -719,4 +728,37 @@ model Payment {
   booking Booking? @relation(fields: [bookingId], references: [id], onDelete: SetNull)
 
   @@index([accountId])
+}
+
+/// Недочёт в квартире (нашли при подготовке или владелец/админ добавил сам). Висит, пока не решён.
+/// Срочный открытый недочёт — квартира «не готова». Действия: «Заявка мастеру» (repairTaskId; закроется, когда мастер завершит),
+/// «Сделаю сам» (кто взялся), «Решено».
+model Defect {
+  id             String    @id @default(cuid())
+  accountId      String
+  apartmentId    String
+  cleaningTaskId String? /// с какой подготовки
+  repairTaskId   String? /// заявка мастеру по этому недочёту
+  text           String
+  priority       String    @default("later") /// urgent (срочно — квартира не готова) | later (можно позже)
+  status         String    @default("open") /// open | resolved
+  photoIds       Json? /// [id CleaningPhoto]
+  reportedById   String?
+  reportedByName String?
+  takenById      String? /// «Сделаю сам»
+  takenByName    String?
+  resolvedAt     DateTime?
+  resolvedByName String?
+  resolution     String? /// resolved (решено) | repair (мастер завершил) | self (сделал сам)
+  note           String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  account      Account       @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  apartment    Apartment     @relation(fields: [apartmentId], references: [id], onDelete: Cascade)
+  cleaningTask CleaningTask? @relation(fields: [cleaningTaskId], references: [id], onDelete: SetNull)
+  repairTask   RepairTask?   @relation(fields: [repairTaskId], references: [id], onDelete: SetNull)
+
+  @@index([accountId, status])
+  @@index([apartmentId, status])
 }

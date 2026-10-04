@@ -102,30 +102,51 @@ async function main() {
     }
   }
 
-  // брони (+ гости)
+  // брони (+ гости). Модель (ПЛАН.md, проход 2–3): обычная бронь существует только оплаченной на нашем сайте;
+  // особая — только по личной разовой ссылке от владельца/админа (наличные при заезде или залог). Неоплаченных «подтвердите» нет.
   const bk = {};
+  const payTerms = (src, payment, ci) => {
+    if (src === 'airbnb') return { source: 'airbnb', paymentMethod: 'card', paymentStatus: 'paid' };
+    if (src === 'site' || src === 'booking') return { source: 'site', paymentMethod: 'card', paymentStatus: 'paid' };
+    // telegram / whatsapp / direct → личная ссылка: залог внесён или наличные при заезде (прошлые и текущие — уже оплачены)
+    if (payment === 'prepaid') return { source: 'link', paymentMethod: 'deposit', paymentStatus: ci < d.TODAY ? 'paid' : 'prepaid' };
+    return { source: 'link', paymentMethod: 'cash_on_arrival', paymentStatus: payment === 'paid' || ci < d.TODAY ? 'paid' : 'unpaid' };
+  };
   for (const b of d.bookings) {
     const g = await prisma.guest.create({ data: { accountId: acc.id, name: b.guest, phone: b.phone.replace(/\s/g, '') } });
     bk[b.id] = await prisma.booking.create({
       data: {
-        accountId: acc.id, apartmentId: apt[b.aptId].id, guestId: g.id, number: b.id, token: randomToken(12), source: b.source,
+        accountId: acc.id, apartmentId: apt[b.aptId].id, guestId: g.id, number: b.id, token: randomToken(12), ...payTerms(b.source, b.payment, b.ci),
         status: b.co <= d.TODAY ? 'completed' : 'confirmed', checkIn: day(b.ci), checkOut: day(b.co), checkInTime: b.checkinTime, checkOutTime: b.checkoutTime,
-        guestsCount: b.guests, nightlyKzt: b.nightly, totalKzt: b.total, paymentStatus: b.payment, note: b.note, cleanerName: b.cleaner,
-        paymentMethod: b.source === 'airbnb' || b.source === 'booking' ? 'card' : 'cash', confirmedAt: day(b.ci - 7),
+        guestsCount: b.guests, nightlyKzt: b.nightly, totalKzt: b.total, note: b.note, cleanerName: b.cleaner, confirmedAt: day(b.ci - 7),
       },
     });
   }
-  // заявки из каналов → брони со статусом request (подтверждённые — confirmed)
+  // переписка из каналов (прототип): вопросы без брони в систему не попадают; брони — только подтверждённые.
+  // Эмма Мюллер — бронь по личной ссылке (наличные при заезде) с просьбой о раннем заезде; Ли Вэй — оплачено на сайте, с трансфером.
   let num = Math.max(...d.bookings.map(b => b.id));
+  const freeApt = async (pref, ci, co) => {
+    const busy = async (a) => !!(await prisma.booking.findFirst({ where: { apartmentId: a.id, status: { in: ['request', 'confirmed', 'completed'] }, checkIn: { lt: day(co) }, checkOut: { gt: day(ci) } } }));
+    if (pref && !(await busy(pref))) return pref;
+    for (const a of Object.values(apt)) if (!(await busy(a))) return a;
+    return null;
+  };
+  const special = {};
   for (const r of d.requests) {
+    const emma = r.name === 'Эмма Мюллер', liwei = r.name === 'Ли Вэй';
+    if (r.status !== 'confirmed' && !emma && !liwei) continue;
+    const ci = emma ? d.TODAY + 1 : r.ci, co = emma ? d.TODAY + 3 : r.co;   // Эмма — завтра, чтобы просьба была видна в «Сегодня»
+    const a = await freeApt(apt[r.aptId], ci, co); if (!a) continue;
     const g = await prisma.guest.create({ data: { accountId: acc.id, name: r.name, phone: '+7701555' + String(1000 + r.id * 37).slice(-4) } });
-    const a = apt[r.aptId];
-    await prisma.booking.create({
+    const terms = emma ? { source: 'link', paymentMethod: 'cash_on_arrival', paymentStatus: 'unpaid' } : payTerms(r.channel === 'telegram' || r.channel === 'whatsapp' ? r.channel : 'site', r.channel === 'telegram' ? 'prepaid' : 'paid', ci);
+    special[r.name] = await prisma.booking.create({
       data: {
-        accountId: acc.id, apartmentId: a.id, guestId: g.id, number: ++num, token: randomToken(12), source: r.channel,
-        status: r.status === 'confirmed' ? 'confirmed' : 'request', checkIn: day(r.ci), checkOut: day(r.co), guestsCount: r.guests,
-        nightlyKzt: a.basePriceKzt, totalKzt: a.basePriceKzt * (r.co - r.ci), note: r.text, paymentMethod: 'cash',
+        accountId: acc.id, apartmentId: a.id, guestId: g.id, number: ++num, token: randomToken(12), ...terms,
+        status: 'confirmed', confirmedAt: day(d.TODAY - 1), checkIn: day(ci), checkOut: day(co), guestsCount: r.guests,
+        nightlyKzt: a.basePriceKzt, totalKzt: a.basePriceKzt * (co - ci), note: r.text,
+        ...(emma ? { earlyCheckIn: '10:00', earlyCheckInStatus: 'requested' } : {}),
       },
+      include: { guest: true, apartment: true },
     });
   }
   // ---------- водители и трансферы «как в Uber» (статусы — src/services/transferJobs.js) ----------
@@ -250,9 +271,12 @@ async function main() {
     if (x.status === 'PICKED_UP') j.pickedUpAt = new Date(Math.min(pickup.getTime() + 20 * 60000, nowMs - 60000));
     await seedJob(tr, j);
   }
-  // заявка на бронь с трансфером — заказ водителям появится, когда хозяин/админ подтвердит бронь
-  const reqWithTransfer = await prisma.booking.findFirst({ where: { accountId: acc.id, status: 'request' }, orderBy: { checkIn: 'asc' }, include: { guest: true, apartment: true } });
-  if (reqWithTransfer) await mkTransfer(reqWithTransfer, reqWithTransfer.apartment, reqWithTransfer.guest.name, { dir: 'in', date: reqWithTransfer.checkIn, time: '21:35', flight: 'KC 921', pax: reqWithTransfer.guestsCount, price: 9500, phone: reqWithTransfer.guest.phone });
+  // оплаченная на сайте бронь с трансфером: заказ водителям ушёл заранее (бронь подтверждена оплатой)
+  const lw = special['Ли Вэй'];
+  if (lw) {
+    const tr = await mkTransfer(lw, lw.apartment, lw.guest.name, { dir: 'in', date: lw.checkIn, time: '23:40', flight: 'KC 921', pax: lw.guestsCount, price: 9500, phone: lw.guest.phone });
+    await seedJob(tr, { status: 'OFFERED', offeredAt: minutes(-12) });
+  }
   // подготовка квартир (уборки): чек-лист по стандартному шаблону; за готовые — выплата специалисту (прошлые — выплачены, сегодняшние — к оплате)
   const cleaningsDone = [];
   for (const c of d.cleanings) {
@@ -266,6 +290,11 @@ async function main() {
       },
     });
     if (c.status === 'done' && t.assigneeId) cleaningsDone.push({ t, c, apt: apt[c.aptId] });
+  }
+  // Эмма: подготовка к её заезду (если в этот день нет выезда с уборкой) — срок подготовки = время заезда, сдвинется при раннем заезде
+  const em = special['Эмма Мюллер'];
+  if (em && !(await prisma.cleaningTask.findFirst({ where: { apartmentId: em.apartmentId, date: em.checkIn } }))) {
+    await prisma.cleaningTask.create({ data: { accountId: acc.id, apartmentId: em.apartmentId, date: em.checkIn, fromTime: '09:00', toTime: '14:00', status: 'assigned', assigneeId: Object.values(users).find(u => u.name.startsWith('Айгерим'))?.id || null } });
   }
   let overdueOne = false;
   for (const { t, c, apt: a } of cleaningsDone) {
@@ -325,10 +354,15 @@ async function main() {
     await prisma.cleaningPhoto.create({ data: { accountId: acc.id, cleaningTaskId: t.id, kind: 'item', itemIndex: 2, url: s1.url, storageKey: s1.key, mimeType: 'image/svg+xml' } });
     const s2 = await storage.save(`${acc.id}/cleaning/${t.id}/problem.svg`, problemSvg('Подтекает смеситель', 10), 'image/svg+xml');
     const ph2 = await prisma.cleaningPhoto.create({ data: { accountId: acc.id, cleaningTaskId: t.id, kind: 'problem', url: s2.url, storageKey: s2.key, mimeType: 'image/svg+xml' } });
-    await prisma.cleaningTask.update({ where: { id: t.id }, data: {
-      report: 'Всё готово. Гости оставили зарядку — положила в шкаф.',
-      problems: [{ id: 'p1demo', text: 'Подтекает смеситель на кухне', photoIds: [ph2.id], at: t.doneAt.toISOString(), byName: withProblem.c.cleaner, repairTaskId: null }],
-    } });
+    await prisma.cleaningTask.update({ where: { id: t.id }, data: { report: 'Всё готово. Гости оставили зарядку — положила в шкаф.' } });
+    // недочёт «можно позже» — не мешает заезду, но висит, пока не решат
+    await prisma.defect.create({ data: { accountId: acc.id, apartmentId: t.apartmentId, cleaningTaskId: t.id, text: 'Подтекает смеситель на кухне', priority: 'later', photoIds: [ph2.id], reportedById: t.assigneeId, reportedByName: withProblem.c.cleaner, createdAt: t.doneAt } });
+  }
+  // срочный недочёт на идущей подготовке перед сегодняшним заездом — квартира «не готова», это первым в «Сегодня»
+  const urgentPrep = await prisma.cleaningTask.findFirst({ where: { accountId: acc.id, date: day(d.TODAY), status: 'progress' }, include: { apartment: true, assignee: true }, orderBy: { fromTime: 'asc' } });
+  if (urgentPrep) {
+    await prisma.defect.create({ data: { accountId: acc.id, apartmentId: urgentPrep.apartmentId, cleaningTaskId: urgentPrep.id, text: 'Мигает лампа в коридоре, плафон тёплый', priority: 'urgent', photoIds: [], reportedById: urgentPrep.assigneeId, reportedByName: urgentPrep.assignee?.name || null, createdAt: ago(0.5) } });
+    await prisma.defect.create({ data: { accountId: acc.id, apartmentId: urgentPrep.apartmentId, cleaningTaskId: urgentPrep.id, text: 'Закончились мусорные пакеты', priority: 'later', photoIds: [], reportedById: urgentPrep.assigneeId, reportedByName: urgentPrep.assignee?.name || null, createdAt: ago(0.4) } });
   }
   const meTasks = [
     { status: 'NEW', title: 'Не работает розетка на кухне', desc: 'Розетка у холодильника не даёт питание, автомат не выбивает.', occ: 'UNKNOWN', photos: 0 },

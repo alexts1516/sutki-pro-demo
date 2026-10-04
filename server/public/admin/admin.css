@@ -206,3 +206,26 @@ label.check{flex-direction:row;gap:8px;align-items:center;margin:4px 0 8px;font-
 .nav-app{display:block;margin:10px 12px 0;padding:8px 10px;border-radius:9px;font-size:13px;color:var(--muted);text-decoration:none;border:1px dashed var(--border)}.nav-app:hover{color:inherit}
 .cl-report{list-style:none;margin:0;padding:0}.cl-report li{padding:6px 0;border-bottom:1px dashed var(--border)}.cl-report li:last-child{border:none}
 tr.row-red td{background:#fef2f2}.overdue{color:#b91c1c;font-weight:650}
+
+/* ---------- проход 3: «Сегодня», карточка квартиры, недочёты ---------- */
+.op-sec{background:#fff;border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;box-shadow:var(--shadow)}
+.op-sec h2{font-size:15px;margin:0 0 10px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}.op-sec h2 small{font-weight:500;color:var(--muted);font-size:12px}
+.op-sec.red{border-color:#fca5a5;border-left:5px solid #ef4444}.op-sec.amber{border-left:5px solid #f59e0b}.op-sec.blue{border-left:5px solid #0ea5e9}
+details.op-sec summary{cursor:pointer;list-style:none}details.op-sec summary::-webkit-details-marker{display:none}details.op-sec summary h2{margin:0}details.op-sec[open] summary h2{margin-bottom:10px}
+details.op-sec summary h2::after{content:"показать ▾";font-size:12px;color:var(--primary);font-weight:600;margin-left:auto}details.op-sec[open] summary h2::after{content:"скрыть ▴"}
+.op-list{display:flex;flex-direction:column;gap:8px}
+.op{display:flex;flex-direction:column;gap:3px;width:100%;text-align:left;padding:10px 12px;border-radius:12px;border:1px solid var(--border);background:#fff}
+.op:hover{background:#f8fafc}.op.lv-critical{background:#fef2f2;border-color:#fecaca}.op.lv-action{background:#fffbeb;border-color:#fde68a}
+.op-p{font-weight:700;font-size:14px}.op-a{font-weight:650;color:var(--primary);font-size:13.5px}.op.lv-critical .op-a{color:#b91c1c}
+.op-m{display:flex;flex-wrap:wrap;gap:4px 12px;font-size:12.5px;color:var(--text2)}.op-d{font-size:12px;color:var(--muted)}.op-late{color:#b91c1c;font-weight:700}
+.op-calm{background:var(--green-50);color:#166534;border-radius:12px;padding:12px 14px;font-weight:650;margin-bottom:14px}
+.biz{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap}.biz>div{background:#fff;border:1px solid var(--border);border-radius:12px;padding:8px 12px;display:flex;flex-direction:column;min-width:110px}
+.biz b{font-size:17px}.biz span{font-size:12px;color:var(--muted)}.biz .warn b{color:#b45309}
+.apt-chips{display:flex;flex-wrap:wrap;gap:6px}.achip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:10px;border:1px solid var(--border);background:#fff;font-size:12.5px;font-weight:600}
+.achip small{font-weight:500;color:var(--muted)}.achip.red{border-color:#fca5a5;background:#fef2f2}.achip.amber{border-color:#fde68a;background:#fffbeb}.achip:hover{filter:brightness(.97)}
+.dwarn{display:inline-block;background:var(--amber-50);color:#92400e;border-radius:6px;padding:0 5px;font-size:11px;font-weight:700}.dwarn.red{background:#fee2e2;color:#991b1b}
+button.cal-apt{text-align:left;cursor:pointer}button.cal-apt:hover{background:#f8fafc}.cal-apt b{display:flex;align-items:center;gap:5px}
+.cchip.warn span{display:inline!important}
+.wr-item.urgent{border-color:#fca5a5;background:#fef2f2}.wr-item.closed{opacity:.7}.wr-item+.wr-item{margin-top:6px}
+.reasons{margin:4px 0 0;padding-left:18px}
+.chip.blue{background:var(--blue-50);color:#075985}

@@ -23,10 +23,11 @@ export default function staffTransfersRouter({ dispatch }) {
     const [job, m] = await Promise.all([loadJob({ id: req.params.id, accountId: req.accountId }), driverMembership(req.accountId, req.user.id)]);
     if (!job) throw notFound('Заказ не найден');
     if (!m && !isJobDriver(job, req.user.id)) throw forbidden('Вы не в списке водителей');
-    return { job, eligible: !!m && (!OPEN.includes(job.status) || vehicleFits(m, job.transfer)), viewer: { membership: m, settings: await getSettings(req.accountId) } };
+    const settings = await getSettings(req.accountId);
+    return { job, eligible: !!m && (!OPEN.includes(job.status) || vehicleFits(m, job.transfer)), viewer: { membership: m, settings } };
   }
   const mineOnly = (req, job) => { if (!isJobDriver(job, req.user.id)) throw forbidden('Это не ваш заказ'); };
-  const view = async (req, id, eligible, viewer) => jobForDriver(await loadJob({ id }), req.user.id, { eligible, viewer });
+  const view = async (req, id, eligible, viewer) => jobForDriver(await loadJob({ id }), req.user.id, { eligible, viewer: viewer || { settings: await getSettings(req.accountId) } });
 
   r.get('/', async (req, res) => {
     const m = await driverMembership(req.accountId, req.user.id);
@@ -37,13 +38,13 @@ export default function staffTransfersRouter({ dispatch }) {
       prisma.transferJob.findMany({ where: { accountId: req.accountId, driverUserId: req.user.id, status: { not: 'CANCELLED' }, pickupAt: { gt: recent } }, include: jobInclude, orderBy: { pickupAt: 'asc' } }),
       m ? prisma.transferJob.findMany({ where: { accountId: req.accountId, status: { in: ['ACCEPTED', 'EN_ROUTE', 'ARRIVED', 'PICKED_UP'] }, NOT: { driverUserId: req.user.id }, pickupAt: { gt: since } }, include: jobInclude, orderBy: { pickupAt: 'asc' }, take: 20 }) : [],
     ]);
-    res.json({ eligible: !!m, offers: offers.filter(j => vehicleFits(m, j.transfer)).map(j => jobForDriver(j, req.user.id, { eligible: true, viewer })), mine: mine.map(j => jobForDriver(j, req.user.id, { eligible: !!m })), taken: taken.map(j => jobForDriver(j, req.user.id, { eligible: true })) });
+    res.json({ tz: req.account?.timezone || 'Asia/Almaty', serverNow: new Date(), eligible: !!m, offers: offers.filter(j => vehicleFits(m, j.transfer)).map(j => jobForDriver(j, req.user.id, { eligible: true, viewer })), mine: mine.map(j => jobForDriver(j, req.user.id, { eligible: !!m, windowMin: viewer.settings.driverStartWindowMin })), taken: taken.map(j => jobForDriver(j, req.user.id, { eligible: true })) });
   });
   r.get('/:id', async (req, res) => { const { job, eligible, viewer } = await ctx(req); res.json(jobForDriver(job, req.user.id, { eligible, viewer })); });
   r.post('/:id/accept', async (req, res) => {
     const { vehicle } = parse(z.object({ vehicle: z.string().max(120).optional() }), req.body || {});
     const j = await dispatch.accept({ accountId: req.accountId, jobId: req.params.id, user: req.user, vehicle });
-    res.json(jobForDriver(j, req.user.id, { eligible: true }));
+    res.json(jobForDriver(j, req.user.id, { eligible: true, windowMin: (await getSettings(req.accountId)).driverStartWindowMin }));
   });
   r.post('/:id/release', async (req, res) => {
     const { reason } = parse(z.object({ reason: z.string().max(500).optional() }), req.body || {});
@@ -54,16 +55,16 @@ export default function staffTransfersRouter({ dispatch }) {
   for (const action of ['en-route', 'arrived', 'picked-up', 'done']) {
     r.post(`/:id/${action}`, async (req, res) => {
       const d = parse(z.object({ etaMinutes: z.number().int().min(1).max(600).optional(), note: z.string().max(500).optional() }), req.body || {});
-      const { job, eligible } = await ctx(req); mineOnly(req, job);
+      const { job, eligible, viewer } = await ctx(req); mineOnly(req, job);
       await dispatch.step({ job, actor: actor(req), action, ...d });
-      res.json(await view(req, job.id, eligible));
+      res.json(await view(req, job.id, eligible, viewer));
     });
   }
   r.post('/:id/time', async (req, res) => {
     const d = parse(z.object({ time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), note: z.string().max(300).optional() }), req.body);
-    const { job, eligible } = await ctx(req); mineOnly(req, job);
+    const { job, eligible, viewer } = await ctx(req); mineOnly(req, job);
     await dispatch.reschedule({ job, actor: actor(req), ...d });
-    res.json(await view(req, job.id, eligible));
+    res.json(await view(req, job.id, eligible, viewer));
   });
   return r;
 }

@@ -56,3 +56,11 @@ details.card>summary{cursor:pointer;padding:2px 0}details.card[open]>summary{mar
 .cl-item{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px dashed var(--border)}.cl-item:last-child{border:none}.cl-item input[type=checkbox]{width:22px;height:22px;flex:none}
 .cl-item .grow{flex:1}.cl-item .cam{font-size:12px;color:var(--muted)}.cl-item.done .grow{color:var(--muted)}
 .row-red{background:#fdecec}.overdue{color:#c62828;font-weight:650}
+
+/* проход 3: «Сейчас», подсказки «что от вас ждут», группы по дням */
+.now{display:flex;flex-direction:column;gap:3px;background:var(--primary);color:#fff;border-radius:var(--radius);padding:14px 16px;margin:6px 0 12px;box-shadow:0 6px 20px rgba(79,70,229,.25);cursor:pointer}
+.now small{font-size:12px;opacity:.85;text-transform:uppercase;letter-spacing:.04em;font-weight:700}.now b{font-size:16px}.now span{font-size:14px;opacity:.95}
+.now.calm{background:#fff;color:var(--text);border:1px solid var(--border);box-shadow:var(--shadow);cursor:default}.now.calm small{color:var(--muted)}
+.hint{background:#f8fafc;border:1px dashed #cbd5e1;border-radius:12px;padding:9px 12px;font-size:13.5px;color:var(--text2);margin:8px 0}
+.day-h{font-size:12.5px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:14px 2px 2px}
+.card.t-grey{border-left:4px solid #cbd5e1;background:#fafafa}

@@ -3,7 +3,7 @@
 // вместимость машины (пассажиры и багаж), внешние водители выключены.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeApp, login, prisma, request, png, isoIn } from './helpers.js';
+import { makeApp, login, prisma, request, png, isoIn, pickupSoon } from './helpers.js';
 import { handlePayoutButton } from '../src/telegram/payoutButtons.js';
 
 const { app, events } = makeApp();
@@ -146,6 +146,8 @@ test('подготовка: чек-лист из шаблона + пункт к�
 
 test('выплаты: работу делал владелец — выплаты нет; напоминание о невыплаченном через 3 часа', async () => {
   const t = await prisma.cleaningTask.create({ data: { accountId: acc.id, apartmentId: apt.id, assigneeId: ownerUser.id, date: new Date(isoIn(0) + 'T00:00:00Z') } });
+  assert.equal((await A().post(`/api/staff/cleaning/${t.id}/finish`).set(owner.auth).send({ note: 'сам' })).status, 409, 'закончить, не начав, нельзя');
+  assert.equal((await A().post(`/api/staff/cleaning/${t.id}/start`).set(owner.auth)).status, 200);
   const f = await A().post(`/api/staff/cleaning/${t.id}/finish`).set(owner.auth).send({ note: 'сам' });
   assert.equal(f.status, 200);
   assert.equal(await prisma.payout.count({ where: { cleaningTaskId: t.id } }), 0, 'владелец сам себе не платит');
@@ -182,6 +184,7 @@ test('трансфер: заказ видят и могут взять толь�
   assert.equal((await A().post(`/api/staff/transfers/${job.id}/accept`).set(ruslan.auth)).status, 200);
   await A().patch(`/api/admin/team/${ruslan.me.user.id}`).set(owner.auth).send({ vehicleSeats: 4, vehicleBags: 3, vehicleClass: 'sedan' });
   // выполнил наёмный водитель → «к оплате»
+  await pickupSoon(job.id);
   for (const action of ['picked-up', 'done']) assert.equal((await A().post(`/api/admin/transfer-jobs/${job.id}/status`).set(owner.auth).send({ action })).status, 200);
   await events.idle();
   const p = await prisma.payout.findUnique({ where: { jobId: job.id } });

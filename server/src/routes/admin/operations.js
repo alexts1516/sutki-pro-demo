@@ -42,6 +42,8 @@ export default function operationsRouter({ events, dispatch, cleaning }) {
   r.post('/bookings/:id/cancel', async (req, res) => {
     const b = await prisma.booking.findFirst({ where: { id: req.params.id, accountId: req.accountId } });
     if (!b) throw notFound('Бронь не найдена');
+    if (!['request', 'confirmed'].includes(b.status)) throw new HttpError(409, b.status === 'cancelled' ? 'Бронь уже отменена' : 'Бронь завершена — отменить нельзя');
+    if (b.status === 'confirmed' && b.checkOut <= todayIn(req.account.timezone)) throw new HttpError(409, 'Гость уже выехал — отменить нельзя');
     const u = await prisma.booking.update({ where: { id: b.id }, data: { status: 'cancelled' }, include: { apartment: true, guest: true } });
     await dispatch.cancelForBooking({ accountId: req.accountId, bookingId: b.id, actor: actorOf(req), reason: 'Бронь отменена' });   // водитель получит «заказ отменён»
     await prisma.cleaningTask.deleteMany({ where: { bookingId: b.id, status: 'assigned' } });
@@ -57,15 +59,19 @@ export default function operationsRouter({ events, dispatch, cleaning }) {
     if (!b) throw notFound('Бронь не найдена');
     // смена дат: проверяем, что квартира свободна, пересчитываем сумму, сдвигаем уборку и трансферы
     if (data.checkIn || data.checkOut) {
+      if (!['request', 'confirmed'].includes(b.status)) throw new HttpError(409, 'Даты закрытой брони не меняются');
       const ci = data.checkIn ? parseDay(data.checkIn) : b.checkIn, co = data.checkOut ? parseDay(data.checkOut) : b.checkOut;
       if (!ci || !co || co <= ci) throw badRequest('Проверьте даты заезда и выезда');
+      const today = todayIn(req.account.timezone);
+      if (+ci !== +b.checkIn && b.checkIn <= today) throw new HttpError(409, 'Гость уже заехал — можно менять только дату выезда');
+      if (co < today) throw badRequest('Дата выезда уже прошла');
       if (['request', 'confirmed'].includes(b.status) && !(await isAvailable(req.accountId, b.apartmentId, ci, co, b.id))) throw new HttpError(409, 'Эти даты уже заняты');
       const n = Math.round((co - ci) / 86400000);
       Object.assign(data, { checkIn: ci, checkOut: co, totalKzt: b.nightlyKzt * n + b.petFeeKzt });
     }
     const u = await prisma.booking.update({ where: { id: b.id }, data, include: { apartment: true, guest: true } });
     if (data.checkIn || data.checkOut) {
-      await prisma.cleaningTask.updateMany({ where: { bookingId: b.id, status: { not: 'done' } }, data: { date: u.checkOut } });
+      await prisma.cleaningTask.updateMany({ where: { bookingId: b.id, status: { in: ['assigned', 'enroute'] } }, data: { date: u.checkOut } });   // идущую подготовку не двигаем
       await dispatch.syncBookingDates({ accountId: req.accountId, booking: u, actor: actorOf(req) });
     }
     res.json(bookingOut(u));
@@ -98,6 +104,8 @@ export default function operationsRouter({ events, dispatch, cleaning }) {
     const { assigneeId } = parse(z.object({ assigneeId: z.string().nullable() }), req.body);
     const t = await prisma.cleaningTask.findFirst({ where: { id: req.params.id, accountId: req.accountId } });
     if (!t) throw notFound('Уборка не найдена');
+    if (t.status === 'done') throw new HttpError(409, 'Подготовка уже закончена — исполнителя не поменять');
+    if (t.status === 'progress' && assigneeId !== t.assigneeId) throw new HttpError(409, 'Подготовка уже идёт — сначала свяжитесь со специалистом');
     if (assigneeId) {
       const m = await prisma.membership.findFirst({ where: { accountId: req.accountId, userId: assigneeId, role: 'cleaning', active: true } });
       if (!m) throw badRequest('Исполнитель должен быть специалистом по подготовке этого аккаунта');
@@ -107,7 +115,7 @@ export default function operationsRouter({ events, dispatch, cleaning }) {
 
   // полный отчёт о подготовке: кто, начало/окончание, чек-лист, фото, проблемы, комментарии (+ выплата — владельцу)
   r.get('/cleaning-tasks/:id', async (req, res) => {
-    const t = await prisma.cleaningTask.findFirst({ where: { id: req.params.id, accountId: req.accountId }, include: { apartment: true, photos: true, assignee: { select: { id: true, name: true } }, payout: true } });
+    const t = await prisma.cleaningTask.findFirst({ where: { id: req.params.id, accountId: req.accountId }, include: { apartment: true, photos: true, assignee: { select: { id: true, name: true } }, payout: true, defects: { orderBy: { createdAt: 'asc' } } } });
     if (!t) throw notFound('Подготовка не найдена');
     res.json(cleaningReport(t, { payout: req.role === 'owner' ? t.payout : null }));
   });

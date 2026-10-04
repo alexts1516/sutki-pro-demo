@@ -2,7 +2,7 @@
 // везёт сам владелец или человек «от бизнеса» — выплаты нет, вся цена — маржа бизнеса.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeApp, login, prisma, request, freeDates } from './helpers.js';
+import { makeApp, login, prisma, request, freeDates, pickupSoon } from './helpers.js';
 import { computePayout } from '../src/services/payouts.js';
 
 const sent = [];
@@ -40,7 +40,10 @@ async function confirmedJob(priceKzt = 10000) {
   const job = await prisma.transferJob.findUnique({ where: { transferId: t.body.id } });
   // цену поменяли после создания заказа — пересчитать по правилам
   await request(app).patch(`/api/admin/transfer-jobs/${job.id}`).set(owner.auth).send({ payoutAuto: true });
-  return { job, month: dates.checkIn.slice(0, 7) };
+  // шаги поездки открываются за ~2 ч до подачи — переносим подачу на «через час» (и месяц финансов — текущий)
+  await pickupSoon(job.id);
+  const tr = await prisma.transfer.findUnique({ where: { id: t.body.id } });
+  return { job, month: tr.date.toISOString().slice(0, 7) };
 }
 const finish = async (id) => { for (const action of ['picked-up', 'done']) assert.equal((await request(app).post(`/api/admin/transfer-jobs/${id}/status`).set(owner.auth).send({ action })).status, 200); };
 const card = async (id) => (await request(app).get(`/api/admin/transfer-jobs/${id}`).set(owner.auth)).body;

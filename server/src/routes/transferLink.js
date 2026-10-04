@@ -6,7 +6,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { HttpError, notFound, parse } from '../lib/errors.js';
-import { loadJob, jobForLink, TERMINAL } from '../services/transferJobs.js';
+import { loadJob, jobForLink as linkView, TERMINAL } from '../services/transferJobs.js';
+import { getSettings } from '../services/settings.js';
 
 export default function transferLinkRouter({ dispatch }) {
   const r = Router();
@@ -14,20 +15,21 @@ export default function transferLinkRouter({ dispatch }) {
     const job = await loadJob({ linkToken: req.params.token });
     if (!job || !job.driverContractorId) throw notFound('Ссылка недействительна');
     if (TERMINAL.includes(job.status)) throw new HttpError(410, 'Заказ закрыт — ссылка больше не работает');
-    return { job, actor: { type: 'link', id: job.driverContractorId, name: job.driverName } };
+    const windowMin = (await getSettings(job.accountId)).driverStartWindowMin;
+    return { job, out: (j) => linkView(j, { windowMin }), actor: { type: 'link', id: job.driverContractorId, name: job.driverName } };
   }
-  r.get('/:token', async (req, res) => { const { job } = await resolve(req); res.json(jobForLink(job)); });
+  r.get('/:token', async (req, res) => { const { job, out } = await resolve(req); res.json(out(job)); });
   for (const action of ['en-route', 'arrived', 'picked-up', 'done']) {
     r.post(`/:token/${action}`, async (req, res) => {
       const d = parse(z.object({ etaMinutes: z.number().int().min(1).max(600).optional(), note: z.string().max(500).optional() }), req.body || {});
-      const { job, actor } = await resolve(req);
-      res.json(jobForLink(await dispatch.step({ job, actor, action, ...d })));
+      const { job, actor, out } = await resolve(req);
+      res.json(out(await dispatch.step({ job, actor, action, ...d })));
     });
   }
   r.post('/:token/time', async (req, res) => {
     const d = parse(z.object({ time: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), note: z.string().max(300).optional() }), req.body);
-    const { job, actor } = await resolve(req);
-    res.json(jobForLink(await dispatch.reschedule({ job, actor, ...d })));
+    const { job, actor, out } = await resolve(req);
+    res.json(out(await dispatch.reschedule({ job, actor, ...d })));
   });
   return r;
 }

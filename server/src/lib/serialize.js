@@ -27,7 +27,7 @@ export function bookingOut(b) {
     id: b.id, number: b.number, status: b.status, source: b.source,
     checkIn: isoDay(b.checkIn), checkOut: isoDay(b.checkOut), checkInTime: b.checkInTime, checkOutTime: b.checkOutTime,
     guestsCount: b.guestsCount, nightlyKzt: b.nightlyKzt, totalKzt: b.totalKzt, currencyShown: b.currencyShown, amountShown: b.amountShown,
-    paymentMethod: b.paymentMethod, paymentStatus: b.paymentStatus, pets: b.pets, petFeeKzt: b.petFeeKzt, note: b.note, cleanerName: b.cleanerName,
+    paymentMethod: b.paymentMethod, paymentStatus: b.paymentStatus, earlyCheckIn: b.earlyCheckIn ?? null, earlyCheckInStatus: b.earlyCheckInStatus ?? null, pets: b.pets, petFeeKzt: b.petFeeKzt, note: b.note, cleanerName: b.cleanerName,
     apartment: b.apartment ? { id: b.apartment.id, title: b.apartment.title, address: b.apartment.address } : undefined,
     guest: b.guest ? { id: b.guest.id, name: b.guest.name, phone: b.guest.phone, email: b.guest.email, telegramLinked: !!b.guest.telegramChatId } : undefined,
     confirmedAt: b.confirmedAt, createdAt: b.createdAt,

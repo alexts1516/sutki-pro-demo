@@ -13,6 +13,7 @@ import { handleTransferAccept } from '../../src/telegram/transferButtons.js';
 import { handlePayoutButton } from '../../src/telegram/payoutButtons.js';
 import { randomToken } from '../../src/lib/tokens.js';
 import { runSeed } from '../../prisma/seed.js';
+import { createTestPayments } from '../../src/payments/test.js';
 
 const DATA_VERSION = globalThis.__DEMO_DATA_VERSION__ || 'dev';
 const IDB_NAME = 'sutki-pro-demo-v2', IDB_STORE = 'state', IDB_KEY = 'main';
@@ -103,7 +104,7 @@ async function seedFresh() {
 const events = createEventBus({ logger: quiet });
 createNotificationService({ prisma, transport, quiet: true, logger: quiet }).register(events);
 const storage = createStorage(config.storage);
-const app = createApp({ config, events, storage, payments: null, flights: null, logger: quiet });
+const app = createApp({ config, events, storage, payments: createTestPayments(), flights: null, logger: quiet });   // демо-оплата: сразу успешна → бронь подтверждается
 const dispatch = app.locals.dispatch;
 
 const ready = (async () => {

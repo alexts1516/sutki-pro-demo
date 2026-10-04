@@ -5,7 +5,8 @@
 //  OFFERED ─ никто не взял за N минут или до подачи < X часов ─► UNASSIGNED (хозяину/админу: «назначьте вручную»)
 //  OFFERED / UNASSIGNED ─ первый «Беру» (атомарно) или назначение хозяином/админом ─► ACCEPTED
 //  ACCEPTED ─ «Выехал» (+ETA) ─► EN_ROUTE ─ «Я на месте» ─► ARRIVED ─ «Гость в машине» ─► PICKED_UP ─ «Завершить» ─► DONE
-//  (шаги можно пропускать вперёд: из ACCEPTED сразу «на месте» или «гость в машине»)
+//  Шаги строго по порядку, без пропусков и повторов. «Выехал» открывается за driverStartWindowMin (настройка, по умолчанию 120 мин)
+//  до подачи — раньше поездка «Запланирована», кнопок шагов нет (сервер тоже не пустит).
 //  ACCEPTED ─ водитель отказался ─► OFFERED (снова всем; хозяину/админу — уведомление)
 //  любой незавершённый ─ отмена хозяином/админом или отмена брони ─► CANCELLED
 //  Переназначить можно до «Гость в машине». Оплата водителю — флаг paid после DONE, сумма уходит в финансы.
@@ -87,15 +88,23 @@ export function route(job, { hideUnit = false } = {}) {
   return t.direction === 'out' ? { from: home, to: place } : { from: station, to: home };
 }
 
-/** Какие кнопки сейчас у водителя */
-export function driverActions(job, userId, eligible) {
+/** Когда водителю открывается «Выехал»: за windowMin минут до подачи */
+export const DEFAULT_START_WINDOW_MIN = 120;
+export const startOpensAt = (job, windowMin = DEFAULT_START_WINDOW_MIN) => new Date(new Date(job.pickupAt).getTime() - (windowMin || DEFAULT_START_WINDOW_MIN) * 60000);
+/** Шаги по порядку: из какого статуса какой шаг */
+const STEP_ACTIONS = { ACCEPTED: ['en-route'], EN_ROUTE: ['arrived'], ARRIVED: ['picked-up'], PICKED_UP: ['done'] };
+/** Какие кнопки сейчас у водителя (по одной следующей; «Выехал» — только в окне перед подачей) */
+export function driverActions(job, userId, eligible, { windowMin = DEFAULT_START_WINDOW_MIN, now = new Date() } = {}) {
   if (OPEN.includes(job.status)) return eligible ? ['accept'] : [];
   if (!isJobDriver(job, userId)) return [];
-  return {
-    ACCEPTED: ['en-route', 'arrived', 'picked-up', 'time', 'release'], EN_ROUTE: ['arrived', 'picked-up', 'time'],
-    ARRIVED: ['picked-up'], PICKED_UP: ['done'],
-  }[job.status] || [];
+  return linkActions(job, { windowMin, now }).concat(job.status === 'ACCEPTED' ? ['release'] : []);
 }
+function linkActions(job, { windowMin = DEFAULT_START_WINDOW_MIN, now = new Date() } = {}) {
+  const steps = (STEP_ACTIONS[job.status] || []).filter(a => a !== 'en-route' || now >= startOpensAt(job, windowMin));
+  return [...steps, ...(['ACCEPTED', 'EN_ROUTE'].includes(job.status) ? ['time'] : [])];
+}
+/** Поездка ещё «Запланирована»: «Выехал» пока закрыт — когда откроется */
+const plannedInfo = (job, windowMin) => (job.status === 'ACCEPTED' ? { startOpensAt: startOpensAt(job, windowMin), planned: new Date() < startOpensAt(job, windowMin) } : {});
 
 function tripOut(job, { hideUnit = false } = {}) {
   const t = job.transfer;
@@ -126,7 +135,7 @@ function apartmentFor(job, unlocked) {
  * (только дом/ЖК и район). Свой заказ в работе — плюс телефон и номер квартиры. Заказ, который взял другой, — только «занят».
  * Денег бизнеса водитель не видит: только свою выплату. viewer — { membership, settings } для расчёта его выплаты в предложении.
  */
-export function jobForDriver(job, userId, { eligible = false, viewer = null } = {}) {
+export function jobForDriver(job, userId, { eligible = false, viewer = null, windowMin = viewer?.settings?.driverStartWindowMin } = {}) {
   const mine = isJobDriver(job, userId);
   if (!OPEN.includes(job.status) && !mine) {
     return { id: job.id, status: 'TAKEN', statusLabel: job.status === 'CANCELLED' ? 'Отменён' : 'Взял другой водитель', date: isoDay(job.transfer.date), time: job.transfer.time, placeLabel: PLACE_RU[job.transfer.place] || job.transfer.place, direction: job.transfer.direction };
@@ -146,17 +155,18 @@ export function jobForDriver(job, userId, { eligible = false, viewer = null } = 
     apartment: apartmentFor(job, unlocked || unlockedDone),
     guestPhone: unlocked ? job.transfer.guestPhone : undefined,   // телефон — только после «Беру» и до завершения
     payoutKzt: noPayout ? 0 : payoutKzt, noPayout, paid: mine && !noPayout ? job.paid : undefined, vehicle: mine ? job.vehicle : undefined, ...(mine ? timeline(job) : {}),
-    actions: driverActions(job, userId, eligible),
+    ...(mine ? plannedInfo(job, windowMin) : {}),
+    actions: driverActions(job, userId, eligible, { windowMin }),
   };
 }
 /** Для внешнего водителя по ссылке (ссылка есть только у назначенного): то же правило — квартира и телефон, пока заказ в работе */
-export function jobForLink(job) {
+export function jobForLink(job, { windowMin } = {}) {
   const unlocked = ACTIVE.includes(job.status);
   return {
     id: job.id, status: job.status, statusLabel: STATUS_RU[job.status], ...tripOut(job, { hideUnit: !unlocked }), driverName: job.driverName,
     apartment: apartmentFor(job, unlocked),
-    guestPhone: unlocked ? job.transfer.guestPhone : undefined, payoutKzt: job.payoutKzt, ...timeline(job),
-    actions: ({ ACCEPTED: ['en-route', 'arrived', 'picked-up', 'time'], EN_ROUTE: ['arrived', 'picked-up', 'time'], ARRIVED: ['picked-up'], PICKED_UP: ['done'] })[job.status] || [],
+    guestPhone: unlocked ? job.transfer.guestPhone : undefined, payoutKzt: job.payoutKzt, ...timeline(job), ...plannedInfo(job, windowMin),
+    actions: linkActions(job, { windowMin }),
   };
 }
 export function jobForManager(job, { publicUrl = '' } = {}) {
@@ -302,16 +312,31 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
   /** Шаги водителя: выехал → на месте → гость в машине → завершить */
   const STEPS = {
     'en-route': { from: ['ACCEPTED'], to: 'EN_ROUTE', at: 'enRouteAt', ev: 'en_route' },
-    arrived: { from: ['ACCEPTED', 'EN_ROUTE'], to: 'ARRIVED', at: 'arrivedAt', ev: 'arrived' },
-    'picked-up': { from: ['ACCEPTED', 'EN_ROUTE', 'ARRIVED'], to: 'PICKED_UP', at: 'pickedUpAt', ev: 'picked_up' },
+    arrived: { from: ['EN_ROUTE'], to: 'ARRIVED', at: 'arrivedAt', ev: 'arrived' },
+    'picked-up': { from: ['ARRIVED'], to: 'PICKED_UP', at: 'pickedUpAt', ev: 'picked_up' },
     done: { from: ['PICKED_UP'], to: 'DONE', at: 'doneAt', ev: 'done' },
   };
-  async function step({ job, actor, action, etaMinutes, note }) {
+  const STEPS_ORDER = ['en-route', 'arrived', 'picked-up', 'done'];
+  const STATUS_STEP = { EN_ROUTE: 'en-route', ARRIVED: 'arrived', PICKED_UP: 'picked-up', DONE: 'done' };
+  /** override — хозяин/админ отмечает «за водителя» (он позвонил): можно перескочить вперёд, но не раньше окна перед подачей */
+  async function step({ job, actor, action, etaMinutes, note, override = false }) {
     const s = STEPS[action]; if (!s) throw badRequest('Неизвестный шаг');
-    need(job, s.from);
+    const ORDER_MSG = { arrived: 'Сначала нажмите «Выехал»', 'picked-up': 'Сначала нажмите «Я на месте»', done: 'Сначала нажмите «Гость в машине»' };
+    if (TERMINAL.includes(job.status)) throw conflict(`Заказ уже ${job.status === 'DONE' ? 'выполнен' : 'отменён'} — шаги больше не меняются`);
+    const forward = override && ACTIVE.includes(job.status) && STEPS_ORDER.indexOf(STATUS_STEP[job.status] ?? null) < STEPS_ORDER.indexOf(action);
+    if (!s.from.includes(job.status) && !forward) throw conflict(STEPS_ORDER.indexOf(STATUS_STEP[job.status]) >= STEPS_ORDER.indexOf(action) ? 'Этот шаг уже отмечен' : (ORDER_MSG[action] || `Действие недоступно: заказ в статусе «${STATUS_RU[job.status]}»`));
     const now = new Date();
+    {
+      const opens = startOpensAt(job, (await getSettings(job.accountId)).driverStartWindowMin);
+      if (now < opens) {
+        const zone = await tz(job.accountId);
+        const when = new Intl.DateTimeFormat('ru-RU', { timeZone: zone, day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }).format(opens);
+        throw conflict(`Рано: шаги поездки откроются ${when} (за ${Math.round((job.pickupAt - opens) / 60000 / 6) / 10} ч до подачи)`);
+      }
+    }
     const data = { status: s.to, [s.at]: now };
     if (action === 'en-route' && etaMinutes) data.etaAt = new Date(now.getTime() + etaMinutes * 60000);
+    if (forward) for (const a of STEPS_ORDER.slice(STEPS_ORDER.indexOf(STATUS_STEP[job.status] ?? null) + 1, STEPS_ORDER.indexOf(action))) if (!job[STEPS[a].at]) data[STEPS[a].at] = now;
     const r = await prisma.transferJob.updateMany({ where: { id: job.id, status: job.status }, data });   // защита от двойного нажатия
     if (!r.count) throw conflict('Статус уже изменился — обновите карточку');
     const u = await reload(job.id);

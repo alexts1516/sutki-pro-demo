@@ -189,13 +189,13 @@ export function createNotificationService({ prisma, transport = null, logger = c
       return toGuest(accountId, jobGuest(j), 'transfer.driver_arrived', jobData(j), `transfer.driver_arrived:${j.id}:${j.arrivedAt?.getTime() || ''}`);
     },
     async 'cleaning.reported'({ accountId, taskId }) {
-      const task = await prisma.cleaningTask.findFirst({ where: { id: taskId, accountId }, include: { apartment: true, assignee: true } }); if (!task) return;
-      return toManagers(accountId, 'cleaning.reported', { task, apartment: task.apartment, assignee: task.assignee });
+      const task = await prisma.cleaningTask.findFirst({ where: { id: taskId, accountId }, include: { apartment: true, assignee: true, defects: true } }); if (!task) return;
+      return toManagers(accountId, 'cleaning.reported', { task: { ...task, problems: task.defects }, apartment: task.apartment, assignee: task.assignee });
     },
-    async 'cleaning.problem'({ accountId, taskId, problemId }) {
-      const task = await prisma.cleaningTask.findFirst({ where: { id: taskId, accountId }, include: { apartment: true, assignee: true } }); if (!task) return;
-      const problem = (task.problems || []).find(p => p.id === problemId); if (!problem) return;
-      return toManagers(accountId, 'cleaning.problem', { task, apartment: task.apartment, assignee: task.assignee, problem });
+    async 'cleaning.problem'({ accountId, defectId }) {
+      const d = await prisma.defect.findFirst({ where: { id: defectId, accountId }, include: { apartment: true, cleaningTask: { include: { assignee: true } } } }); if (!d) return;
+      const problem = { text: d.text, byName: d.reportedByName, photoIds: d.photoIds || [], urgent: d.priority === 'urgent' };
+      return toManagers(accountId, 'cleaning.problem', { task: d.cleaningTask, apartment: d.apartment, assignee: d.cleaningTask?.assignee, problem });
     },
     async 'repair.declined'({ accountId, taskId, by, reason }) {
       const t = await loadRepair(accountId, taskId); if (!t) return;

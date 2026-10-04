@@ -9,6 +9,19 @@ export const fmtDay = (iso) => { if (!iso) return ''; const [y, m, d] = String(i
 export const hm = (d) => d ? new Date(d).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' }) : '';
 export const dt = (d) => d ? new Date(d).toLocaleString('ru-RU', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '';
 const telHref = (p) => 'tel:' + String(p).replace(/[^\d+]/g, '');
+// день по времени бизнеса (Астана): «сегодня / завтра / через N дн.»
+export const TZ = 'Asia/Almaty';
+export const dayKey = (d) => new Date(d).toLocaleDateString('en-CA', { timeZone: TZ });
+export const daysFromToday = (d) => Math.round((Date.parse(dayKey(d)) - Date.parse(dayKey(Date.now()))) / 86400000);
+export const whenWord = (d) => { const n = daysFromToday(d); return n === 0 ? 'сегодня' : n === 1 ? 'завтра' : n > 1 ? `через ${n} дн.` : 'просрочено'; };
+export const hmTz = (d) => d ? new Date(d).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit', timeZone: TZ }) : '';
+/** Группы по времени: Сегодня / Завтра / Позже (ближайшие — первыми) */
+export function byDay(list, at) {
+  const sorted = [...list].sort((a, b) => new Date(at(a)) - new Date(at(b)));
+  const g = { past: [], today: [], tomorrow: [], later: [] };
+  for (const x of sorted) { const n = daysFromToday(at(x)); (n < 0 ? g.past : n === 0 ? g.today : n === 1 ? g.tomorrow : g.later).push(x); }
+  return g;
+}
 
 export async function api(path, opts = {}) {
   const init = { method: opts.method || 'GET', credentials: 'same-origin', headers: {} };
@@ -46,7 +59,14 @@ const DIR = { in: 'Встреча', out: 'Проводы' };
 export const trBadge = (s, label) => { const [t, l] = TR_ST[s] || ['', label || s]; return `<span class="chip ${t}">${esc(label && s === 'TAKEN' ? label : l)}</span>`; };
 const flightLink = (f) => `https://www.flightradar24.com/data/flights/${encodeURIComponent(String(f).replace(/\s+/g, '').toLowerCase())}`;
 
+/** «Запланировано · через N дн.» — шаги поездки ещё закрыты (откроются за ~2 ч до подачи) */
+export const plannedLabel = (j) => `Запланировано · ${whenWord(j.pickupAt)}`;
 export function transferCard(j) {
+  if (j.planned) return `<div class="card tap t-grey" data-tr="${j.id}">
+    <div class="row between"><span class="when">${fmtDay(j.date)}, ${esc(j.time)}</span><span class="chip">${esc(plannedLabel(j))}</span></div>
+    <div class="sub">${DIR[j.direction]} · ${esc(j.placeLabel)}${j.flight ? ` · рейс ${esc(j.flight)}` : ''}</div>
+    <div class="route"><div><i></i><span>${esc(j.from)}</span></div><div><i class="end"></i><span>${esc(j.to)}</span></div></div>
+    <div class="sub">🔒 «Выехал» откроется ${whenWord(j.startOpensAt) === 'сегодня' ? '' : fmtDay(dayKey(j.startOpensAt)) + ' '}в ${hmTz(j.startOpensAt)}</div></div>`;
   const tone = (TR_ST[j.status] || [''])[0];
   if (j.status === 'TAKEN') return `<div class="card"><div class="row between"><b>${fmtDay(j.date)}, ${esc(j.time)}</b>${trBadge('TAKEN', j.statusLabel)}</div><div class="sub">${DIR[j.direction] || ''} · ${esc(j.placeLabel)}</div></div>`;
   return `<div class="card tap t-${tone}" data-tr="${j.id}">
@@ -59,13 +79,20 @@ export function transferCard(j) {
 }
 
 const NEXT = { 'en-route': ['🚗 Выехал', 'primary'], arrived: ['📍 Я на месте', 'primary'], 'picked-up': ['🧳 Гость в машине', 'primary'], done: ['✅ Завершить поездку', 'success'] };
+// что от водителя ждут сейчас и когда работа засчитана
+export const TR_HINT = {
+  OFFERED: 'Если можете отвезти — нажмите «Беру». Заказ получает первый.', UNASSIGNED: 'Никто не взял — если можете, возьмите.',
+  ACCEPTED: 'Перед выездом нажмите «Выехал» — гостю придёт сообщение.', EN_ROUTE: 'Когда приедете — «Я на месте».', ARRIVED: 'Гость сел — «Гость в машине».',
+  PICKED_UP: 'Довезите гостя и нажмите «Завершить поездку».', DONE: 'Поездка засчитана — выплата появится в «Выплатах».',
+};
 export function transferDetail(j) {
   const acts = j.actions || [];
   const step = ['en-route', 'arrived', 'picked-up', 'done'].find(a => acts.includes(a));
-  const other = ['arrived', 'picked-up'].filter(a => acts.includes(a) && a !== step);
   const open = ['OFFERED', 'UNASSIGNED'].includes(j.status);
   const a = j.apartment || {};
-  return `<div class="row between"><span class="when">${DIR[j.direction]} · ${fmtDay(j.date)}, ${esc(j.time)}</span>${trBadge(j.status)}</div>
+  return `<div class="row between"><span class="when">${DIR[j.direction]} · ${fmtDay(j.date)}, ${esc(j.time)}</span>${j.planned ? `<span class="chip">${esc(plannedLabel(j))}</span>` : trBadge(j.status)}</div>
+    ${j.planned ? `<div class="alert blue">🔒 Поездка запланирована. Кнопка «Выехал» появится ${fmtDay(dayKey(j.startOpensAt))} в ${hmTz(j.startOpensAt)} — за ${Math.round((new Date(j.pickupAt) - new Date(j.startOpensAt)) / 360000) / 10} ч до подачи. Шаги нажимаются по порядку: Выехал → На месте → Гость в машине → Завершить.</div>`
+      : TR_HINT[j.status] && !open ? `<div class="hint">👉 ${TR_HINT[j.status]}${j.status !== 'DONE' ? ' Поездка засчитывается после «Завершить поездку».' : ''}</div>` : ''}
     ${j.status === 'UNASSIGNED' ? '<div class="alert red">Никто ещё не взял — если можете, возьмите.</div>' : ''}
     ${open ? '<div class="alert amber">Номер квартиры и телефон гостя появятся после «Беру». Заказ получает тот, кто нажмёт первым.</div>' : ''}
     ${j.flightStatus ? `<div class="alert blue">✈️ Рейс: ${esc(j.flightStatus)}${j.flightEta ? `, прилёт около ${hm(j.flightEta)}` : ''}</div>` : ''}
@@ -84,7 +111,6 @@ export function transferDetail(j) {
     <div class="steps">
       ${acts.includes('accept') ? '<button class="btn success block big" data-act="accept">✋ Беру</button>' : ''}
       ${step ? `<button class="btn ${NEXT[step][1]} block big" data-act="${step}">${NEXT[step][0]}</button>` : ''}
-      ${other.map(x => `<button class="btn block" data-act="${x}">${NEXT[x][0]}</button>`).join('')}
       ${acts.includes('time') ? '<button class="btn block" data-act="time">🕒 Рейс задерживается — изменить время</button>' : ''}
       ${acts.includes('release') ? '<button class="btn danger block" data-act="release">Не смогу поехать — отказаться</button>' : ''}
     </div>
@@ -130,10 +156,16 @@ const EV = { created: 'Заявка создана', occupancy_changed: 'Изм�
   estimate_submitted: 'Смета отправлена', approved: 'Смета одобрена', rejected: 'Смета отклонена', started: 'Работа начата', extra_submitted: 'Доп. расход', extra_approved: 'Доп. расход одобрен',
   extra_rejected: 'Доп. расход отклонён', completed: 'Работа завершена', cancelled: 'Отменена', paid: 'Оплачено мастеру', unpaid: 'Оплата отменена', declined: 'Мастер отказался', assigned: 'Назначен мастер' };
 
+// что от мастера ждут в каждом статусе
+export const WR_HINT = {
+  NEW: 'Оцените работу и отправьте смету (или запросите выезд)', VISIT_INSPECTION: 'Осмотрите на месте и отправьте смету', AWAITING_OWNER_APPROVAL: 'Ждите решения по смете — придёт уведомление',
+  REJECTED: 'Исправьте смету или откажитесь', APPROVED: 'Можно начинать — «Начать работу»', IN_PROGRESS: 'Закончите и нажмите «Завершить работу» (итог и фото «после»)', DONE: 'Работа засчитана — выплата в «Выплатах»',
+};
 export function repairCard(t) {
   const tone = (WR_ST[t.status] || [''])[0];
   return `<div class="card tap t-${tone}" data-wr="${t.id}"><div class="row between"><b>${esc(t.title)}</b>${wrBadge(t.status)}</div>
-    <div class="sub">${esc(t.apartment?.title || '')}${t.date ? ` · ${fmtDay(t.date)}` : ''}${t.quickJob ? ' · простая работа' : ''}</div></div>`;
+    <div class="sub">${esc(t.apartment?.title || '')}${t.date ? ` · ${fmtDay(t.date)}` : ''}${t.quickJob ? ' · простая работа' : ''}</div>
+    ${WR_HINT[t.status] ? `<div class="hint">👉 ${WR_HINT[t.status]}</div>` : ''}</div>`;
 }
 const photosHtml = (list) => list?.length ? `<div class="photos">${list.map(p => `<a href="${esc(p.url)}" target="_blank" rel="noopener"><img src="${esc(p.url)}" alt="${esc(p.caption || p.kind)}" loading="lazy"></a>`).join('')}</div>` : '';
 
@@ -147,6 +179,7 @@ export function repairDetail(t) {
   const times = t.startedAt || t.doneAt ? `<dt>Начало</dt><dd>${t.startedAt ? dt(t.startedAt) : '—'}</dd>${t.doneAt ? `<dt>Окончание</dt><dd>${dt(t.doneAt)}</dd>` : ''}` : '';
   const rejected = t.status === 'REJECTED';
   return `<div class="row between"><h2 style="font-size:19px">${esc(t.title)}</h2>${wrBadge(t.status)}</div>
+    ${WR_HINT[t.status] && !['AWAITING_OWNER_APPROVAL', 'APPROVED', 'IN_PROGRESS', 'DONE', 'REJECTED'].includes(t.status) ? `<div class="hint">👉 ${WR_HINT[t.status]}. Работа засчитывается после «Завершить работу».</div>` : ''}
     ${t.status === 'AWAITING_OWNER_APPROVAL' ? '<div class="alert amber">Смета отправлена. Начать работу можно после одобрения хозяина — придёт уведомление.</div>' : ''}
     ${t.status === 'APPROVED' ? '<div class="alert green">Смета одобрена — можно начинать работу.</div>' : ''}
     ${t.status === 'IN_PROGRESS' ? `<div class="alert blue">🔧 <b>В работе</b> с ${hm(t.startedAt)}. Когда закончите — нажмите «Завершить работу».</div>` : ''}

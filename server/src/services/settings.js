@@ -9,7 +9,7 @@ export const APPROVAL_BY = ['OWNER_ONLY', 'OWNER_AND_ADMIN'];
 export const DEFAULT_SETTINGS = {
   transferPayoutMode: 'PERCENT', ownerCommissionPercent: null, driverFixedKzt: null, commissionConfiguredAt: null,
   managerNotify: 'BOTH', approvalBy: 'OWNER_AND_ADMIN', flightTracking: true, ownerDrivesKeepsAll: true,
-  cleaningChecklist: null, cleaningRateKzt: null, cleaningRates: null, payoutReminderHours: 3,
+  cleaningChecklist: null, cleaningRateKzt: null, cleaningRates: null, payoutReminderHours: 3, driverStartWindowMin: 120,
 };
 
 export async function getSettings(accountId, db = prisma) {

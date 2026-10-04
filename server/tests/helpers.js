@@ -1,3 +1,4 @@
+import { tzOffsetMin } from '../src/lib/dates.js';
 import './_env.js';
 import request from 'supertest';
 import zlib from 'node:zlib';
@@ -54,4 +55,15 @@ export const extConfig = { ...config, transfers: { ...config.transfers, external
 export async function extDriver(accountId) {
   return (await prisma.contractor.findFirst({ where: { accountId, canDrive: true } }))
     || prisma.contractor.create({ data: { accountId, name: 'Такси «Жол» (внешний водитель)', type: 'other', phone: '+7 701 909 09 09', note: 'Hyundai Staria, минивэн', canDrive: true } });
+}
+
+/** Подача через min минут — шаги водителя открываются только за ~2 ч до подачи (настройка driverStartWindowMin) */
+export async function pickupSoon(jobId, min = 60, tz = 'Asia/Almaty') {
+  const at = new Date(Date.now() + min * 60000);
+  const local = new Date(at.getTime() + tzOffsetMin(tz, at) * 60000);
+  const date = new Date(Date.UTC(local.getUTCFullYear(), local.getUTCMonth(), local.getUTCDate()));
+  const time = local.toISOString().slice(11, 16);
+  const job = await prisma.transferJob.update({ where: { id: jobId }, data: { pickupAt: at } });
+  await prisma.transfer.update({ where: { id: job.transferId }, data: { date, time } });
+  return job;
 }

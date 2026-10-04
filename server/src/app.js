@@ -30,12 +30,15 @@ import { createTransferDispatch } from './services/transferJobs.js';
 import { createPayouts } from './services/performerPayouts.js';
 import { createCleaning } from './services/cleaning.js';
 import payoutsRouter from './routes/admin/payouts.js';
+import opsRouter from './routes/admin/ops.js';
+import { createDefects } from './services/defects.js';
 
 export function createApp({ config = defaultConfig, events, storage, payments = null, telegramWebhook = null, flights = null, logger = console }) {
   const app = express();
   const payouts = createPayouts({ events });   // единые выплаты исполнителям
   const workflow = createWorkflow({ events, payouts });
-  const cleaning = createCleaning({ events, payouts, workflow });
+  const defects = createDefects({ events, workflow });   // недочёты квартир (с подготовки или добавленные вручную)
+  const cleaning = createCleaning({ events, payouts, workflow, defects });
   const dispatch = createTransferDispatch({ events, config });
   dispatch.setFlightTracker(flights);   // слежение за рейсами — только если задан ключ AeroDataBox
   app.disable('x-powered-by');
@@ -48,7 +51,7 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
   });
 
   // вебхуки оплаты — до express.json(), им нужно «сырое» тело
-  app.use('/api/payments', paymentsRouter({ payments, events, logger }));
+  app.use('/api/payments', paymentsRouter({ payments, events, dispatch, logger }));
 
   app.use(express.json({ limit: '1mb' }));
   app.use(cookieParser());
@@ -77,6 +80,7 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
   admin.use(siteRouter({ storage, config }));
   admin.use(operationsRouter({ events, dispatch, cleaning }));
   admin.use(payoutsRouter({ payouts }));
+  admin.use(opsRouter({ defects, cleaning, events }));
   admin.use(transfersRouter({ dispatch, config }));
   admin.use(calendarRouter());
   admin.use(teamRouter({ config }));

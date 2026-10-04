@@ -1,7 +1,7 @@
 // Комиссия с трансферов, скрытие номера квартиры до «Беру», настройки уведомлений и одобрения смет.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeApp, login, prisma, request, freeDates, extConfig, extDriver } from './helpers.js';
+import { makeApp, login, prisma, request, freeDates, extConfig, extDriver, pickupSoon } from './helpers.js';
 import { computePayout } from '../src/services/payouts.js';
 
 const { app, events } = makeApp({ config: extConfig });   // внешние водители включены только для этих сценариев
@@ -94,6 +94,8 @@ test('комиссия 20%: выплата = цена − комиссия; ст
   card = (await request(app).patch(`/api/admin/transfer-jobs/${job.id}`).set(owner.auth).send({ priceKzt: 15000 })).body;
   assert.equal(card.priceKzt, 15000); assert.equal(card.payoutKzt, 12000); assert.equal(card.commissionKzt, 3000);
   // финансы: выручка трансферов, выплаты, маржа
+  await pickupSoon(job.id);
+  card = (await request(app).get(`/api/admin/transfer-jobs/${job.id}`).set(owner.auth)).body;
   for (const s of ['en-route', 'arrived', 'picked-up', 'done']) await request(app).post(`/api/admin/transfer-jobs/${job.id}/status`).set(owner.auth).send({ action: s });
   const fin = (await request(app).get(`/api/admin/finance?month=${card.date.slice(0, 7)}`).set(owner.auth)).body;
   assert.equal(fin.transfersMarginKzt, fin.transfersRevenueKzt - fin.transfersPayoutKzt); assert.ok(fin.transfersMarginKzt >= 3000);
@@ -192,6 +194,7 @@ test('после «Оплачено водителю» смена цены дл�
   const { job } = await confirmedJob();
   const r = await prisma.user.findUnique({ where: { email: 'ruslan@astanastay.example' } });
   assert.equal((await request(app).post(`/api/admin/transfer-jobs/${job.id}/assign`).set(owner.auth).send({ driverUserId: r.id })).status, 200);
+  await pickupSoon(job.id);
   for (const action of ['picked-up', 'done']) assert.equal((await request(app).post(`/api/admin/transfer-jobs/${job.id}/status`).set(owner.auth).send({ action })).status, 200);
   assert.equal((await request(app).post(`/api/admin/transfer-jobs/${job.id}/paid`).set(owner.auth).send({ paid: true })).status, 200);
   const before = (await request(app).get(`/api/admin/transfer-jobs/${job.id}`).set(owner.auth)).body;

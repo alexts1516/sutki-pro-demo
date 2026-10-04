@@ -44,6 +44,10 @@ export default function transfersRouter({ dispatch, config }) {
   r.post('/transfers/:id/dispatch', async (req, res) => {
     const t = await prisma.transfer.findFirst({ where: { id: req.params.id, accountId: req.accountId } });
     if (!t) throw notFound('Трансфер не найден');
+    if (t.bookingId) {
+      const b = await prisma.booking.findUnique({ where: { id: t.bookingId }, select: { status: true } });
+      if (b?.status !== 'confirmed') throw new HttpError(409, 'Бронь ещё не подтверждена (не оплачена) — заказ водителям уйдёт сам после подтверждения');
+    }
     const j = await dispatch.createForTransfer({ accountId: req.accountId, transferId: t.id, actor: actorOf(req) });
     res.status(201).json(out(await loadJob({ id: j.id })));
   });
@@ -79,7 +83,7 @@ export default function transfersRouter({ dispatch, config }) {
     const { action, note } = parse(z.object({ action: z.enum(['en-route', 'arrived', 'picked-up', 'done']), note: z.string().max(500).optional() }), req.body);
     const j = await job(req);
     if (!j.driverUserId && !j.driverContractorId) throw new HttpError(409, 'Сначала назначьте водителя');
-    res.json(out(await dispatch.step({ job: j, actor: actorOf(req), action, note: note || `отмечено за водителя (${req.user.name})` })));
+    res.json(out(await dispatch.step({ job: j, actor: actorOf(req), action, override: true, note: note || `отмечено за водителя (${req.user.name})` })));
   });
   r.post('/transfer-jobs/:id/cancel', async (req, res) => {
     const { reason } = parse(z.object({ reason: z.string().max(500).optional() }), req.body || {});

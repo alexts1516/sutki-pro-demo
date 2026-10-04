@@ -71,16 +71,27 @@ code{background:#f1f5f9;border-radius:4px;padding:0 4px;font-size:12.5px}
   <div class="card">
     <h2>2. Попробуйте сценарий</h2>
     <div class="sc">
-      <h3>🚗 Бронь с трансфером → водитель</h3>
+      <h3>🔥 «Сегодня»: где проблема и что сделать</h3>
       <ol>
-        <li>Владелец → «Брони и заявки» → заявка с трансфером → <b>«Подтвердить»</b>.</li>
-        <li>Заказ ушёл водителям: откройте <b>«💬 Telegram»</b> — у водителей сообщение с кнопкой «✋ Беру».</li>
-        <li>Нажмите «Беру» за Руслана (в Telegram-демо) или войдите <b>водителем Руслан</b> и нажмите «Беру» в приложении — первый получает заказ, номер квартиры и телефон гостя открываются только ему.</li>
-        <li>Шаги: «Выехал» → «На месте» → «Гость в машине» → «Завершить».</li>
-        <li>Владелец → «Трансферы» → карточка: «Оплата гостя → бизнес» и «Выплата водителю».</li>
+        <li>Войдите <b>администратором</b> — сразу откроется «Сегодня»: сверху <b>Критично</b>, ниже <b>Требует действия</b>; обычные дела свёрнуты.</li>
+        <li>Каждая строка: проблема → что сделать → срок → квартира. Нажмите — откроется нужная карточка.</li>
+        <li>Квартира со срочным недочётом «не готова»: в карточке квартиры — «Заявка мастеру», «Сделаю сам» или «Решено».</li>
+        <li>Гость просит ранний заезд → «Согласовать» — срок подготовки сдвинется.</li>
+        <li><b>Владелец</b> видит только отклонения и свои решения (сметы, выплаты, ранний заезд).</li>
       </ol>
-      <button class="btn primary" data-go="owner" data-hash="bookings">Начать: владелец → брони</button>
-      <button class="btn" data-go="driver">Водитель Руслан</button>
+      <button class="btn primary" data-go="admin" data-hash="today">Начать: администратор</button>
+      <button class="btn" data-go="owner" data-hash="today">Владелец</button>
+    </div>
+    <div class="sc">
+      <h3>🚗 Бронь с оплатой → водитель</h3>
+      <ol>
+        <li>Гость бронирует и <b>оплачивает на сайте</b> (форма «3» ниже) — бронь подтверждается сама, «подтверждать» ничего не нужно.</li>
+        <li>Заказ сразу ушёл водителям: в <b>«💬 Telegram»</b> — сообщение с кнопкой «✋ Беру».</li>
+        <li>Войдите <b>водителем Руслан</b> → «Беру». Поездка через несколько дней — «Запланировано»: кнопка «Выехал» появится за 2 ч до подачи.</li>
+        <li>Шаги строго по порядку: «Выехал» → «На месте» → «Гость в машине» → «Завершить».</li>
+      </ol>
+      <button class="btn primary" data-go="driver">Водитель Руслан</button>
+      <button class="btn" data-go="owner" data-hash="transfers">Владелец → трансферы</button>
     </div>
     <div class="sc">
       <h3>🔧 Заявка мастеру → смета по фото → доп. расход</h3>
@@ -97,10 +108,10 @@ code{background:#f1f5f9;border-radius:4px;padding:0 4px;font-size:12.5px}
     <div class="sc">
       <h3>✨ Подготовка квартиры → выплата</h3>
       <ol>
-        <li>Войдите <b>«Подготовка — Гульнара»</b> → квартира → «Начать подготовку».</li>
-        <li>Отметьте пункты чек-листа, добавьте фото, при необходимости — «Сообщить о проблеме».</li>
-        <li>«Закончить подготовку» → владельцу в «💬 Telegram» приходит «к оплате» с кнопкой «Оплатить».</li>
-        <li>Владелец → «Календарь» → нажмите «Готово» — откроется полный отчёт; «Выплаты» — кому сколько должны.</li>
+        <li>Войдите <b>«Подготовка — Гульнара»</b>: сверху «Сейчас» — квартира, адрес и срок («до 14:00 — заезд гостя»). Подготовку на другой день начать нельзя.</li>
+        <li>«Начать подготовку» → чек-лист и фото → при необходимости «Сообщить о недочёте» (срочно / можно позже).</li>
+        <li>Недочёт виден в «Сегодня», как ⚠ на плитке календаря и в карточке квартиры; срочный — квартира «не готова», пока его не решат.</li>
+        <li>«Закончить подготовку» → владельцу приходит «к оплате» с кнопкой «Оплатить».</li>
       </ol>
       <button class="btn primary" data-go="cleaner">Начать: Гульнара</button>
       <button class="btn" data-go="owner" data-hash="payouts">Выплаты</button>
@@ -118,15 +129,16 @@ code{background:#f1f5f9;border-radius:4px;padding:0 4px;font-size:12.5px}
   </div>
 
   <div class="card">
-    <h2>3. Гость: новая заявка с трансфером</h2>
-    <p class="muted" style="margin:0 0 4px">Как с сайта гостей. После отправки войдите владельцем и подтвердите заявку — заказ уйдёт водителям.</p>
+    <h2>3. Гость: бронь с оплатой на сайте</h2>
+    <p class="muted" style="margin:0 0 4px">Как с сайта гостей: бронь → оплата (в демо проходит сразу) → бронь подтверждена, подготовка запланирована, трансфер ушёл водителям.</p>
     <form id="guest" novalidate>
       <label>Квартира<select id="gApt"><option>Загрузка…</option></select></label>
       <div class="grid2"><label>Заезд<input id="gIn" type="date"></label><label>Выезд<input id="gOut" type="date"></label></div>
       <div class="grid2"><label>Имя<input id="gName" value="Анна Смирнова" autocomplete="off"></label><label>Телефон<input id="gPhone" value="+7 701 555 12 34" inputmode="tel" autocomplete="off"></label></div>
+      <label class="check"><input type="checkbox" id="gEarly"> Хочу заехать пораньше — в 10:00 (согласует администратор)</label>
       <label class="check"><input type="checkbox" id="gTr" checked> Встреча в аэропорту (трансфер)</label>
       <div class="grid2" id="gTrBox"><label>Рейс<input id="gFlight" value="KC 852" autocomplete="off"></label><label>Время прилёта<input id="gTime" type="time" value="14:30"></label></div>
-      <button class="btn primary" id="gBtn" style="margin-top:12px">Отправить заявку</button>
+      <button class="btn primary" id="gBtn" style="margin-top:12px">Забронировать и оплатить</button>
       <div id="gRes"></div>
     </form>
   </div>
@@ -135,7 +147,7 @@ code{background:#f1f5f9;border-radius:4px;padding:0 4px;font-size:12.5px}
     <h2>Что здесь не настоящее</h2>
     <ul class="plain">
       <li>Telegram-бот — сообщения показываются во вкладке «💬 Telegram (демо)», никуда не уходят.</li>
-      <li>Онлайн-оплата (CloudPayments / PayLink) выключена — оплату гостя отмечают вручную: наличные / карта / онлайн.</li>
+      <li>Онлайн-оплата — демо: «оплата» на сайте проходит сразу, без банка, и подтверждает бронь. Настоящая — CloudPayments / PayLink на сервере.</li>
       <li>Слежение за рейсами и облачное хранилище фото выключены; фото сохраняются в браузере (уменьшенными).</li>
       <li>Сервера и хостинга нет: тот же код сервера работает прямо в странице, «база» — в браузере.</li>
     </ul>
@@ -181,13 +193,14 @@ $('#guest').onsubmit = async (e) => {
   e.preventDefault(); const res = $('#gRes'); res.innerHTML = ''; $('#gBtn').disabled = true;
   const post = async (path, body) => { const r = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }); const d = await r.json(); if (!r.ok) throw new Error(d.error + (d.details ? ': ' + d.details.map(x => x.message).join(', ') : '')); return d; };
   try {
-    const b = await post('/api/public/astana-stay/bookings', { apartmentId: $('#gApt').value, checkIn: $('#gIn').value, checkOut: $('#gOut').value, guests: 2, name: $('#gName').value, phone: $('#gPhone').value, paymentMethod: 'cash' });
+    const b = await post('/api/public/astana-stay/bookings', { apartmentId: $('#gApt').value, checkIn: $('#gIn').value, checkOut: $('#gOut').value, guests: 2, name: $('#gName').value, phone: $('#gPhone').value, paymentMethod: 'card', ...($('#gEarly').checked ? { earlyCheckIn: '10:00' } : {}) });
     let tr = '';
     if ($('#gTr').checked) {
       const t = await post('/api/public/astana-stay/transfers', { bookingToken: b.token, direction: 'in', place: 'airport', date: $('#gIn').value, time: $('#gTime').value, flight: $('#gFlight').value || undefined, pax: 2, bags: 2 });
       tr = ` + трансфер ${t.priceKzt.toLocaleString('ru-RU')} ₸`;
     }
-    res.innerHTML = `<div class="ok">✅ Заявка №${esc(b.number)} отправлена${tr}. Теперь подтвердите её как владелец:<br><button class="btn primary" data-go="owner" data-hash="bookings" style="margin-top:8px">Владелец → брони</button></div>`;
+    const p = await post(`/api/public/astana-stay/bookings/${b.token}/pay`, {});
+    res.innerHTML = `<div class="ok">✅ Бронь №${esc(b.number)} оплачена и ${p.status === 'confirmed' ? 'подтверждена автоматически' : 'принята'}${tr}${tr ? ' — заказ ушёл водителям' : ''}.${$('#gEarly').checked ? ' Просьба о раннем заезде — в «Сегодня» у администратора.' : ''}<br><button class="btn primary" data-go="driver" style="margin-top:8px">Водитель Руслан → «Беру»</button> <button class="btn" data-go="admin" data-hash="today" style="margin-top:8px">Администратор → «Сегодня»</button></div>`;
   } catch (err) { res.innerHTML = `<div class="err">${esc(err.message)}</div>`; }
   $('#gBtn').disabled = false;
 };

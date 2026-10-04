@@ -3,11 +3,11 @@
 import { demo } from './backend.js';
 
 export const ROLES = [
-  { id: 'owner', icon: '👑', title: 'Владелец Азамат', sub: 'админка: брони, трансферы, мастера, финансы, настройки', email: 'azamat@astanastay.example', to: 'admin' },
-  { id: 'admin', icon: '🗂️', title: 'Администратор Алина', sub: 'админка без финансов и настроек комиссии', email: 'alina@astanastay.example', to: 'admin' },
-  { id: 'driver', icon: '🚗', title: 'Водитель Руслан', sub: 'приложение: заказы, «Беру», шаги поездки', email: 'ruslan@astanastay.example', to: 'app' },
+  { id: 'owner', icon: '👑', title: 'Владелец Азамат', sub: 'админка: «Сегодня» — только отклонения и ваши решения; финансы, настройки', email: 'azamat@astanastay.example', to: 'admin' },
+  { id: 'admin', icon: '🗂️', title: 'Администратор Алина', sub: 'админка: «Сегодня» — вся картина дня: заезды, подготовка, ремонты, трансферы', email: 'alina@astanastay.example', to: 'admin' },
+  { id: 'driver', icon: '🚗', title: 'Водитель Руслан', sub: 'приложение: поездки по времени, «Беру», шаги по порядку', email: 'ruslan@astanastay.example', to: 'app' },
   { id: 'master', icon: '🔧', title: 'Мастер Master Electric', sub: 'подрядчик с входом: смета, «В работе», «Завершить», выплаты', email: 'electric@astanastay.example', to: 'app' },
-  { id: 'cleaner', icon: '✨', title: 'Подготовка — Гульнара', sub: 'специалист по подготовке: чек-лист, фото, выплаты', email: 'gulnara@astanastay.example', to: 'app' },
+  { id: 'cleaner', icon: '✨', title: 'Подготовка — Гульнара', sub: 'специалист по подготовке: срок, доступ, чек-лист, фото, недочёты', email: 'gulnara@astanastay.example', to: 'app' },
   { id: 'extMaster', icon: '🔗', title: 'Внешний мастер по ссылке', sub: 'сервис без входа — одна заявка', link: 'master' },
 ];
 

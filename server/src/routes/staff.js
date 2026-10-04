@@ -29,7 +29,10 @@ import { MANAGERS } from '../auth/roles.js';
 import { mountWorkActions } from './workActions.js';
 import { imageUpload } from '../lib/upload.js';
 import { makeKey, looksLikeImage } from '../storage/index.js';
-import { cleaningReport } from '../services/cleaning.js';
+import { cleaningReport, canStartCleaning } from '../services/cleaning.js';
+import { cleaningDeadline } from '../services/ops.js';
+import { defectOut } from '../services/defects.js';
+import { isoDay } from '../lib/dates.js';
 import { payoutOut } from '../services/performerPayouts.js';
 import { loadTask, isExecutor, executorWhere, taskListItem, taskForManager } from '../services/workRequests.js';
 
@@ -56,13 +59,24 @@ export default function staffRouter({ events, workflow, storage, config, cleanin
       where: { accountId: req.accountId, status: { notIn: ['DONE', 'CANCELLED'] }, ...(isManager(req) ? {} : executorWhere(req.user.id)) },
       include: { apartment: { select: { id: true, title: true } }, estimates: true, extras: true, contractor: true, assignee: { select: { id: true, name: true } } }, orderBy: { date: 'asc' },
     });
+    // срок подготовки (заезд следующего гостя или конец окна) и можно ли начинать (только в день подготовки)
+    const bks = cleaning.length ? await prisma.booking.findMany({ where: { accountId: req.accountId, status: 'confirmed', apartmentId: { in: [...new Set(cleaning.map(c => c.apartmentId))] }, checkIn: { gte: from } }, select: { id: true, apartmentId: true, status: true, checkIn: true, checkInTime: true } }) : [];
+    const todayIso = isoDay(today);
+    const cl = cleaning.map(c => ({ ...c, deadline: cleaningDeadline(c, bks, req.account.timezone), canStart: isoDay(c.date) <= todayIso, day: isoDay(c.date) }));
     // мастеру — без денег владельца; адрес и «как попасть» — в карточке заявки
-    res.json({ cleaning, repairs: repairs.map(t => taskListItem(t, isManager(req))) });
+    res.json({ today: todayIso, cleaning: cl, repairs: repairs.map(t => taskListItem(t, isManager(req))) });
   });
 
   const cleaningOut = async (id) => {
     const t = await cleaning.load(id);
-    return { ...cleaningReport(t), access: accessInfo(t.apartment), apartment: { id: t.apartment.id, title: t.apartment.title, code: t.apartment.code } };
+    const acc = await prisma.account.findUnique({ where: { id: t.accountId }, select: { timezone: true } });
+    const bks = await prisma.booking.findMany({ where: { accountId: t.accountId, apartmentId: t.apartmentId, status: 'confirmed', checkIn: { gte: t.date } }, select: { id: true, apartmentId: true, status: true, checkIn: true, checkInTime: true } });
+    // уже известные недочёты квартиры — чтобы не сообщать повторно
+    const known = await prisma.defect.findMany({ where: { apartmentId: t.apartmentId, status: 'open', NOT: { cleaningTaskId: t.id } }, orderBy: { createdAt: 'asc' } });
+    return {
+      ...cleaningReport(t), access: accessInfo(t.apartment), apartment: { id: t.apartment.id, title: t.apartment.title, code: t.apartment.code },
+      deadline: cleaningDeadline(t, bks, acc?.timezone || 'Asia/Almaty'), canStart: await canStartCleaning(t), knownDefects: known.map(d => defectOut(d)),
+    };
   };
   r.get('/cleaning/:id', async (req, res) => { const t = await ownCleaning(req); res.json(await cleaningOut(t.id)); });
   r.post('/cleaning/:id/status', async (req, res) => {
@@ -86,7 +100,7 @@ export default function staffRouter({ events, workflow, storage, config, cleanin
   });
   r.post('/cleaning/:id/problem', async (req, res) => {
     const t = await ownCleaning(req);
-    const d = parse(z.object({ text: z.string().trim().min(3, 'Опишите проблему').max(2000), photoIds: z.array(z.string()).max(10).optional() }), req.body);
+    const d = parse(z.object({ text: z.string().trim().min(3, 'Опишите проблему').max(2000), photoIds: z.array(z.string()).max(10).optional(), priority: z.enum(['urgent', 'later']).default('later') }), req.body);
     await cleaning.reportProblem(t, { type: req.role, id: req.user.id, name: req.user.name }, d);
     res.status(201).json(await cleaningOut(t.id));
   });
