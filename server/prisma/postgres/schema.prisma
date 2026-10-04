@@ -256,6 +256,7 @@ model Booking {
   earlyCheckInStatus String? /// requested (ждёт решения) | approved (время заезда сдвинуто) | declined
   cleanerName   String? /// кто уберёт после выезда (демо-данные)
   confirmedAt   DateTime?
+  holdUntil     DateTime? /// проход 4: до какого момента неподтверждённая бронь (request) держит даты; одна правда о сроке (и для ссылки)
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
@@ -270,6 +271,9 @@ model Booking {
   @@unique([accountId, number])
   @@index([accountId, checkIn])
   @@index([apartmentId, checkIn])
+  @@index([apartmentId, status, holdUntil])
+  // PostgreSQL: ограничение booking_no_overlap (EXCLUDE USING gist, btree_gist) — только в ручной SQL-миграции
+  // prisma/postgres/migrations/*_pass4_foundation; Prisma его не описывает. Для PostgreSQL — только migrate deploy, не db push.
 }
 
 model Transfer {
@@ -438,6 +442,7 @@ model CleaningTask {
   doneAt      DateTime?
   reviewedAt  DateTime? /// закончили не полностью → владелец/админ принял отчёт («ПОДТВЕРЖДЕНИЕ»), квартира снова может быть «готова»
   reviewedBy  String?
+  autoKey     String?   @unique /// проход 4: ключ автоматической подготовки 'turnover:<bookingId>' — одна на бронь; ручные подготовки — NULL
   createdAt   DateTime  @default(now())
 
   account   Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -763,4 +768,22 @@ model Defect {
 
   @@index([accountId, status])
   @@index([apartmentId, status])
+}
+
+/// Проход 4: журнал отложенных действий после коммита (outbox). Строка пишется в той же транзакции,
+/// что и изменение брони; выполняется после коммита, при старте и планировщиком. dedupeKey — без дублей.
+model OutboxEvent {
+  id            String    @id @default(cuid())
+  accountId     String
+  kind          String /// transfers.dispatch | transfers.cancel | event
+  payload       Json /// { bookingId } | { name, data }
+  dedupeKey     String    @unique
+  status        String    @default("pending") /// pending | done | failed
+  attempts      Int       @default(0)
+  nextAttemptAt DateTime  @default(now())
+  lastError     String?
+  createdAt     DateTime  @default(now())
+  doneAt        DateTime?
+
+  @@index([status, nextAttemptAt])
 }

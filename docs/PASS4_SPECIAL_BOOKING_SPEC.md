@@ -275,8 +275,9 @@ model BookingPriceChange {
 - Обратные связи: `Booking.link BookingLink?`, `Account.bookingLinks`.
 
 **Миграции.**
-1. SQLite: `npx prisma migrate dev --name pass4_links_outbox_holds`.
-2. PostgreSQL: `npm run pg:schema` → папка `prisma/postgres/migrations/<метка>_pass4_links_outbox_holds/` с тем же содержимым **плюс ручной SQL** (раздел 10):
+Миграций две (раздел 21): **M1 `pass4_foundation`** (шаг 1: `holdUntil`, `autoKey`, `OutboxEvent`, ограничение PG — **сделано**, `20261004143000_pass4_foundation`) и **M2 `pass4_booking_links`** (шаг 5: `BookingLink`, `BookingPriceChange`, `canSetLinkPrice`). Порядок для каждой:
+1. SQLite: миграция в `prisma/migrations/` (`prisma migrate diff` от базы с прежними миграциями к схеме — `migrate dev` в неинтерактивной среде не работает).
+2. PostgreSQL: `npm run pg:schema` → папка `prisma/postgres/migrations/<метка>_<имя>/` с тем же содержимым **плюс ручной SQL** (раздел 10):
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS btree_gist;
@@ -393,6 +394,7 @@ export async function withApartmentTx(apartmentId, fn) {
 
 - `isAvailable(tx, …)` принимает `tx` (по умолчанию — общий клиент для чтений вне записи).
 - Ошибку базы `23P01` (нарушение `EXCLUDE`; в Prisma — `P2010` или `PrismaClientUnknownRequestError` с этим кодом) превращать в `HttpError(409, 'Эти даты уже заняты')`.
+- Проверено на шаге 1: при строго одновременной вставке двух пересекающихся броней PostgreSQL иногда отклоняет одну из них не кодом `23P01`, а `40P01` (deadlock detected — обе транзакции ждут незакоммиченную строку друг друга при проверке `EXCLUDE`). Двух броней всё равно не бывает. На шаге 2 `40P01` при записи брони тоже превращать в 409 (или один повтор транзакции); блокировка строки квартиры в `withApartmentTx` делает такой случай редким.
 - **SQLite** — только разработка и демо: один процесс, один пишущий, транзакции идут по очереди; `EXCLUDE` там нет, вместо него внутри `withApartmentTx` остаётся `withLock('apt:'+id)`.
 - **Гарантия продакшена:** «на одной PostgreSQL при любом числе процессов и контейнеров две пересекающиеся брони `request/confirmed` одной квартиры невозможны — это запрещает база».
 - Расширение `btree_gist` доверенное (PostgreSQL 13+), владелец базы может его включить; у управляемых PostgreSQL (Render, Neon, Supabase) оно есть.
