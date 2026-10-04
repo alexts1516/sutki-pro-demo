@@ -31,7 +31,7 @@ after(async () => {
 
 async function offeredJob() {
   const dates = await freeDates(acc.id, apt.id, 2, start); start += 5;
-  const b = await request(app).post('/api/public/astana-stay/bookings').send({ apartmentId: apt.id, ...dates, guests: 1, name: 'Ким Ён', phone: '+7 702 111 22 33', paymentMethod: 'cash' });
+  const b = await request(app).post('/api/public/astana-stay/bookings').send({ apartmentId: apt.id, ...dates, guests: 1, name: 'Ким Ён', phone: '+7 702 111 22 33', paymentMethod: 'card' });
   const t = await request(app).post('/api/public/astana-stay/transfers').send({ bookingToken: b.body.token, direction: 'in', place: 'airport', date: dates.checkIn, time: '09:10', flight: 'KC 920' });
   const booking = await prisma.booking.findUnique({ where: { token: b.body.token } });
   await request(app).post(`/api/admin/bookings/${booking.id}/confirm`).set(owner.auth);

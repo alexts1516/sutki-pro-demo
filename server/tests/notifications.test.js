@@ -25,7 +25,7 @@ before(async () => {
 });
 after(() => prisma.$disconnect());
 
-const bookingBody = async (extra = {}) => ({ apartmentId: apt.id, ...(await freeDates(acc.id, apt.id)), guests: 2, name: 'Тест Гостев', phone: '+7 700 123 45 67', paymentMethod: 'cash', ...extra });
+const bookingBody = async (extra = {}) => ({ apartmentId: apt.id, ...(await freeDates(acc.id, apt.id)), guests: 2, name: 'Тест Гостев', phone: '+7 700 123 45 67', paymentMethod: 'card', ...extra });
 
 test('без бота: заявка с сайта создаётся, уведомление владельцу и админу — в журнал', async () => {
   const r = await request(noBot.app).post('/api/public/astana-stay/bookings').send(await bookingBody({ currency: 'USD', comment: 'Поздний заезд' }));

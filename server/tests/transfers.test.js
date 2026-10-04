@@ -19,7 +19,7 @@ after(() => prisma.$disconnect());
 /** Заявка гостя с сайта + трансфер к ней (бронь ещё не подтверждена) */
 async function requestWithTransfer(tr = {}) {
   const dates = await freeDates(acc.id, apt.id, 2, start); start += 5;
-  const b = await request(app).post('/api/public/astana-stay/bookings').send({ apartmentId: apt.id, ...dates, guests: 2, name: 'Ли Мин', phone: '+7 701 222 33 44', paymentMethod: 'cash' });
+  const b = await request(app).post('/api/public/astana-stay/bookings').send({ apartmentId: apt.id, ...dates, guests: 2, name: 'Ли Мин', phone: '+7 701 222 33 44', paymentMethod: 'card' });
   assert.equal(b.status, 201, JSON.stringify(b.body));
   const t = await request(app).post('/api/public/astana-stay/transfers').send({ bookingToken: b.body.token, direction: 'in', place: 'airport', date: dates.checkIn, time: '15:30', flight: 'KC 101', pax: 2, bags: 3, childSeats: 1, ...tr });
   assert.equal(t.status, 201, JSON.stringify(t.body));

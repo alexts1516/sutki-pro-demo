@@ -42,7 +42,7 @@ async function snapshot(accountId, now) {
     prisma.defect.findMany({ where: { accountId, status: 'open' }, include: { repairTask: { select: { id: true, status: true, title: true } } }, orderBy: { createdAt: 'asc' } }),
     prisma.repairTask.findMany({ where: { accountId, status: { notIn: ['DONE', 'CANCELLED'] } }, include: { estimates: true, extras: true, contractor: { select: { name: true } }, assignee: { select: { name: true } } }, orderBy: { date: 'asc' } }),
     prisma.transferJob.findMany({ where: { accountId, status: { not: 'CANCELLED' }, pickupAt: { gte: new Date(now.getTime() - 6 * H), lt: atLocal(addDays(today, 2), '00:00', tz) } }, include: { transfer: true, apartment: { select: { id: true, title: true, code: true } } }, orderBy: { pickupAt: 'asc' } }),
-    prisma.booking.findMany({ where: { accountId, status: 'request' }, include: { guest: { select: { name: true } }, apartment: { select: { title: true, code: true } } }, orderBy: { createdAt: 'asc' } }),
+    prisma.booking.findMany({ where: { accountId, status: 'request', NOT: { holdUntil: { lte: now } } }, include: { guest: { select: { name: true } }, apartment: { select: { title: true, code: true } } }, orderBy: { createdAt: 'asc' } }),   // истёкшее удержание даты уже не держит
     getSettings(accountId),
   ]);
   return { tz, today, now, apartments, bookings, cleanings, defects, repairs, jobs, holds, settings };
@@ -153,7 +153,17 @@ async function buildItems(snap, { role, accountId }) {
       push('critical', 'outbox_failed', { ref: f.id, problem: `Не завершена цепочка брони №${b?.number || '—'}`, action: 'Разобрать вручную', object: b ? byApt[b.apartmentId]?.label || '' : '', details: `${WHAT[f.kind] || f.kind}: ${f.lastError || 'ошибка'}`, open: b ? `bk:${b.id}` : null, aptId: b?.apartmentId || null });
     }
   }
-  // план дня: заезды, выезды, подготовка
+  // проход 4, шаг 4: оплата пришла, когда даты уже заняты (или бронь отменена) — вернуть деньги вручную.
+  // Источник — строка журнала event:payment.orphaned (одна на платёж); пункт исчезает, когда у брони отмечен возврат.
+  const orphans = await prisma.outboxEvent.findMany({ where: { accountId, dedupeKey: { startsWith: 'event:payment.orphaned:' } }, orderBy: { createdAt: 'asc' }, take: 50 });
+  if (orphans.length) {
+    const obk = await prisma.booking.findMany({ where: { accountId, id: { in: orphans.map(o => o.payload?.data?.bookingId).filter(Boolean) } }, include: { guest: { select: { name: true, phone: true } }, apartment: { select: { title: true, code: true } } } });
+    for (const o of orphans) {
+      const x = o.payload?.data || {}; const b = obk.find(y => y.id === x.bookingId);
+      if (!b || b.paymentStatus === 'refunded') continue;
+      push('critical', 'payment_orphaned', { ref: x.paymentId, problem: `Оплата без брони — верните деньги: ${money(x.amountKzt || 0)}`, action: 'Вернуть деньги гостю (вручную) и отметить возврат', object: aptLabel(b.apartment), details: `№${b.number} · ${b.guest?.name || 'гость'}${b.guest?.phone ? ' · ' + b.guest.phone : ''} · ${isoDay(b.checkIn)}–${isoDay(b.checkOut)} · ${x.reason === 'dates_taken' ? 'даты заняли после истечения срока оплаты' : 'бронь отменена'}`, open: `bk:${b.id}`, aptId: b.apartmentId });
+    }
+  }
   for (const s of states) {
     for (const b of snap.bookings.filter(x => x.apartmentId === s.apartment.id)) {
       if (b.status === 'confirmed' && isoDay(b.checkIn) === t0) push('today', 'checkin', { ref: b.id, problem: `Заезд ${b.checkInTime} · ${b.guest?.name || 'гость'}`, action: null, deadline: s.inAt(b), object: s.label, details: `${b.guestsCount} гост.`, open: `bk:${b.id}`, aptId: s.apartment.id, ready: s.ready, readyLabel: s.ready ? 'готова' : 'не готова' });

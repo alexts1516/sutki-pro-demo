@@ -29,7 +29,7 @@ after(async () => {
 
 async function confirmedJob(priceKzt = 10000) {
   const dates = await freeDates(acc.id, apt.id, 2, start); start += 5;
-  const b = await request(app).post('/api/public/astana-stay/bookings').send({ apartmentId: apt.id, ...dates, guests: 2, name: 'Олжас Ким', phone: '+7 701 222 33 44', paymentMethod: 'cash' });
+  const b = await request(app).post('/api/public/astana-stay/bookings').send({ apartmentId: apt.id, ...dates, guests: 2, name: 'Олжас Ким', phone: '+7 701 222 33 44', paymentMethod: 'card' });
   assert.equal(b.status, 201, JSON.stringify(b.body));
   const t = await request(app).post('/api/public/astana-stay/transfers').send({ bookingToken: b.body.token, direction: 'in', place: 'airport', date: dates.checkIn, time: '12:00', flight: 'KC 901', pax: 1, bags: 1 });
   assert.equal(t.status, 201, JSON.stringify(t.body));

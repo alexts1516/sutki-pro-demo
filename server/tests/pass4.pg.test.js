@@ -171,6 +171,16 @@ try {
       const { runOutbox } = await import('./src/services/outbox.js');
       out = { ok: true, ...(await runOutbox({ events, dispatch, keys: a.keys })), ms: Date.now() - t0 };
     }
+  } else if (a.mode === 'pay') {   // шаг 4: вебхук оплаты в отдельном процессе (своя шина и диспетчер)
+    const { createEventBus } = await import('./src/notifications/events.js');
+    const { createTransferDispatch } = await import('./src/services/transferJobs.js');
+    const { applyPaymentResult } = await import('./src/payments/index.js');
+    const events = createEventBus({ logger: { error() {} } });
+    const r = await applyPaymentResult({ prisma, events, dispatch: createTransferDispatch({ events }), result: { paymentId: a.paymentId, status: 'succeeded' } });
+    out = { ok: true, outcome: r?.outcome || null, ms: Date.now() - t0 };
+  } else if (a.mode === 'release') {   // шаг 4: планировщик снимает истёкшие удержания
+    const { releaseAllExpiredHolds } = await import('./src/services/bookings.js');
+    out = { ok: true, released: await releaseAllExpiredHolds(), ms: Date.now() - t0 };
   } else if (a.mode === 'create') {
     const apartment = await prisma.apartment.findUnique({ where: { id: a.apartmentId } });
     const b = await createBookingRequest({ accountId: a.accountId, apartment, checkIn: new Date(a.checkIn), checkOut: new Date(a.checkOut), guestsCount: 1, guest: null, paymentMethod: 'card' });
@@ -198,7 +208,7 @@ test('PG шаг 2: два процесса одновременно бронир
   for (let round = 0; round < 3; round++) {
     const from = 300 + round * 10;
     const startAt = Date.now() + 2500;
-    const rs = await Promise.all([0, 1].map(k => appChild({ mode: 'create', startAt, accountId: acc.id, apartmentId: apt.id, checkIn: addDays(today, from + k).toISOString(), checkOut: addDays(today, from + 3).toISOString() })));
+    const rs = await Promise.all([0, 1].map(k => appChild({ mode: 'create', startAt: startAt + (round % 2 ? 300 : 0), accountId: acc.id, apartmentId: apt.id, checkIn: addDays(today, from + k).toISOString(), checkOut: addDays(today, from + 3).toISOString() })));
     assert.notEqual(rs[0].pid, rs[1].pid);
     assert.equal(rs.filter(r => r.ok).length, 1, `раунд ${round}: ${JSON.stringify(rs)}`);
     const bad = rs.find(r => !r.ok);
@@ -297,4 +307,63 @@ test('PG шаг 3: два процесса одновременно прогон
   assert.equal(await prisma.transferEvent.count({ where: { jobId: jobs[0].id, type: 'offered' } }), 1);
   const rows = await prisma.outboxEvent.findMany({ where: { dedupeKey: { in: confirmKeys(b.id) } } });
   assert.ok(rows.every(r => r.status === 'done' && r.attempts === 0));
+});
+
+// ---------- Шаг 4: сайт — только с оплатой; поздняя оплата и гонки — два и три процесса ----------
+
+async function paidRequest(from, holdMs) {   // заявка с сайта (карта, срок удержания) + созданный платёж
+  const { createBookingRequest } = await import('../src/services/bookings.js');
+  const b = await createBookingRequest({ accountId: acc.id, apartment: apt, checkIn: addDays(today, from), checkOut: addDays(today, from + 2), guestsCount: 1, guest: null, paymentMethod: 'card', holdUntil: new Date(Date.now() + holdMs) });
+  const p = await prisma.payment.create({ data: { accountId: acc.id, bookingId: b.id, provider: 'test', amountKzt: b.totalKzt, currency: 'KZT', amount: b.totalKzt, status: 'created' } });
+  return { b, p };
+}
+const holdersOf = (from) => prisma.booking.findMany({ where: { apartmentId: apt.id, status: { in: ['request', 'confirmed'] }, checkIn: { lt: addDays(today, from + 2) }, checkOut: { gt: addDays(today, from) } } });
+
+test('PG шаг 4: два процесса одновременно применяют один успешный платёж → одна подтверждённая бронь, одна подготовка', { skip }, async () => {
+  for (let round = 0; round < 3; round++) {
+    const from = 600 + round * 10;
+    const { b, p } = await paidRequest(from, 30 * 60000);
+    const startAt = Date.now() + 2500;
+    const rs = await Promise.all([0, 1].map(() => appChild({ mode: 'pay', startAt, paymentId: p.id })));
+    assert.ok(rs.every(r => r.ok), JSON.stringify(rs));
+    assert.equal(rs.filter(r => r.outcome === 'confirmed').length, 1, JSON.stringify(rs));
+    const nb = await prisma.booking.findUnique({ where: { id: b.id } });
+    assert.equal(nb.status, 'confirmed'); assert.equal(nb.paymentStatus, 'paid');
+    assert.equal(await prisma.cleaningTask.count({ where: { bookingId: b.id } }), 1);
+    assert.equal(await prisma.outboxEvent.count({ where: { dedupeKey: `event:payment.succeeded:${p.id}` } }), 1);
+  }
+});
+
+test('PG шаг 4: три процесса — поздняя оплата vs новая бронь другого гостя vs планировщик → одна бронь на даты, согласованный итог', { skip }, async () => {
+  const outcomes = [];
+  for (let round = 0; round < 4; round++) {   // чётные раунды — строго одновременно, нечётные — новая бронь на 300 мс позже
+    const from = 650 + round * 10;
+    const { b, p } = await paidRequest(from, -1000);   // удержание уже истекло, но ещё не снято
+    const startAt = Date.now() + 2500;
+    const [pay, create, rel] = await Promise.all([
+      appChild({ mode: 'pay', startAt, paymentId: p.id }),
+      appChild({ mode: 'create', startAt: startAt + (round % 2 ? 300 : 0), accountId: acc.id, apartmentId: apt.id, checkIn: addDays(today, from).toISOString(), checkOut: addDays(today, from + 2).toISOString() }),
+      appChild({ mode: 'release', startAt }),
+    ]);
+    assert.ok(pay.ok && rel.ok, JSON.stringify({ pay, rel }));
+    outcomes.push(pay.outcome);
+    const holders = await holdersOf(from);
+    assert.equal(holders.length, 1, 'на даты ровно одна бронь');
+    const orphans = await prisma.outboxEvent.count({ where: { dedupeKey: `event:payment.orphaned:${p.id}` } });
+    if (create.ok) {
+      assert.equal(pay.outcome, 'orphaned', JSON.stringify({ pay, create }));
+      assert.equal(holders[0].id, create.id);
+      assert.equal(orphans, 1);
+      assert.equal((await prisma.booking.findUnique({ where: { id: b.id } })).status, 'cancelled');
+    } else {
+      assert.equal(create.status, 409, JSON.stringify(create));
+      assert.equal(pay.outcome, 'restored');
+      assert.equal(holders[0].id, b.id);
+      assert.equal(orphans, 0);
+      assert.equal(await prisma.cleaningTask.count({ where: { bookingId: b.id } }), 1);
+    }
+    assert.equal((await prisma.payment.findUnique({ where: { id: p.id } })).status, 'succeeded');
+  }
+  console.log('# исходы поздней оплаты:', outcomes.join(', '));
+  assert.ok(outcomes.includes('restored'), 'хотя бы раз оплата успела первой — бронь восстановлена');
 });

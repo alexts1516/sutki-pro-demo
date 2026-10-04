@@ -100,7 +100,7 @@ test('рейсы: без ключа слежения нет; AeroDataBox раз�
   const acc = await prisma.account.findUnique({ where: { slug: 'astana-stay' } });
   const apt = await prisma.apartment.findFirst({ where: { accountId: acc.id, petsAllowed: false } });
   const dates = await freeDates(acc.id, apt.id, 2, 700);
-  const b = await request(app).post('/api/public/astana-stay/bookings').send({ apartmentId: apt.id, ...dates, guests: 1, name: 'Тест Рейс', phone: '+7 700 000 00 01', paymentMethod: 'cash' });
+  const b = await request(app).post('/api/public/astana-stay/bookings').send({ apartmentId: apt.id, ...dates, guests: 1, name: 'Тест Рейс', phone: '+7 700 000 00 01', paymentMethod: 'card' });
   const t = await request(app).post('/api/public/astana-stay/transfers').send({ bookingToken: b.body.token, direction: 'in', place: 'airport', date: dates.checkIn, time: '10:00', flight: 'KC 852' });
   await request(app).post(`/api/admin/bookings/${(await prisma.booking.findUnique({ where: { token: b.body.token } })).id}/confirm`).set(owner.auth);
   let job = await prisma.transferJob.findUnique({ where: { transferId: t.body.id } });

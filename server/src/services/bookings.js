@@ -8,6 +8,17 @@ import { DATES_TAKEN, isDeadlockError, toConflict } from '../lib/dbErrors.js';
 import { hook } from '../lib/testHooks.js';
 import { enqueue, runOutbox } from './outbox.js';
 
+/** Удержание неоплаченной заявки с сайта и продление при открытии оплаты (технические значения, не решения владельца) */
+export const PUBLIC_HOLD_MIN = 30;
+export const PAY_EXTEND_MIN = 20;
+/** Новый срок удержания при открытии оплаты: не меньше «сейчас + 20 мин», более длинный не укорачивается.
+ *  null — продлевать нечего (подтверждённая бронь или заявка без срока). */
+export function extendHold(b, now = new Date()) {
+  if (b.status !== 'request' || !b.holdUntil) return null;
+  const min = new Date(now.getTime() + PAY_EXTEND_MIN * 60000);
+  return b.holdUntil > min ? null : min;
+}
+
 export const BLOCKING = ['request', 'confirmed'];   // статусы, которые могут держать даты (то же условие, что у booking_no_overlap в PostgreSQL)
 
 /** Держит ли бронь даты сейчас. Подтверждённая — всегда; заявка — пока не истёк срок удержания holdUntil.
@@ -121,9 +132,9 @@ export async function nextBookingNumber(accountId, db = prisma) {
 }
 
 /** Создать заявку на бронь (статус request). Бросает 409, если даты заняты.
- *  Проверка и создание — в одной транзакции квартиры (withApartmentTx). Срок удержания (holdUntil) здесь пока
- *  не ставится — это шаг 4 прохода 4 (сайт — только с оплатой, 30 мин); до него заявка держит даты, как раньше. */
-export async function createBookingRequest({ accountId, apartment, checkIn, checkOut, guestsCount, guest, source = 'site', pets = false, note, paymentMethod, currencyShown = 'KZT', amountShown = null }) {
+ *  Проверка и создание — в одной транзакции квартиры (withApartmentTx). holdUntil — срок удержания (сайт: +30 мин,
+ *  шаг 4 прохода 4); null — без срока. */
+export async function createBookingRequest({ accountId, apartment, checkIn, checkOut, guestsCount, guest, source = 'site', pets = false, note, paymentMethod, currencyShown = 'KZT', amountShown = null, holdUntil = null }) {
   const q = quote(apartment, checkIn, checkOut, pets);
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -133,7 +144,7 @@ export async function createBookingRequest({ accountId, apartment, checkIn, chec
           data: {
             accountId, apartmentId: apartment.id, guestId: guest?.id, number: await nextBookingNumber(accountId, tx), token: randomToken(12),
             source, status: 'request', checkIn, checkOut, guestsCount, nightlyKzt: q.nightlyKzt, totalKzt: q.totalKzt, petFeeKzt: q.petFeeKzt,
-            pets: !!pets, note, paymentMethod, currencyShown, amountShown,
+            pets: !!pets, note, paymentMethod, currencyShown, amountShown, holdUntil,
           },
           include: { apartment: true, guest: true },
         });
@@ -153,6 +164,19 @@ async function ensureTurnover(db, b) {
 }
 export const confirmKeys = (bookingId) => [`event:booking.confirmed:${bookingId}`, `transfers.dispatch:${bookingId}`];
 
+/** Ядро подтверждения — только внутри транзакции квартиры (tx из withApartmentTx), b — перечитанная заявка.
+ *  Условная запись request → confirmed (+ confirmedAt, holdUntil = null), обязательная подготовка (autoKey),
+ *  строки журнала. Его используют confirmBooking и оплата (applyPaymentResult) — логика одна. */
+export async function confirmRequestInTx(tx, b, { actor = null } = {}) {
+  const won = await tx.booking.updateMany({ where: { id: b.id, status: 'request' }, data: { status: 'confirmed', confirmedAt: new Date(), holdUntil: null } });
+  if (!won.count) throw new HttpError(409, 'Подтвердить можно только новую заявку');   // под блокировкой квартиры не бывает; на всякий случай
+  await ensureTurnover(tx, b);
+  const [eventKey, dispatchKey] = confirmKeys(b.id);
+  await enqueue(tx, { accountId: b.accountId, kind: 'event', payload: { name: 'booking.confirmed', data: { accountId: b.accountId, bookingId: b.id } }, dedupeKey: eventKey });
+  await enqueue(tx, { accountId: b.accountId, kind: 'transfers.dispatch', payload: { bookingId: b.id, actor }, dedupeKey: dispatchKey });
+  await hook('confirmBeforeCommit', { bookingId: b.id });   // тест: «падение» до коммита → откат всего
+}
+
 /** Подтвердить заявку — единственная точка подтверждения (оплата на сайте, админ; на шаге 6 — ссылка).
  *  В ОДНОЙ транзакции квартиры (всё или ничего): перечитать бронь, снять истёкшие удержания, условная запись
  *  request → confirmed (+ confirmedAt, holdUntil = null), обязательная подготовка (autoKey) и строки журнала:
@@ -167,13 +191,7 @@ export async function confirmBooking({ accountId, bookingId, events, dispatch = 
     if (!b) throw new HttpError(404, 'Бронь не найдена');
     if (b.status === 'confirmed') return tx.booking.findUnique({ where: { id: b.id }, include: { apartment: true, guest: true } });
     if (b.status !== 'request') throw new HttpError(409, 'Подтвердить можно только новую заявку');
-    const won = await tx.booking.updateMany({ where: { id: b.id, status: 'request' }, data: { status: 'confirmed', confirmedAt: new Date(), holdUntil: null } });
-    if (!won.count) throw new HttpError(409, 'Подтвердить можно только новую заявку');   // под блокировкой квартиры не бывает; на всякий случай
-    await ensureTurnover(tx, b);
-    const [eventKey, dispatchKey] = confirmKeys(b.id);
-    await enqueue(tx, { accountId, kind: 'event', payload: { name: 'booking.confirmed', data: { accountId, bookingId: b.id } }, dedupeKey: eventKey });
-    await enqueue(tx, { accountId, kind: 'transfers.dispatch', payload: { bookingId: b.id, actor }, dedupeKey: dispatchKey });
-    await hook('confirmBeforeCommit', { bookingId: b.id });   // тест: «падение» до коммита → откат всего
+    await confirmRequestInTx(tx, b, { actor });
     return tx.booking.findUnique({ where: { id: b.id }, include: { apartment: true, guest: true } });
   });
   await hook('confirmAfterCommit', { bookingId });   // тест: «падение» после коммита, до журнала

@@ -14,18 +14,20 @@ import { notFound, badRequest, HttpError, parse } from '../lib/errors.js';
 import { apartmentPublic, bookingOut } from '../lib/serialize.js';
 import { parseDay, isoDay, addDays, todayIn, nights } from '../lib/dates.js';
 import { convertKzt } from '../lib/money.js';
-import { busyRanges, createBookingRequest, isAvailable, quote } from '../services/bookings.js';
+import { busyRanges, createBookingRequest, isAvailable, quote, withApartmentTx, extendHold, PUBLIC_HOLD_MIN } from '../services/bookings.js';
 import { transferLegPrice } from '../services/transfers.js';
 import { loadBrand, loadTexts, loadCurrency } from '../site/config.js';
 import { deepLink } from '../telegram/linking.js';
 import { applyPaymentResult } from '../payments/index.js';
 
+const CARD_ONLY = 'Бронирование на сайте — только с оплатой картой; для особых условий напишите нам';
+const HOLD_EXPIRED = 'Время на оплату истекло — даты освобождены. Забронируйте заново';
 const phoneRe = /^[+\d][\d\s()-]{5,20}$/;
 const BookingSchema = z.object({
   apartmentId: z.string(), checkIn: z.string(), checkOut: z.string(), guests: z.number().int().min(1).max(30),
   name: z.string().trim().min(2).max(80), phone: z.string().trim().regex(phoneRe, 'Телефон в формате +7 700 000 00 00'), email: z.string().email().optional().or(z.literal('').transform(() => undefined)),
   comment: z.string().max(1000).optional(), pets: z.boolean().optional(), currency: z.enum(['KZT', 'RUB', 'USD', 'EUR']).default('KZT'),
-  paymentMethod: z.enum(['card', 'cash', 'kaspi', 'telegram', 'whatsapp', 'transfer']).default('cash'), lang: z.enum(['ru', 'en']).default('ru'),
+  paymentMethod: z.string().max(40).optional(), lang: z.enum(['ru', 'en']).default('ru'),   // проход 4: на сайте — только 'card' (проверка ниже)
   earlyCheckIn: z.string().regex(/^\d{2}:\d{2}$/, 'Время в формате ЧЧ:ММ').optional(),   // «можно заехать в 10 утра?» — согласует админ
 });
 const TransferSchema = z.object({
@@ -52,7 +54,7 @@ export default function publicRouter({ events, payments, config, dispatch }) {
     res.json({
       account: { name: req.account.name, slug: req.account.slug }, brand, texts,
       currency: { base: 'KZT', shown: currency.shown, rates: currency.rates, roundStep: currency.roundStep },
-      payments: { online: !!payments, provider: payments?.name || null, offline: ['cash', 'telegram', 'whatsapp'] },
+      payments: { online: !!payments, provider: payments?.name || null, offline: [], bookingMethod: 'card' },   // бронь на сайте — только с оплатой картой (особые условия — личная ссылка)
       telegram: { bot: config.telegram.username || null },
     });
   });
@@ -90,6 +92,9 @@ export default function publicRouter({ events, payments, config, dispatch }) {
 
   r.post('/bookings', async (req, res) => {
     const d = parse(BookingSchema, req.body);
+    // проход 4, шаг 4: обычный гость бронирует на сайте только с оплатой картой; способ оплаты ставит сервер.
+    // Любое другое значение — 400 (а не молчаливая замена: гость должен понять, что наличных на сайте нет).
+    if (d.paymentMethod !== undefined && d.paymentMethod !== 'card') throw badRequest(CARD_ONLY);
     const ci = parseDay(d.checkIn), co = parseDay(d.checkOut);
     const today = todayIn(req.account.timezone);
     if (!ci || !co || co <= ci) throw badRequest('Проверьте даты заезда и выезда');
@@ -105,7 +110,8 @@ export default function publicRouter({ events, payments, config, dispatch }) {
     const guest = await prisma.guest.create({ data: { accountId: req.accountId, name: d.name, phone: d.phone, email: d.email, locale: d.lang } });
     const booking = await createBookingRequest({
       accountId: req.accountId, apartment: apt, checkIn: ci, checkOut: co, guestsCount: d.guests, guest, pets: d.pets,
-      note: d.comment, paymentMethod: d.paymentMethod, currencyShown: d.currency, amountShown,
+      note: d.comment, paymentMethod: 'card', currencyShown: d.currency, amountShown,
+      holdUntil: new Date(Date.now() + PUBLIC_HOLD_MIN * 60000),   // неоплаченная заявка держит даты только 30 мин
     });
     if (d.earlyCheckIn && d.earlyCheckIn < booking.checkInTime) await prisma.booking.update({ where: { id: booking.id }, data: { earlyCheckIn: d.earlyCheckIn, earlyCheckInStatus: 'requested' } });
     events.emit('booking.requested', { accountId: req.accountId, bookingId: booking.id });
@@ -113,7 +119,7 @@ export default function publicRouter({ events, payments, config, dispatch }) {
       number: booking.number, token: booking.token, status: booking.status, checkIn: isoDay(ci), checkOut: isoDay(co),
       nights: q.nights, totalKzt: q.totalKzt, currency: d.currency, amountShown,
       telegramLink: deepLink(config.telegram.username, `b_${booking.token}`),
-      payOnline: d.paymentMethod === 'card' && !!payments,
+      payOnline: !!payments, holdUntil: booking.holdUntil,
     });
   });
 
@@ -128,11 +134,21 @@ export default function publicRouter({ events, payments, config, dispatch }) {
   });
   r.post('/bookings/:token/pay', async (req, res) => {
     if (!payments) throw new HttpError(409, 'Онлайн-оплата пока не подключена');
-    const b = await byToken(req);
-    if (b.paymentStatus === 'paid') throw new HttpError(409, 'Бронь уже оплачена');
-    if (!['request', 'confirmed'].includes(b.status)) throw new HttpError(409, 'Бронь отменена — оплатить нельзя');
-    const currency = 'KZT';   // списываем в тенге; валюта гостя — только для показа
-    const payment = await prisma.payment.create({ data: { accountId: req.accountId, bookingId: b.id, provider: payments.name, amountKzt: b.totalKzt, currency, amount: b.totalKzt, status: 'created' } });
+    const b0 = await byToken(req);
+    if (b0.paymentStatus === 'paid') throw new HttpError(409, 'Бронь уже оплачена');
+    // проход 4, шаг 4: в транзакции квартиры — истёкшее удержание снимается, живое продлевается до «сейчас + 20 мин»
+    // (более длинное не укорачивается); истёкшую или отменённую заявку оплата не оживляет — 409.
+    // Отказ возвращается из транзакции, а не бросается: снятие истёкшего удержания должно закоммититься.
+    const { b, payment, refuse } = await withApartmentTx(b0.apartmentId, async (tx) => {
+      const cur = await tx.booking.findUnique({ where: { id: b0.id } });
+      if (cur.paymentStatus === 'paid') return { refuse: 'Бронь уже оплачена' };
+      if (!['request', 'confirmed'].includes(cur.status)) return { refuse: cur.holdUntil && cur.holdUntil <= new Date() ? HOLD_EXPIRED : 'Бронь отменена — оплатить нельзя' };
+      const holdUntil = extendHold(cur);
+      if (holdUntil) await tx.booking.update({ where: { id: cur.id }, data: { holdUntil } });
+      const payment = await tx.payment.create({ data: { accountId: req.accountId, bookingId: cur.id, provider: payments.name, amountKzt: cur.totalKzt, currency: 'KZT', amount: cur.totalKzt, status: 'created' } });   // списываем в тенге; валюта гостя — только для показа
+      return { b: { ...b0, ...cur, ...(holdUntil ? { holdUntil } : {}) }, payment };
+    });
+    if (refuse) throw new HttpError(409, refuse);
     const lang = b.guest?.locale || 'ru';
     const description = lang === 'en' ? `Booking #${b.number}, ${b.apartment.titleEn || b.apartment.title}` : `Бронь №${b.number}, ${b.apartment.title}`;
     const intent = await payments.createPayment({ payment, booking: b, guest: b.guest, description, lang, returnUrl: `${config.publicUrl}/api/public/${req.account.slug}/bookings/${b.token}` });
