@@ -152,7 +152,8 @@ test('трансфер, отчёт мастера и смета — уведом
 test('клининг: отчёт об уборке → уведомление', async () => {
   const cl = await login(noBot.app, 'aigerim@astanastay.example');
   const tasks = (await request(noBot.app).get('/api/staff/tasks').set(cl.auth)).body.cleaning;
-  const t = tasks.find(x => x.status !== 'done') || tasks[0];
+  const t = tasks.find(x => x.status !== 'done' && x.canStart);   // проход 3: «готово» — только после «Начать» и не раньше дня подготовки
+  assert.equal((await request(noBot.app).post(`/api/staff/cleaning/${t.id}/start`).set(cl.auth)).status, 200);
   const r = await request(noBot.app).post(`/api/staff/cleaning/${t.id}/status`).set(cl.auth).send({ status: 'done', report: 'Всё чисто, забыли зарядку' });
   assert.equal(r.status, 200);
   await noBot.events.idle();

@@ -652,7 +652,7 @@ window.APP_CONFIG = { API_BASE_URL: '', ACCOUNT_SLUG: 'astana-stay' };
 
 ## Тесты
 
-`npm test` — создаёт отдельную SQLite-базу `prisma/test.db`, прогоняет **97 проверок** (`npm run test:pg` — те же на PostgreSQL):
+`npm test` — создаёт отдельную SQLite-базу `prisma/test.db`, прогоняет **103 проверки** (`npm run test:pg` — те же на PostgreSQL):
 вход и изоляция аккаунтов, роли, загрузка/порядок/обложка/удаление фото, тексты сайта и логотип,
 уведомления (без Telegram — в журнал, без повторов), привязка Telegram по ссылкам, подписи CloudPayments и PayLink,
 заявки мастерам (`tests/work-requests.test.js`): смета без выезда с материалами, путь с выездом, смета по фото и «по фото → нужен выезд»,

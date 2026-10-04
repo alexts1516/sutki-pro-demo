@@ -48,7 +48,7 @@ export function createCleaning({ events, payouts, workflow, defects }) {
 
   async function setStatus(task, status, { report, checklist } = {}) {
     if (status === 'progress') return start(task);
-    if (status === 'done') { if (task.status !== 'done' && task.status !== 'progress') task = { ...task, ...(await start(task)) }; return finish(task, { report, checklist }); }
+    if (status === 'done') return finish(task, { report, checklist });   // только из «Идёт подготовка» — шаги не перепрыгиваем
     notDone(task);
     if (status === 'assigned' && task.status !== 'enroute') throw conflict('Вернуть назад можно только из «В пути»');
     if (status === 'enroute') { if (task.status === 'progress') throw conflict('Подготовка уже идёт'); await notEarly(task); }
@@ -100,7 +100,10 @@ export function createCleaning({ events, payouts, workflow, defects }) {
     const why = (note || report || '').trim();
     if (missing.length && !why) throw conflict(`Не отмечено: ${missing.join(', ')}. Отметьте или напишите почему`);
     const now = new Date();
-    const u = await prisma.cleaningTask.update({ where: { id: task.id }, data: { status: 'done', startedAt: task.startedAt || now, doneAt: now, report: report ?? task.report, finishNote: missing.length ? why : null } });
+    // условная запись: двойное нажатие «Закончить» не создаст вторую выплату и второе уведомление
+    const won = await prisma.cleaningTask.updateMany({ where: { id: task.id, status: 'progress' }, data: { status: 'done', startedAt: task.startedAt || now, doneAt: now, report: report ?? task.report, finishNote: missing.length ? why : null } });
+    const u = await prisma.cleaningTask.findUnique({ where: { id: task.id } });
+    if (!won.count) { if (u.status === 'done') return u; throw conflict('Сначала нажмите «Начать подготовку»'); }
     await payouts?.forCleaning(task.id);
     emit('cleaning.reported', { accountId: task.accountId, taskId: task.id });
     return u;

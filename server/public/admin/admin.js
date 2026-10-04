@@ -665,7 +665,7 @@ function defectHtml(p, ph = () => '') {
     <div class="row"><span class="chip ${!isOpen ? '' : p.priority === 'urgent' ? 'red' : 'amber'}">${isOpen ? (p.priority === 'urgent' ? 'срочно — мешает заезду' : 'можно позже') : '✓ ' + (DEF_RES[p.resolution] || 'решено')}</span><b class="grow">${esc(p.text)}</b></div>
     <div class="muted small">${p.byName ? 'сообщил(а) ' + esc(p.byName) + ' · ' : ''}${fmtTime(p.at)}${p.takenByName && isOpen ? ` · взялся: ${esc(p.takenByName)}` : ''}${!isOpen && p.resolvedByName ? ` · закрыл(а) ${esc(p.resolvedByName)}` : ''}</div>${ph(p.photos)}
     ${isOpen ? `<div class="row" style="margin-top:6px">${p.repairTaskId ? `<button class="btn sm" data-wr="${p.repairTaskId}">🔧 Заявка мастеру создана → открыть</button>` : `<button class="btn sm primary" data-df="repair:${p.id}">🔧 Заявка мастеру</button>${p.takenByName ? '' : `<button class="btn sm" data-df="take:${p.id}">✋ Сделаю сам</button>`}`}
-      <button class="btn sm success" data-df="resolve:${p.id}">✓ Решено</button><button class="btn sm" data-df="prio:${p.id}:${p.priority === 'urgent' ? 'later' : 'urgent'}">${p.priority === 'urgent' ? 'Сделать «можно позже»' : 'Сделать срочным'}</button></div>` : ''}</div>`;
+      ${p.repairTaskId && !['DONE', 'CANCELLED'].includes(p.repairStatus) ? '' : `<button class="btn sm success" data-df="resolve:${p.id}">✓ Решено</button>`}<button class="btn sm" data-df="prio:${p.id}:${p.priority === 'urgent' ? 'later' : 'urgent'}">${p.priority === 'urgent' ? 'Сделать «можно позже»' : 'Сделать срочным'}</button></div>` : ''}</div>`;
 }
 /** Кнопки недочёта (в карточке квартиры и подготовки). true — действие выполнено */
 async function defectAction(e) {

@@ -110,7 +110,8 @@ export default function operationsRouter({ events, dispatch, cleaning }) {
       const m = await prisma.membership.findFirst({ where: { accountId: req.accountId, userId: assigneeId, role: 'cleaning', active: true } });
       if (!m) throw badRequest('Исполнитель должен быть специалистом по подготовке этого аккаунта');
     }
-    res.json(await prisma.cleaningTask.update({ where: { id: t.id }, data: { assigneeId } }));
+    // сменили исполнителя у «В пути» — новый начинает с начала (иначе задача «в пути» без человека)
+    res.json(await prisma.cleaningTask.update({ where: { id: t.id }, data: { assigneeId, ...(t.status === 'enroute' && assigneeId !== t.assigneeId ? { status: 'assigned' } : {}) } }));
   });
 
   // полный отчёт о подготовке: кто, начало/окончание, чек-лист, фото, проблемы, комментарии (+ выплата — владельцу)

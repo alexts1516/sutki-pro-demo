@@ -16,6 +16,11 @@ import { HttpError, notFound, parse } from '../../lib/errors.js';
 import { todayView, apartmentOps } from '../../services/ops.js';
 import { defectOut, PRIORITIES } from '../../services/defects.js';
 
+/** Минимум времени на подготовку между выездом предыдущего гостя и ранним заездом */
+export const PREP_MIN = 120;
+const mins = (t) => { const [h, m] = String(t || '00:00').split(':').map(Number); return h * 60 + m; };
+const hhmm = (m) => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+
 export default function opsRouter({ defects, cleaning, events }) {
   const r = Router();
   const actorOf = (req) => ({ type: req.role, id: req.user.id, name: req.user.name });
@@ -57,6 +62,14 @@ export default function opsRouter({ defects, cleaning, events }) {
     if (!b) throw notFound('Бронь не найдена');
     if (b.earlyCheckInStatus !== 'requested' || !b.earlyCheckIn) throw new HttpError(409, 'Нет запроса на ранний заезд');
     if (!['request', 'confirmed'].includes(b.status)) throw new HttpError(409, 'Бронь закрыта');
+    if (approve) {
+      // предыдущий гость выезжает в тот же день: раньше его выезда + время на подготовку заселить нельзя
+      const prev = await prisma.booking.findFirst({ where: { accountId: req.accountId, apartmentId: b.apartmentId, id: { not: b.id }, status: { in: ['request', 'confirmed', 'completed'] }, checkOut: b.checkIn }, orderBy: { checkOutTime: 'desc' } });
+      if (prev) {
+        const earliest = mins(prev.checkOutTime) + PREP_MIN;
+        if (mins(b.earlyCheckIn) < earliest) throw new HttpError(409, `В этот день выезжает предыдущий гость (до ${prev.checkOutTime}) + ${PREP_MIN / 60} ч на подготовку — раньше ${hhmm(earliest)} заселить нельзя. Откажите или предложите гостю ${hhmm(earliest)}`);
+      }
+    }
     const u = await prisma.booking.update({ where: { id: b.id }, data: approve ? { earlyCheckInStatus: 'approved', checkInTime: b.earlyCheckIn, note: [b.note, `Ранний заезд согласован: ${b.earlyCheckIn} (было ${b.checkInTime})`].filter(Boolean).join('\n') } : { earlyCheckInStatus: 'declined' } });
     events?.emit('booking.early_checkin', { accountId: req.accountId, bookingId: b.id, approved: approve });
     res.json({ id: u.id, checkInTime: u.checkInTime, earlyCheckIn: u.earlyCheckIn, earlyCheckInStatus: u.earlyCheckInStatus });

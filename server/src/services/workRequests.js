@@ -85,7 +85,11 @@ async function recalc(taskId) {
   const t = await prisma.repairTask.findUnique({ where: { id: taskId }, include: { estimates: true, extras: true } });
   return prisma.repairTask.update({ where: { id: taskId }, data: { costKzt: t.status === 'CANCELLED' ? null : payable(t) } });
 }
-const setStatus = (task, status, extra = {}) => prisma.repairTask.update({ where: { id: task.id }, data: { status, ...extra } });
+/** Условная смена статуса: если заявку уже изменили (двойное нажатие, вторая вкладка) — 409, без второй записи в журнал и второго уведомления */
+async function setStatus(task, status, extra = {}) {
+  const r = await prisma.repairTask.updateMany({ where: { id: task.id, status: task.status }, data: { status, ...extra } });
+  if (!r.count) throw new HttpError(409, 'Заявку уже изменили — обновите карточку');
+}
 
 /** Последняя смета (для «Исправить смету» — тем же способом) */
 export const lastEstimate = (task) => [...(task.estimates || [])].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)).at(-1) || null;

@@ -141,7 +141,11 @@ export function bindTransfer(root, j, { base, onChange }) {
     if (act === 'done' && !confirm('Завершить поездку?')) return;
     const msg = { accept: 'Заказ ваш ✅', arrived: 'Гостю сообщили, что вы на месте', 'picked-up': 'Хорошей дороги!', done: 'Поездка завершена' }[act];
     try { await onChange(await api(`${base}/${act}`, { method: 'POST', body: {} }), msg); }
-    catch (err) { if (err.status === 409 && act === 'accept') { toast('Уже взял другой водитель', true); return onChange(null); } throw err; }
+    catch (err) {   // 409 — состояние уже изменилось (двойное нажатие, другая вкладка, другой водитель): показать причину и обновить карточку
+      if (err.status === 409 && act === 'accept') { toast('Уже взял другой водитель', true); return onChange(null); }
+      if (err.status === 409) { toast(err.message, true); return onChange(await api(base).catch(() => null)); }
+      throw err;
+    }
   });
 }
 

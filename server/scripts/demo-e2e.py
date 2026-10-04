@@ -305,6 +305,11 @@ with sync_playwright() as p:
     pg.locator(f'[data-open="cl:{cl["id"]}"]').first.click(); pg.wait_for_selector('text=Чек-лист')
     pg.click('[data-df^="repair:"]'); pg.wait_for_function("location.hash.startsWith('#repairs/')", timeout=10000); pg.wait_for_timeout(600)
     check('Перегорела лампа' in pg.inner_text('#view'), 'недочёт → «Заявка мастеру» одним нажатием (заявка без мастера, можно выбрать)')
+    df = db(f"const d = await p.defect.findFirst({{ where: {{ cleaningTaskId: '{cl['id']}', text: {{ contains: 'Перегорела лампа' }} }} }}); return {{ id: d.id, repair: d.repairTaskId, status: d.status }};")
+    neg = ev("""async (id) => { const post = (u) => fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(async r => ({ s: r.status, b: await r.json() }));
+      const [a, b] = await Promise.all([post('/api/admin/defects/' + id + '/repair'), post('/api/admin/defects/' + id + '/repair')]);
+      const res = await post('/api/admin/defects/' + id + '/resolve'); return { a: a.b.repairTaskId, b: b.b.repairTaskId, res: res.s }; }""", df['id'])
+    check(neg['a'] == neg['b'] == df['repair'] and neg['res'] == 409 and df['status'] == 'open', 'повторная «Заявка мастеру» — та же заявка; «Решено» до работы мастера — запрещено (409), недочёт открыт')
     pg.goto(B + 'admin/#payouts'); pg.wait_for_selector('h1:has-text("Выплаты")'); pg.wait_for_timeout(500)
     check('К оплате' in pg.inner_text('#view') or 'должны' in pg.inner_text('#view'), 'экран «Выплаты»: кому сколько должны'); shot('14d-owner-payouts.png')
     overlay_role('Внешний мастер по ссылке', '/link/'); pg.wait_for_timeout(900)

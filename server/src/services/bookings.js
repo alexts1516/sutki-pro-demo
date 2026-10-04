@@ -63,7 +63,10 @@ export async function confirmBooking({ accountId, bookingId, events, dispatch = 
   if (!b) throw new HttpError(404, 'Бронь не найдена');
   if (b.status === 'confirmed') return b;
   if (b.status !== 'request') throw new HttpError(409, 'Подтвердить можно только новую заявку');
-  const updated = await prisma.booking.update({ where: { id: b.id }, data: { status: 'confirmed', confirmedAt: new Date() }, include: { apartment: true, guest: true } });
+  // условная запись: повторный/одновременный вызов (двойной клик, повтор вебхука оплаты) не создаст вторую подготовку и второй заказ водителям
+  const won = await prisma.booking.updateMany({ where: { id: b.id, status: 'request' }, data: { status: 'confirmed', confirmedAt: new Date() } });
+  const updated = await prisma.booking.findUnique({ where: { id: b.id }, include: { apartment: true, guest: true } });
+  if (!won.count) { if (updated.status === 'confirmed') return updated; throw new HttpError(409, 'Подтвердить можно только новую заявку'); }
   const hasCleaning = await prisma.cleaningTask.findFirst({ where: { bookingId: b.id } });
   if (!hasCleaning) await prisma.cleaningTask.create({ data: { accountId, apartmentId: b.apartmentId, bookingId: b.id, date: b.checkOut, fromTime: b.checkOutTime, status: 'assigned' } });
   events?.emit('booking.confirmed', { accountId, bookingId: b.id });
