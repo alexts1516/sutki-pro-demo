@@ -366,3 +366,24 @@ export async function guestSubmit({ token, events = null, dispatch = null, now =
   if (st === 'completed') return { status: 'completed', stage: 'completed', missing: [], booking: { number: b.number, status: b.status } };
   return { status: st, stage: stage(link, b, now), missing: missing(link, b), booking: { number: b.number, status: b.status } };
 }
+
+/** Шаг 9: поздний ремонт — одно фактическое событие на ссылку, обнаруженное существующим scheduler.
+ * Проверка под блокировкой квартиры; никакой отправки внутри транзакции. */
+export async function reconcileLinkConflicts({ now = new Date() } = {}) {
+  const accounts = await prisma.account.findMany({ select: { id: true, timezone: true } });
+  for (const account of accounts) {
+    const where = { accountId: account.id, source: 'link', status: { in: ['request', 'confirmed'] }, checkOut: { gte: todayIn(account.timezone, now) } };
+    const bookings = await prisma.booking.findMany({ where, select: { apartmentId: true } });
+    for (const apartmentId of new Set(bookings.map(b => b.apartmentId))) {
+      await withApartmentTx(apartmentId, async tx => {
+        const list = await tx.booking.findMany({ where: { ...where, apartmentId }, include: { link: true } });
+        const repairs = await tx.repairTask.findMany({ where: { apartmentId, blockDays: { gt: 0 }, status: { notIn: ['DONE', 'CANCELLED'] } } });
+        for (const b of list) {
+          if (!b.link || !['active', 'completed'].includes(b.link.status)) continue;
+          if (!repairs.some(r => r.date < b.checkOut && addDays(r.date, r.blockDays) > b.checkIn)) continue;
+          await enqueue(tx, { accountId: b.accountId, kind: 'event', payload: { name: 'link.conflict', data: { accountId: b.accountId, bookingId: b.id, linkId: b.link.id } }, dedupeKey: `event:link.conflict:${b.link.id}` });
+        }
+      });
+    }
+  }
+}

@@ -15,14 +15,16 @@ export const EVENTS = ['booking.requested', 'booking.confirmed', 'checkin.upcomi
   'extra.submitted', 'extra.decided', 'repair.reported', 'repair.cancelled', 'repair.occupancy_changed', 'payment.succeeded',
   'transfer.offered', 'transfer.accepted', 'transfer.driver_assigned', 'transfer.driver_removed', 'transfer.unassigned', 'transfer.released',
   'transfer.updated', 'transfer.cancelled', 'transfer.reminder', 'transfer.en_route', 'transfer.driver_arrived',
-  'cleaning.problem', 'repair.declined', 'payout.created', 'payout.reminder'];
+  'cleaning.problem', 'repair.declined', 'payout.created', 'payout.reminder',
+  'link.started', 'link.completed', 'link.expired', 'link.conflict', 'payment.orphaned'];
 
 export function createNotificationService({ prisma, transport = null, logger = console, quiet = false }) {
   const fallback = consoleTransport({ quiet });
 
   /** Отправить одно сообщение и записать в журнал */
-  async function deliver({ accountId, event, recipientType, recipientId = null, recipientName = '', chatId = null, lang = 'ru', data, dedupeKey = null, buttons = null }) {
-    if (dedupeKey && await prisma.notificationLog.findUnique({ where: { dedupeKey } })) return { status: 'duplicate' };
+  async function deliver({ accountId, event, recipientType, recipientId = null, recipientName = '', chatId = null, lang = 'ru', data, dedupeKey = null, buttons = null, retryFailed = false }) {
+    const previous = dedupeKey ? await prisma.notificationLog.findUnique({ where: { dedupeKey } }) : null;
+    if (previous && !(retryFailed && previous.status === 'failed')) return { status: 'duplicate' };
     const text = render(event, lang, data);
     let status, channel, error = null;
     if (transport && chatId) {
@@ -37,21 +39,23 @@ export function createNotificationService({ prisma, transport = null, logger = c
       await fallback.send(chatId, text, [recipientName, recipientType].filter(Boolean).join(', '));
     }
     try {
-      await prisma.notificationLog.create({ data: { accountId, event, channel, recipientType, recipientId, chatId, lang, text, status, error, dedupeKey } });
+      const record = { accountId, event, channel, recipientType, recipientId, chatId, lang, text, status, error, dedupeKey };
+      if (previous) await prisma.notificationLog.update({ where: { id: previous.id }, data: record });
+      else await prisma.notificationLog.create({ data: record });
     } catch (e) { if (e.code !== 'P2002') throw e; return { status: 'duplicate' }; }   // P2002 — такой dedupeKey уже есть
     return { status, channel, text };
   }
 
   /** Владельцу и/или админам — кому именно, решает настройка «Кому уведомления» (владелец / админ / оба).
    *  roles — задать явно (например, оплаты — только владельцу); alsoOwner — владелец получит в любом случае (сметы при «одобряет только владелец»). */
-  async function toManagers(accountId, event, data, { roles = null, alsoOwner = false, dedupeKey = null, buttons = null } = {}) {
+  async function toManagers(accountId, event, data, { roles = null, alsoOwner = false, dedupeKey = null, buttons = null, retryFailed = false } = {}) {
     roles = roles || await managerRoles(accountId, prisma);
     if (alsoOwner && !roles.includes('owner')) roles = [...roles, 'owner'];
     const members = await prisma.membership.findMany({ where: { accountId, active: true, role: { in: roles } }, include: { user: true } });
     const out = [];
     for (const m of members) {
       out.push(await deliver({ accountId, event, recipientType: m.role, recipientId: m.userId, recipientName: m.user.name, chatId: m.user.telegramId, lang: m.user.locale, data,
-        dedupeKey: dedupeKey ? `${dedupeKey}:${m.userId}` : null, buttons }));
+        dedupeKey: dedupeKey ? `${dedupeKey}:${m.userId}` : null, buttons, retryFailed }));
     }
     return out;
   }
@@ -96,7 +100,28 @@ export function createNotificationService({ prisma, transport = null, logger = c
     return toManagers(accountId, event, { payout: p, apartment, task, hours }, { roles: ['owner'], dedupeKey: `${event}:${p.id}`, buttons: payoutButtons(p.id) });
   }
 
+  // Только шаг 9: успешные получатели пропускаются на повторе; failed повторяются через ту же строку журнала.
+  async function specialNotice(event, { accountId, bookingId, linkId, paymentId }) {
+    let b, payment = null, link = null;
+    if (event === 'payment.orphaned') {
+      payment = await prisma.payment.findFirst({ where: { id: paymentId, accountId } });
+      if (!payment?.bookingId) return;
+      b = await loadBooking(accountId, payment.bookingId);
+    } else {
+      link = await prisma.bookingLink.findFirst({ where: { id: linkId, accountId } });
+      if (!link || link.bookingId !== bookingId) return;
+      b = await loadBooking(accountId, link.bookingId);
+    }
+    if (!b) return;
+    const account = await prisma.account.findUnique({ where: { id: accountId }, select: { timezone: true } });
+    const result = await toManagers(accountId, event, { ...bookingData(b), link, payment, timezone: account?.timezone || 'Asia/Almaty' },
+      { dedupeKey: `${event}:${link?.id || payment.id}`, retryFailed: true });
+    if (result.some(r => r.status === 'failed')) throw new Error(`Notification delivery failed: ${event}`);
+    return result;
+  }
+
   const handlers = {
+    ...Object.fromEntries(['link.started', 'link.completed', 'link.expired', 'link.conflict', 'payment.orphaned'].map(event => [event, data => specialNotice(event, data)])),
     async 'booking.requested'({ accountId, bookingId }) {
       const b = await loadBooking(accountId, bookingId); if (!b) return;
       return toManagers(accountId, 'booking.requested', bookingData(b));

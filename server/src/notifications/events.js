@@ -13,6 +13,13 @@ export function createEventBus({ logger = console } = {}) {
         pending.add(p); p.finally(() => pending.delete(p));
       }
     },
+    /** Outbox: дождаться именно этого события и передать ошибку для повтора. Обычный emit сохраняет прежнее поведение. */
+    async emitAsync(name, payload) {
+      const list = [...(handlers.get(name) || []), ...(handlers.get('*') || [])];
+      const results = await Promise.allSettled(list.map(fn => Promise.resolve().then(() => fn(payload, name))));
+      const failed = results.find(r => r.status === 'rejected');
+      if (failed) throw failed.reason;
+    },
     /** Дождаться обработки всех событий (удобно в тестах) */
     async idle() { while (pending.size) await Promise.all([...pending]); },
   };

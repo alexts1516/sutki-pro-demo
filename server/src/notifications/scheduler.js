@@ -2,6 +2,7 @@
 // и отправляем событие checkin.upcoming. Повторно одно и то же не уйдёт (dedupeKey в журнале).
 import { addDays, todayIn } from '../lib/dates.js';
 import { releaseAllExpiredHolds, reconcileBookings } from '../services/bookings.js';
+import { reconcileLinkConflicts } from '../services/bookingLinks.js';
 import { runOutbox } from '../services/outbox.js';
 
 export async function runReminders({ prisma, events, now = new Date() }) {
@@ -26,6 +27,7 @@ export async function runReminders({ prisma, events, now = new Date() }) {
 export async function runBookingMaintenance({ events, dispatch = null, logger = null, now = new Date() }) {
   const released = await releaseAllExpiredHolds({ now });
   const reconciled = await reconcileBookings({ now });
+  await reconcileLinkConflicts({ now });
   const outbox = await runOutbox({ events, dispatch, logger });
   return { released, reconciled, outbox };
 }

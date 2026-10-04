@@ -37,8 +37,17 @@ const payoutLine = (d) => {
 };
 const aptNo = (a) => `${e(a.title)}${a.address ? `\n📍 ${e(a.address)}` : ''}`;
 
+const specialDetails = (d, l) => `🏠 ${e(d.apartment.title)}\n📅 ${day(d.booking.checkIn, l)} → ${day(d.booking.checkOut, l)}${d.guest?.name ? `\n👤 ${e(d.guest.name)}` : ''}`;
+const holdTime = d => d.booking.holdUntil ? new Intl.DateTimeFormat('ru-RU', { timeZone: d.timezone, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(d.booking.holdUntil)) : '—';
+const bookingStatus = (s, l) => (l === 'en' ? { request: 'request', confirmed: 'confirmed', cancelled: 'cancelled', completed: 'completed' } : { request: 'заявка', confirmed: 'подтверждена', cancelled: 'отменена', completed: 'завершена' })[s] || s;
+
 export const templates = {
   ru: {
+    'link.started': d => `👤 <b>Гость начал оформление особой брони №${d.booking.number}</b>\n${specialDetails(d, 'ru')}\n⏰ Даты удерживаются до ${holdTime(d)}`,
+    'link.completed': d => `✅ <b>Особая бронь №${d.booking.number} подтверждена</b>\n${specialDetails(d, 'ru')}\n💳 ${money(d.booking.totalKzt)}\nПодготовка и дальнейшая работа — в обычном операционном потоке.`,
+    'link.expired': d => `⌛ <b>Особая бронь №${d.booking.number} истекла</b> — гость не завершил оформление, даты освобождены.\n${specialDetails(d, 'ru')}`,
+    'link.conflict': d => `🚨 <b>Конфликт по особой брони №${d.booking.number}</b>: ремонт пересекается с бронью.\n${specialDetails(d, 'ru')}\nСтатус брони: ${e(bookingStatus(d.booking.status, 'ru'))}.\nОткройте «Сегодня» и решите конфликт.`,
+    'payment.orphaned': d => `🚨 <b>Оплата без доступной брони №${d.booking.number} — требуется возврат</b>\n${specialDetails(d, 'ru')}\n💳 ${money(d.payment.amountKzt)}\nОплата получена, но бронь восстановить нельзя. Откройте «Сегодня» и оформите возврат.`,
     'booking.requested': d => `🆕 <b>Новая заявка №${d.booking.number}</b> (${SRC[d.booking.source] || d.booking.source})\n` +
       `🏠 ${e(d.apartment.title)}\n📅 ${day(d.booking.checkIn, 'ru')} → ${day(d.booking.checkOut, 'ru')} · ${d.nights} ноч. · ${d.booking.guestsCount} гост.\n` +
       `👤 ${e(d.guest?.name)} ${e(d.guest?.phone || '')}\n💳 ${money(d.booking.totalKzt)}${d.booking.paymentMethod ? ' · ' + (PAY.ru[d.booking.paymentMethod] || d.booking.paymentMethod) : ''}` +
@@ -103,6 +112,11 @@ export const templates = {
     'telegram.linked': d => `🔗 Telegram подключён. Теперь сюда будут приходить уведомления${d.accountName ? ` «${e(d.accountName)}»` : ''}.`,
   },
   en: {
+    'link.started': d => `👤 <b>Guest started special booking #${d.booking.number}</b>\n${specialDetails(d, 'en')}\n⏰ Dates held until ${holdTime(d)}`,
+    'link.completed': d => `✅ <b>Special booking #${d.booking.number} confirmed</b>\n${specialDetails(d, 'en')}\n💳 ${money(d.booking.totalKzt)}\nPreparation and further operations follow the standard booking workflow.`,
+    'link.expired': d => `⌛ <b>Special booking #${d.booking.number} expired</b> — the guest did not finish; dates released.\n${specialDetails(d, 'en')}`,
+    'link.conflict': d => `🚨 <b>Conflict for special booking #${d.booking.number}</b>: repair overlaps the booking.\n${specialDetails(d, 'en')}\nBooking status: ${e(bookingStatus(d.booking.status, 'en'))}.\nOpen Today and resolve the conflict.`,
+    'payment.orphaned': d => `🚨 <b>Payment without available booking #${d.booking.number} — refund required</b>\n${specialDetails(d, 'en')}\n💳 ${money(d.payment.amountKzt)}\nPayment received, but the booking cannot be restored. Open Today and arrange a refund.`,
     'booking.requested': d => `🆕 <b>New request #${d.booking.number}</b> (${d.booking.source})\n🏠 ${e(d.apartment.titleEn || d.apartment.title)}\n` +
       `📅 ${day(d.booking.checkIn, 'en')} → ${day(d.booking.checkOut, 'en')} · ${d.nights} nights · ${d.booking.guestsCount} guests\n👤 ${e(d.guest?.name)} ${e(d.guest?.phone || '')}\n` +
       `💳 ${money(d.booking.totalKzt)}${d.booking.paymentMethod ? ' · ' + (PAY.en[d.booking.paymentMethod] || d.booking.paymentMethod) : ''}${d.booking.note ? `\n💬 “${e(d.booking.note)}”` : ''}\n\nPlease confirm it in the admin panel.`,

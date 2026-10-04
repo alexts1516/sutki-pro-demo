@@ -7,6 +7,8 @@ import { prisma } from '../db.js';
 import { hook } from '../lib/testHooks.js';
 import { withApartmentLock } from './bookings.js';
 
+const RELIABLE_EVENTS = new Set(['link.started', 'link.completed', 'link.expired', 'link.conflict', 'payment.orphaned']);
+
 export const OUTBOX_MAX_ATTEMPTS = 5;
 export const OUTBOX_LEASE_MS = 5 * 60000;
 export const outboxRetryMs = (attempts) => Math.min(60000 * 2 ** Math.max(0, attempts - 1), 30 * 60000);   // 1, 2, 4, 8 мин…
@@ -24,7 +26,8 @@ export async function enqueue(db, { accountId, kind, payload, dedupeKey }) {
 /** Обработчики по виду строки. Нет нужного сервиса (events/dispatch) — вида нет: строка ждёт процесс, где он есть. */
 export function outboxHandlers({ events = null, dispatch = null } = {}) {
   return {
-    ...(events ? { event: async (row) => { events.emit(row.payload.name, row.payload.data); } } : {}),
+    ...(events ? { event: async (row) => { if (RELIABLE_EVENTS.has(row.payload.name) && events.emitAsync) await events.emitAsync(row.payload.name, row.payload.data);
+      else events.emit(row.payload.name, row.payload.data); } } : {}),
     ...(dispatch ? {
       // предложить водителям трансферы подтверждённой брони; бронь уже отменили — нечего предлагать.
       // Под очередью квартиры: строго до или после отмены этой брони, а не одновременно с ней.
@@ -74,6 +77,7 @@ export async function runOutbox({ events = null, dispatch = null, keys = null, l
       logger?.error?.(`[outbox] ${row.dedupeKey}: ${e?.message || e}${failed ? ' — попытки исчерпаны' : ''}`);
       continue;
     }
+    await hook('outboxBeforeDone', row); // тест: доставка записана, процесс упал до закрытия Outbox
     await prisma.outboxEvent.update({ where: { id: row.id }, data: { status: 'done', doneAt: new Date(), lastError: null } });
     out.done++;
     await hook('outboxAfterRow', row);   // тест: «процесс упал» после части строк
