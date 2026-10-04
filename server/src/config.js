@@ -57,7 +57,7 @@ export const config = {
     loginMax: Number(env.LOGIN_MAX_ATTEMPTS || 5),          // неудачных попыток на логин+IP за окно
     loginWindowMin: Number(env.LOGIN_WINDOW_MIN || 15),
     ipMax: Number(env.AUTH_IP_MAX || 30),                   // любых попыток входа с одного IP за окно
-    linkMax: Number(env.LINK_RATE_MAX || 120),              // запросов к /api/task-link и /api/transfer-link с одного IP за окно
+    linkMax: Number(env.LINK_RATE_MAX || 120),              // запросов к ссылкам без входа (/api/link, task-link, transfer-link, special-link) с одного IP за окно
     linkBadMax: Number(env.LINK_BAD_MAX || 20),             // неверных ссылок (404) с одного IP за окно
     linkWindowMin: Number(env.LINK_WINDOW_MIN || 15),
   },

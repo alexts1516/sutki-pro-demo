@@ -5,13 +5,16 @@
 // Срок — только Booking.holdUntil. Истечение — общий releaseExpiredHolds (транзакция квартиры, планировщик, ленивое чтение).
 // Подтверждение — общее ядро confirmRequestInTx (то же, что у confirmBooking и оплаты). Отмена/отзыв — cancelBooking().
 // Индивидуальная цена — только services/linkPrice.js (право + цена + журнал одной транзакцией).
-// Гостевого API здесь нет (шаг 7); findLinkByToken — внутренняя функция для тестов и шага 7.
+// Гостевая часть (шаг 7, раздел 6.2): guestView / guestSave / guestSubmit — поиск только findLinkByToken, подтверждение
+// только completeIfReadyInTx, истечение только releaseExpiredHolds. Маршруты — routes/specialLink.js.
 import crypto from 'node:crypto';
 import { prisma } from '../db.js';
 import { HttpError, badRequest, notFound } from '../lib/errors.js';
 import { randomToken } from '../lib/tokens.js';
-import { isoDay, nights as countNights, todayIn, DAY_MS } from '../lib/dates.js';
-import { createBookingRequest, withApartmentTx, releaseAllExpiredHolds, cancelBooking, confirmRequestInTx, confirmKeys, isAvailable, quote } from './bookings.js';
+import { isoDay, nights as countNights, todayIn, addDays, DAY_MS } from '../lib/dates.js';
+import { sortPhotos } from '../lib/serialize.js';
+import { deepLink } from '../telegram/linking.js';
+import { createBookingRequest, withApartmentTx, releaseExpiredHolds, releaseAllExpiredHolds, cancelBooking, confirmRequestInTx, confirmKeys, isAvailable, quote } from './bookings.js';
 import { enqueue, runOutbox } from './outbox.js';
 import { assertLinkPriceRight, setLinkPriceInTx, setLinkPrice, MAX_TOTAL_KZT } from './linkPrice.js';
 
@@ -150,12 +153,13 @@ export async function priceHistory({ accountId, linkId }) {
 
 /** Внутренняя (шаг 7 и тесты): найти ссылку по сырому токену — поиск только по хэшу; длина 40–64, иначе null без запроса.
  *  Истёкшая, но не снятая — снимается сразу (транзакция квартиры). Возвращает ссылку с бронью или null. */
-export async function findLinkByToken(rawToken) {
+export async function findLinkByToken(rawToken, { now = new Date() } = {}) {
   if (typeof rawToken !== 'string' || rawToken.length < 40 || rawToken.length > 64) return null;
   const tokenHash = hashToken(rawToken);
   let link = await prisma.bookingLink.findUnique({ where: { tokenHash }, include: withBooking });
-  if (link && link.status === 'active' && holdExpired(link.booking)) {
-    await withApartmentTx(link.booking.apartmentId, () => null);
+  if (link && link.status === 'active' && holdExpired(link.booking, now)) {
+    const apartmentId = link.booking.apartmentId;
+    await withApartmentTx(apartmentId, (tx) => releaseExpiredHolds(tx, { apartmentId, now }));   // now — для тестов границы срока
     link = await prisma.bookingLink.findUnique({ where: { tokenHash }, include: withBooking });
   }
   return link;
@@ -256,4 +260,109 @@ export async function changeLinkPrice({ accountId, linkId, actor, totalKzt }) {
   const link = await load(prisma, accountId, linkId);
   await setLinkPrice({ accountId, bookingId: link.bookingId, userId: actor?.id, totalKzt, reason: 'manual' });
   return out(await load(prisma, accountId, linkId));
+}
+
+// ---------- гость (шаг 7, раздел 6.2): без входа, только по токену ----------
+const GONE_MSG = 'Ссылка больше не действует — напишите владельцу';
+const GUEST_CONFLICT_MSG = 'Даты стали недоступны — владелец свяжется с вами';
+const LINK_NOT_FOUND = 'Ссылка не найдена или заменена новой';
+const CLOSED = ['expired', 'revoked', 'cancelled'];
+const gone = (status) => new HttpError(410, GONE_MSG, { status });   // статус закрытой ссылки — чтобы страница показала понятный текст
+
+/** Ссылка гостя по токену (только findLinkByToken) + проверка, что её ещё можно показывать:
+ *  expired/revoked/cancelled — 410; completed — просмотр «подтверждено» до дня выезда + 1, потом 410 (раздел 8). */
+async function guestLink(rawToken, now) {
+  const link = await findLinkByToken(rawToken, { now });
+  if (!link) throw notFound(LINK_NOT_FOUND);
+  const st = linkStatus(link, link.booking, now);
+  if (CLOSED.includes(st)) throw gone(st);
+  if (st === 'completed') {
+    const acc = await prisma.account.findUnique({ where: { id: link.accountId }, select: { timezone: true } });
+    if (todayIn(acc?.timezone, now) > addDays(link.booking.checkOut, 1)) throw gone('completed');
+  }
+  return link;
+}
+
+/** Ответ гостю (раздел 6.2): без id брони/гостя/аккаунта, без токена и хэша; адрес и Telegram — только после подтверждения. */
+async function guestOut(link, config, now) {
+  const b = link.booking;
+  const st = linkStatus(link, b, now);
+  const confirmed = st === 'completed' && b.status === 'confirmed';
+  const photos = await prisma.apartmentPhoto.findMany({ where: { apartmentId: b.apartmentId }, select: { url: true, isCover: true, sortOrder: true } });
+  return {
+    status: st, stage: stage(link, b, now), missing: st === 'active' ? missing(link, b) : [], holdUntil: st === 'active' ? b.holdUntil : null,
+    apartment: { title: b.apartment.title, rooms: b.apartment.rooms, maxGuests: b.apartment.maxGuests, photo: sortPhotos(photos)[0]?.url || null, ...(confirmed ? { address: b.apartment.address } : {}) },
+    checkIn: isoDay(b.checkIn), checkOut: isoDay(b.checkOut), checkInTime: b.checkInTime, checkOutTime: b.checkOutTime,
+    nights: countNights(b.checkIn, b.checkOut), guestsCount: b.guestsCount, totalKzt: b.totalKzt,
+    terms: link.terms, depositKzt: link.depositKzt, note: link.note, extraCheckRequired: link.extraCheckRequired, extraCheckNote: link.extraCheckNote,
+    guest: { name: b.guest?.name || null, phone: b.guest?.phone || null },
+    booking: { number: b.number, status: b.status },
+    ...(confirmed ? { telegramLink: deepLink(config?.telegram?.username, `b_${b.token}`) } : {}),
+  };
+}
+
+/** Действие гостя в транзакции квартиры: перечитать ссылку; срок вышел (now ≥ holdUntil) — истечение через общий
+ *  releaseExpiredHolds в этой же транзакции и 410 после коммита; закрытая — 410; подтверждённая — { completed }. */
+async function guestTx(link0, now, fn) {
+  const apartmentId = link0.booking.apartmentId;
+  const r = await withApartmentTx(apartmentId, async (tx) => {
+    const link = await tx.bookingLink.findUnique({ where: { id: link0.id }, include: { booking: { include: { guest: true } } } });
+    if (link.status === 'active' && holdExpired(link.booking, now)) { await releaseExpiredHolds(tx, { apartmentId, now }); return { gone: 'expired' }; }
+    if (CLOSED.includes(link.status)) return { gone: link.status };
+    if (link.status === 'completed') return { completed: true, keys: [] };
+    return fn(tx, link);
+  });
+  if (r.gone) throw gone(r.gone);
+  return r;
+}
+const afterTx = async (r, { events, dispatch }) => {
+  if (r.keys?.length) await runOutbox({ events, dispatch, keys: r.keys }).catch(() => {});   // лучшее усилие; иначе — планировщик
+  if (r.conflict) throw new HttpError(409, GUEST_CONFLICT_MSG);
+};
+
+/** GET гостя: ленивое истечение (в findLinkByToken), затем openCount+1 (открытие — не «начал», раздел 4.2). */
+export async function guestView({ token, config, now = new Date() }) {
+  const link = await guestLink(token, now);
+  if (link.status === 'active') await prisma.bookingLink.updateMany({ where: { id: link.id, status: 'active' }, data: { openCount: { increment: 1 }, lastOpenedAt: now } });
+  return guestOut(link, config, now);
+}
+
+/** POST данных и согласия: Guest (имя, телефон, почта), guestStartedAt ??= now, согласие только с ТЕКУЩИМИ условиями
+ *  (termsHash = termsHashOf сейчас). Первый раз — link.started (dedupe). Гость уже нажимал «Подтвердить» и всё выполнено —
+ *  подтверждение (раздел 4.3). Подтверждённая — 409, закрытая — 410. Ответ — как GET. */
+export async function guestSave({ token, name, phone, email = null, config, events = null, dispatch = null, now = new Date() }) {
+  const link0 = await guestLink(token, now);
+  if (link0.status === 'completed') throw new HttpError(409, 'Бронь уже подтверждена — данные менять не нужно');
+  const r = await guestTx(link0, now, async (tx, link) => {
+    const b = link.booking;
+    await tx.guest.update({ where: { id: b.guestId }, data: { name, phone, email: email || null } });
+    const first = !link.guestStartedAt;
+    await tx.bookingLink.updateMany({ where: { id: link.id, status: 'active' }, data: { guestStartedAt: link.guestStartedAt ?? now, termsAcceptedAt: now, termsHash: termsHashOf(b, link) } });
+    const keys = [];
+    if (first) {
+      const key = `event:link.started:${link.id}`;
+      await enqueue(tx, { accountId: link.accountId, kind: 'event', payload: { name: 'link.started', data: { accountId: link.accountId, bookingId: b.id, linkId: link.id } }, dedupeKey: key });
+      keys.push(key);
+    }
+    const c = link.submittedAt ? await completeIfReadyInTx(tx, link.id, { now }) : { keys: [] };
+    return { ...c, keys: [...keys, ...c.keys] };
+  });
+  await afterTx(r, { events, dispatch });
+  return guestOut(await guestLink(token, now), config, now);
+}
+
+/** «Подтвердить»: submittedAt ??= now, затем общее completeIfReadyInTx (missing пуст и now < holdUntil — подтверждение
+ *  ядром confirmRequestInTx). Повтор и повтор после потерянного ответа — тот же ответ «подтверждена». */
+export async function guestSubmit({ token, events = null, dispatch = null, now = new Date() }) {
+  const link0 = await guestLink(token, now);
+  const r = link0.status === 'completed' ? { completed: true, keys: [] } : await guestTx(link0, now, async (tx, link) => {
+    if (!link.submittedAt) await tx.bookingLink.updateMany({ where: { id: link.id, status: 'active', submittedAt: null }, data: { submittedAt: now } });
+    return completeIfReadyInTx(tx, link.id, { now });
+  });
+  await afterTx(r, { events, dispatch });
+  const link = await guestLink(token, now);
+  const b = link.booking;
+  const st = linkStatus(link, b, now);
+  if (st === 'completed') return { status: 'completed', stage: 'completed', missing: [], booking: { number: b.number, status: b.status } };
+  return { status: st, stage: stage(link, b, now), missing: missing(link, b), booking: { number: b.number, status: b.status } };
 }

@@ -315,6 +315,56 @@ with sync_playwright() as p:
     overlay_role('Внешний мастер по ссылке', '/link/'); pg.wait_for_timeout(900)
     check('Ссылка недействительна' not in pg.inner_text('#view'), 'внешний мастер открывает заявку по ссылке без входа'); shot('16-external-master-link.png')
 
+    # ---------- личная ссылка гостя (проход 4, шаг 7): без входа, предложение → данные → согласие → «Подтвердить» ----------
+    print('Личная ссылка гостя (вид special): подтверждение и истёкшая ссылка')
+    overlay_role('Владелец Азамат', '/admin/')
+    mk_link = """async (off) => { const a = await SutkiDemo.prisma.apartment.findFirst({ where: { active: true, accountId: (await SutkiDemo.prisma.account.findUnique({ where: { slug: 'astana-stay' } })).id }, orderBy: { sortOrder: 'asc' } });
+      const day = (n) => new Date(Date.now() + n * 864e5).toISOString().slice(0, 10);
+      const r = await fetch('/api/admin/booking-links', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ apartmentId: a.id, checkIn: day(off), checkOut: day(off + 2), guestsCount: 2, terms: 'cash_on_arrival', note: 'Договорились в WhatsApp' }) });
+      const j = await r.json(); return { s: r.status, token: (j.url || '').split('/link/')[1]?.replace(/^#/, ''), bookingId: j.link?.bookingId, title: a.title, address: a.address, err: j.error }; }"""
+    sl = ev(mk_link, 300)
+    check(sl['s'] == 201 and len(sl['token'] or '') == 43, 'владелец создал личную ссылку (демо): ' + str(sl.get('err') or 'токен 43 символа'))
+    pg.goto(B + 'link/#' + sl['token']); pg.wait_for_selector('#spSubmit', timeout=20000); pg.wait_for_timeout(300)
+    t = pg.inner_text('#view')
+    check(all(x in t for x in [sl['title'], 'Предложение действует до', 'Оплата наличными при заезде', 'Договорились в WhatsApp', 'Ночей']) and sl['address'].split(',')[0] not in t,
+          'гость без входа видит предложение: квартира, даты, сумма, условия, срок; адреса до подтверждения нет')
+    shot('18-special-link-offer.png', True)
+    pg.click('#spSubmit'); pg.wait_for_selector('#spErr:not([hidden])')
+    check('имя и телефон' in pg.inner_text('#spErr'), 'без имени и телефона — понятная подсказка, запроса нет')
+    pg.fill('#spName', 'Гость Ссылки'); pg.fill('#spPhone', '+7 701 555 66 77'); pg.click('#spSubmit'); pg.wait_for_timeout(200)
+    check('согласие' in pg.inner_text('#spErr'), 'без галочки «Согласен» — понятная подсказка, запроса нет')
+    pg.check('#spTerms')
+    ev("() => { const b = document.querySelector('#spSubmit'); b.click(); b.click(); b.click(); }")   # тройное нажатие — один запрос
+    pg.wait_for_selector('[data-state="confirmed"]', timeout=20000); pg.wait_for_timeout(300)
+    t = pg.inner_text('#view')
+    nprep = db(f"return await p.cleaningTask.count({{ where: {{ bookingId: '{sl['bookingId']}' }} }});")
+    st = db(f"const b = await p.booking.findUnique({{ where: {{ id: '{sl['bookingId']}' }} }}); const l = await p.bookingLink.findUnique({{ where: {{ bookingId: b.id }} }}); return [b.status, l.status, b.number];")
+    check(st[0] == 'confirmed' and st[1] == 'completed' and nprep == 1 and f'Бронь №{st[2]} подтверждена' in t and sl['address'] in t,
+          f'«Подтвердить» → бронь №{st[2]} подтверждена, ссылка завершена, одна подготовка (тройное нажатие); адрес показан')
+    shot('19-special-link-confirmed.png', True)
+    pg.reload(); pg.wait_for_selector('[data-state="confirmed"]', timeout=20000)
+    check(f'Бронь №{st[2]} подтверждена' in pg.inner_text('#view'), 'обновление страницы — то же состояние с сервера')
+    ex = ev(mk_link, 310)
+    db(f"await p.booking.update({{ where: {{ id: '{ex['bookingId']}' }}, data: {{ holdUntil: new Date(Date.now() - 1000) }} }}); return 1;")
+    pg.wait_for_timeout(800)   # демо сохраняет изменения через 400 мс
+    pg.goto(B + 'link/#' + ex['token']); pg.wait_for_selector('[data-state="expired"]', timeout=20000)
+    stx = db(f"const b = await p.booking.findUnique({{ where: {{ id: '{ex['bookingId']}' }} }}); const l = await p.bookingLink.findUnique({{ where: {{ bookingId: b.id }} }}); return [b.status, l.status];")
+    check('Срок предложения истёк' in pg.inner_text('#view') and stx == ['cancelled', 'expired'], 'истёкшая ссылка: «Срок предложения истёк», бронь отменена, даты свободны')
+    shot('20-special-link-expired.png')
+    dl = ev(mk_link.replace("terms: 'cash_on_arrival'", "terms: 'deposit', depositKzt: 10000"), 320)
+    pg.goto(B + 'link/#' + dl['token']); pg.wait_for_selector('#spSubmit', timeout=20000)
+    pg.fill('#spName', 'Гость Залог'); pg.fill('#spPhone', '+7 701 555 66 78'); pg.check('#spTerms'); pg.click('#spSubmit')
+    pg.wait_for_selector('[data-state="waiting_deposit"]', timeout=20000)
+    check('Ждём, когда владелец отметит залог' in pg.inner_text('#view') and db(f"return (await p.booking.findUnique({{ where: {{ id: '{dl['bookingId']}' }} }})).status;") == 'request',
+          'ссылка с залогом: после «Подтвердить» — «Ждём, когда владелец отметит залог» (не ошибка), бронь ещё не подтверждена')
+    shot('21-special-link-waiting-deposit.png', True)
+    lid = db(f"return (await p.bookingLink.findUnique({{ where: {{ bookingId: '{dl['bookingId']}' }} }})).id;")
+    rv = ev("async (id) => (await fetch('/api/admin/booking-links/' + id + '/revoke', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status", lid)
+    pg.reload(); pg.wait_for_selector('[data-state="revoked"]', timeout=20000)
+    check(rv == 200 and 'Ссылка отозвана' in pg.inner_text('#view'), 'отозванная ссылка — «Ссылка отозвана»')
+    pg.goto(B + 'link/#' + 'x' * 43); pg.wait_for_selector('#view .card', timeout=20000); pg.wait_for_timeout(300)
+    check('Ссылка недействительна' in pg.inner_text('#view'), 'неверная личная ссылка — «Ссылка недействительна или заменена новой»')
+
     # ---------- гость с главной и сброс ----------
     print('Заявка гостя с главной и «Сбросить демо»')
     pg.goto(B); pg.wait_for_function("document.querySelector('#statusText').textContent.includes('Демо готово')")

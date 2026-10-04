@@ -193,6 +193,13 @@ try {
       const r = await L.rotateLink({ accountId: a.accountId, linkId: a.linkId });
       out = { ok: true, token: r.token, ms: Date.now() - t0 };
     }
+  } else if (a.mode === 'submit') {   // шаг 7: «Подтвердить» гостя в отдельном процессе (своя шина и настоящий диспетчер)
+    const { createEventBus } = await import('./src/notifications/events.js');
+    const { createTransferDispatch } = await import('./src/services/transferJobs.js');
+    const L = await import('./src/services/bookingLinks.js');
+    const events = createEventBus({ logger: { error() {} } });
+    const r = await L.guestSubmit({ token: a.token, events, dispatch: createTransferDispatch({ events }) });
+    out = { ok: true, status: r.status, booking: r.booking, keys: Object.keys(r), ms: Date.now() - t0 };
   } else if (a.mode === 'create') {
     const apartment = await prisma.apartment.findUnique({ where: { id: a.apartmentId } });
     const b = await createBookingRequest({ accountId: a.accountId, apartment, checkIn: new Date(a.checkIn), checkOut: new Date(a.checkOut), guestsCount: 1, guest: null, paymentMethod: 'card' });
@@ -438,4 +445,56 @@ test('PG шаг 6: две одновременные «Новая ссылка»
   for (const t of [token, ...okTokens]) if (await findLinkByToken(t)) valid.push(t);
   assert.equal(valid.length, 1, 'ровно один действующий токен');
   assert.notEqual(valid[0], token);
+});
+
+// ---------- Шаг 7: гостевое API — гонки разных процессов ----------
+
+test('PG шаг 7: два процесса одновременно жмут «Подтвердить» по одной ссылке → одна бронь, одна подготовка, один заказ водителю, одинаковые ответы', { skip }, async () => {
+  const { createLink, guestSave } = await import('../src/services/bookingLinks.js');
+  const { makeApp, request } = await import('./helpers.js');
+  const { app } = makeApp();
+  const om = await prisma.membership.findFirst({ where: { accountId: acc.id, role: 'owner' } });
+  for (let round = 0; round < 3; round++) {
+    const from = 860 + round * 10;
+    const { link, token } = await createLink({ accountId: acc.id, actor: { id: om.userId, name: 'Тест', type: 'owner' }, apartmentId: apt.id, checkIn: addDays(today, from), checkOut: addDays(today, from + 2), guestsCount: 1, terms: 'cash_on_arrival' });
+    await guestSave({ token, name: 'Гость Гонки', phone: '+7 701 000 00 00' });
+    const b0 = await prisma.booking.findUnique({ where: { id: link.bookingId } });
+    const tr = await request(app).post('/api/public/astana-stay/transfers').send({ bookingToken: b0.token, direction: 'in', place: 'airport', date: addDays(today, from).toISOString().slice(0, 10), time: '15:00', pax: 1, bags: 1, name: 'Гость', phone: '+7 701 000 00 00' });
+    assert.equal(tr.status, 201, JSON.stringify(tr.body));
+    const startAt = Date.now() + 2500;
+    const rs = await Promise.all([0, 1].map(() => appChild({ mode: 'submit', startAt, token })));
+    assert.deepEqual(rs.map(r => r.ok && r.status), ['completed', 'completed'], JSON.stringify(rs));
+    assert.deepEqual(rs[0].booking, rs[1].booking);
+    const b = await prisma.booking.findUnique({ where: { id: link.bookingId } });
+    const l = await prisma.bookingLink.findUnique({ where: { id: link.id } });
+    assert.equal(b.status, 'confirmed'); assert.equal(l.status, 'completed');
+    assert.equal(await prisma.booking.count({ where: { apartmentId: apt.id, checkIn: b.checkIn, status: { not: 'cancelled' } } }), 1);
+    assert.equal(await prisma.cleaningTask.count({ where: { bookingId: b.id } }), 1, 'одна подготовка');
+    const jobs = await prisma.transferJob.findMany({ where: { bookingId: b.id } });
+    assert.equal(jobs.length, 1, 'один заказ водителю');
+    assert.equal(await prisma.transferEvent.count({ where: { jobId: jobs[0].id, type: 'offered' } }), 1, 'предложение водителям — один раз');
+    assert.equal(await prisma.outboxEvent.count({ where: { dedupeKey: `event:link.completed:${link.id}` } }), 1);
+  }
+});
+
+test('PG шаг 7: «Подтвердить» против истечения (планировщик) в разных процессах → либо подтверждено, либо истекло и даты свободны', { skip }, async () => {
+  const { createLink, guestSave } = await import('../src/services/bookingLinks.js');
+  const { isAvailable } = await import('../src/services/bookings.js');
+  const om = await prisma.membership.findFirst({ where: { accountId: acc.id, role: 'owner' } });
+  for (let round = 0; round < 3; round++) {
+    const from = 900 + round * 10;
+    const { link, token } = await createLink({ accountId: acc.id, actor: { id: om.userId, name: 'Тест', type: 'owner' }, apartmentId: apt.id, checkIn: addDays(today, from), checkOut: addDays(today, from + 2), guestsCount: 1, terms: 'cash_on_arrival' });
+    await guestSave({ token, name: 'Гость Гонки', phone: '+7 701 000 00 00' });
+    const startAt = Date.now() + 2500;
+    await prisma.booking.update({ where: { id: link.bookingId }, data: { holdUntil: new Date(startAt + 50 + round * 5) } });   // истекает «в момент» гонки
+    const [sub] = await Promise.all([appChild({ mode: 'submit', startAt: startAt + 45, token }), appChild({ mode: 'release', startAt: startAt + 50 })]);
+    const b = await prisma.booking.findUnique({ where: { id: link.bookingId } });
+    const l = await prisma.bookingLink.findUnique({ where: { id: link.id } });
+    if (sub.ok) { assert.equal(sub.status, 'completed'); assert.equal(b.status, 'confirmed'); assert.equal(l.status, 'completed'); assert.equal(await prisma.cleaningTask.count({ where: { bookingId: b.id } }), 1); }
+    else {
+      assert.equal(sub.status, 410, JSON.stringify(sub)); assert.equal(b.status, 'cancelled'); assert.equal(l.status, 'expired');
+      assert.equal(await prisma.cleaningTask.count({ where: { bookingId: b.id } }), 0);
+      assert.ok(await isAvailable(acc.id, apt.id, b.checkIn, b.checkOut), 'даты свободны');
+    }
+  }
 });

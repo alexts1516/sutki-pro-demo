@@ -126,6 +126,7 @@ copy('link/link.js', 'link/link.js', [
   ["const token = decodeURIComponent(location.pathname.split('/').filter(Boolean).pop() || '');",
     "const token = decodeURIComponent(location.hash.slice(1) || '');\nwindow.addEventListener('hashchange', () => location.reload());"],
 ]);
+copy('link/special.js', 'link/special.js', [["from '/shared/views.js'", "from '../shared/views.js'"]]);   // вид гостя по личной ссылке (проход 4, шаг 7)
 copy('shared/ui.css', 'shared/ui.css');
 copy('shared/views.js', 'shared/views.js');
 

@@ -12,6 +12,7 @@ import { isOverlapError, isDeadlockError, toConflict } from './lib/dbErrors.js';
 import authRouter from './routes/auth.js';
 import settingsRouter from './routes/admin/settings.js';
 import linkKindRouter from './routes/linkKind.js';
+import specialLinkRouter from './routes/specialLink.js';
 import { linkGuard } from './lib/rateLimit.js';
 import apartmentsRouter from './routes/admin/apartments.js';
 import siteRouter from './routes/admin/site.js';
@@ -97,6 +98,7 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
   app.use('/api/link', guard, linkKindRouter());
   app.use('/api/task-link', guard, taskLinkRouter({ workflow, storage, config }));
   app.use('/api/transfer-link', guard, transferLinkRouter({ dispatch }));
+  app.use('/api/special-link', guard, specialLinkRouter({ events, dispatch, config }));   // личная ссылка гостя (проход 4, шаг 7)
 
   // файлы и админка
   if (storage.driver === 'local') app.use('/uploads', express.static(storage.uploadDir, { maxAge: '7d', fallthrough: false }));
@@ -120,7 +122,7 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
     else if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') { status = 400; message = 'Слишком много файлов или неверное поле формы'; }
     else if (err.type === 'entity.parse.failed') { status = 400; message = 'Неверный JSON'; }
     else if (isOverlapError(err) || isDeadlockError(err)) { const c = toConflict(err); status = c.status; message = c.message; }   // конфликт занятости из базы — не «ошибка сервера»
-    if (status >= 500) { logger.error('[error]', req.method, req.originalUrl, err); message = 'Ошибка сервера'; }
+    if (status >= 500) { logger.error('[error]', req.method, req.originalUrl.replace(/^(\/api\/(?:special-link|link)\/)[^/?]+/, '$1***'), err); message = 'Ошибка сервера'; }   // токен личной ссылки в журнал не пишется
     res.status(status).json({ error: message, ...(err.details ? { details: err.details } : {}) });
   });
   return app;

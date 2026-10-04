@@ -536,7 +536,7 @@ ACCEPTED ─ водитель отказался (только до выезда
 
 - **вход** (`POST /api/auth/login`): после 5 неверных паролей на один логин с одного IP — 15 минут ответ 429 с `Retry-After`
   (даже с верным паролем); всего 30 неверных входов с одного IP за 15 минут; удачный вход сбрасывает счётчик логина;
-- **ссылки без входа** (`/api/link`, `/api/task-link`, `/api/transfer-link`): 120 запросов с IP за 15 минут и 20 неверных ссылок
+- **ссылки без входа** (`/api/link`, `/api/task-link`, `/api/transfer-link`, `/api/special-link`): 120 запросов с IP за 15 минут и 20 неверных ссылок
   (ответов 404) — дальше 429. Токены ссылок — 18 случайных байт.
 
 Лимиты меняются переменными `LOGIN_*`, `AUTH_IP_MAX`, `LINK_*`. За прокси (nginx, Render) IP берётся из `X-Forwarded-For` (`trust proxy` = 1).
@@ -642,6 +642,7 @@ window.APP_CONFIG = { API_BASE_URL: '', ACCOUNT_SLUG: 'astana-stay' };
 **Ссылки без входа** (с ограничением частоты): `GET /api/link/:token` → `{ kind: task | transfer }` — для страницы `/link/<токен>`;
 **задача по ссылке** `/api/task-link/:token`: те же шаги мастера по одной заявке.
 **Трансфер по ссылке** `/api/transfer-link/:token` (без входа): шаги внешнего водителя по одному заказу.
+**Личная ссылка гостя** `/api/special-link/:token` (без входа; проход 4, шаг 7): `GET` — предложение и состояние, `POST /guest` — `{name, phone, email?, acceptTerms:true}`, `POST /submit` — «Подтвердить». Закрытая ссылка — 410; адрес и Telegram — только после подтверждения; страница — `/link/<токен>` (вид `special`). Подробно — раздел 6.2 спецификации прохода 4.
 
 **Вебхуки**: `/api/payments/cloudpayments/{check,pay,fail}`, `/api/payments/paylink/notify`,
 `/api/telegram/webhook` (сообщения и нажатия кнопки «Беру»).
