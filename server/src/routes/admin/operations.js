@@ -7,7 +7,7 @@ import { requireRole } from '../../auth/middleware.js';
 import { notFound, badRequest, HttpError, parse } from '../../lib/errors.js';
 import { bookingOut } from '../../lib/serialize.js';
 import { parseDay, isoDay, addDays, todayIn } from '../../lib/dates.js';
-import { confirmBooking, isAvailable } from '../../services/bookings.js';
+import { confirmBooking, isAvailable, withApartmentTx } from '../../services/bookings.js';
 import { loadCurrency } from '../../site/config.js';
 import { cleaningReport } from '../../services/cleaning.js';
 
@@ -57,23 +57,27 @@ export default function operationsRouter({ events, dispatch, cleaning }) {
     }), req.body);
     const b = await prisma.booking.findFirst({ where: { id: req.params.id, accountId: req.accountId } });
     if (!b) throw notFound('Бронь не найдена');
-    // смена дат: проверяем, что квартира свободна, пересчитываем сумму, сдвигаем уборку и трансферы
-    if (data.checkIn || data.checkOut) {
-      if (!['request', 'confirmed'].includes(b.status)) throw new HttpError(409, 'Даты закрытой брони не меняются');
-      const ci = data.checkIn ? parseDay(data.checkIn) : b.checkIn, co = data.checkOut ? parseDay(data.checkOut) : b.checkOut;
+    if (!data.checkIn && !data.checkOut) {   // без смены дат занятость не меняется
+      const u = await prisma.booking.update({ where: { id: b.id }, data, include: { apartment: true, guest: true } });
+      return res.json(bookingOut(u));
+    }
+    // смена дат: проверка свободы, пересчёт суммы, запись и сдвиг подготовки — одной транзакцией квартиры (проход 4, шаг 2)
+    const today = todayIn(req.account.timezone);
+    const u = await withApartmentTx(b.apartmentId, async (tx) => {
+      const cur = await tx.booking.findFirst({ where: { id: b.id, accountId: req.accountId } });
+      if (!cur) throw notFound('Бронь не найдена');
+      if (!['request', 'confirmed'].includes(cur.status)) throw new HttpError(409, 'Даты закрытой брони не меняются');
+      const ci = data.checkIn ? parseDay(data.checkIn) : cur.checkIn, co = data.checkOut ? parseDay(data.checkOut) : cur.checkOut;
       if (!ci || !co || co <= ci) throw badRequest('Проверьте даты заезда и выезда');
-      const today = todayIn(req.account.timezone);
-      if (+ci !== +b.checkIn && b.checkIn <= today) throw new HttpError(409, 'Гость уже заехал — можно менять только дату выезда');
+      if (+ci !== +cur.checkIn && cur.checkIn <= today) throw new HttpError(409, 'Гость уже заехал — можно менять только дату выезда');
       if (co < today) throw badRequest('Дата выезда уже прошла');
-      if (['request', 'confirmed'].includes(b.status) && !(await isAvailable(req.accountId, b.apartmentId, ci, co, b.id))) throw new HttpError(409, 'Эти даты уже заняты');
+      if (!(await isAvailable(req.accountId, cur.apartmentId, ci, co, cur.id, tx))) throw new HttpError(409, 'Эти даты уже заняты');
       const n = Math.round((co - ci) / 86400000);
-      Object.assign(data, { checkIn: ci, checkOut: co, totalKzt: b.nightlyKzt * n + b.petFeeKzt });
-    }
-    const u = await prisma.booking.update({ where: { id: b.id }, data, include: { apartment: true, guest: true } });
-    if (data.checkIn || data.checkOut) {
-      await prisma.cleaningTask.updateMany({ where: { bookingId: b.id, status: { in: ['assigned', 'enroute'] } }, data: { date: u.checkOut } });   // идущую подготовку не двигаем
-      await dispatch.syncBookingDates({ accountId: req.accountId, booking: u, actor: actorOf(req) });
-    }
+      const upd = await tx.booking.update({ where: { id: cur.id }, data: { ...data, checkIn: ci, checkOut: co, totalKzt: cur.nightlyKzt * n + cur.petFeeKzt }, include: { apartment: true, guest: true } });
+      await tx.cleaningTask.updateMany({ where: { bookingId: cur.id, status: { in: ['assigned', 'enroute'] } }, data: { date: upd.checkOut } });   // идущую подготовку не двигаем
+      return upd;
+    });
+    await dispatch.syncBookingDates({ accountId: req.accountId, booking: u, actor: actorOf(req) });   // водители и уведомления — после записи
     res.json(bookingOut(u));
   });
 

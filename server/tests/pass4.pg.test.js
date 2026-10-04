@@ -145,3 +145,99 @@ test('PG: брони встык (выезд = заезд) разрешены; о
   await prisma.booking.create({ data: bookingData({ apartmentId: apt2.id, checkIn: addDays(today, 90), checkOut: addDays(today, 93) }) });
   await prisma.apartment.delete({ where: { id: apt2.id } });
 });
+
+// ---------- Шаг 2: транзакционная занятость через код приложения (withApartmentTx) ----------
+
+// Отдельный процесс, который вызывает НАСТОЯЩИЙ сервис приложения (src/services/bookings.js) со своим подключением.
+const APP_CHILD = `
+const a = JSON.parse(process.argv[1]);
+const { createBookingRequest, withApartmentTx } = await import('./src/services/bookings.js');
+const { prisma } = await import('./src/db.js');
+let out;
+try {
+  await prisma.$queryRaw\`SELECT 1\`;
+  while (Date.now() < a.startAt) await new Promise(r => setTimeout(r, 1));
+  const t0 = Date.now();
+  if (a.mode === 'create') {
+    const apartment = await prisma.apartment.findUnique({ where: { id: a.apartmentId } });
+    const b = await createBookingRequest({ accountId: a.accountId, apartment, checkIn: new Date(a.checkIn), checkOut: new Date(a.checkOut), guestsCount: 1, guest: null, paymentMethod: 'card' });
+    out = { ok: true, id: b.id, ms: Date.now() - t0 };
+  } else {   // 'hold': держать транзакцию квартиры holdMs; 'touch': войти в транзакцию квартиры и сразу выйти
+    await withApartmentTx(a.apartmentId, async () => { if (a.mode === 'hold') { console.log('LOCKED'); await new Promise(r => setTimeout(r, a.holdMs)); } });
+    out = { ok: true, ms: Date.now() - t0 };
+  }
+} catch (e) { out = { ok: false, status: e.status || null, code: e.code || null, msg: String(e.message || e) }; }
+await prisma.$disconnect();
+console.log('RESULT ' + JSON.stringify(out));
+`;
+function appChild(args, onLine) {
+  return new Promise((resolve, reject) => {
+    const p = spawn(process.execPath, ['--input-type=module', '-e', APP_CHILD, JSON.stringify(args)], { cwd: root, env: process.env });
+    let buf = '', err = '';
+    p.stdout.on('data', (d) => { buf += d; for (const l of String(d).split('\n')) if (l.trim()) onLine?.(l.trim()); });
+    p.stderr.on('data', (d) => { err += d; });
+    p.on('error', reject);
+    p.on('close', () => { const m = buf.match(/RESULT (.*)/); if (!m) return reject(new Error('нет результата: ' + err.slice(-500))); resolve({ ...JSON.parse(m[1]), pid: p.pid }); });
+  });
+}
+
+test('PG шаг 2: два процесса одновременно бронируют через сервис приложения → одна бронь, вторая 409 (не сырая ошибка)', { skip }, async () => {
+  for (let round = 0; round < 3; round++) {
+    const from = 300 + round * 10;
+    const startAt = Date.now() + 2500;
+    const rs = await Promise.all([0, 1].map(k => appChild({ mode: 'create', startAt, accountId: acc.id, apartmentId: apt.id, checkIn: addDays(today, from + k).toISOString(), checkOut: addDays(today, from + 3).toISOString() })));
+    assert.notEqual(rs[0].pid, rs[1].pid);
+    assert.equal(rs.filter(r => r.ok).length, 1, `раунд ${round}: ${JSON.stringify(rs)}`);
+    const bad = rs.find(r => !r.ok);
+    assert.equal(bad.status, 409, `ответ 409: ${JSON.stringify(bad)}`);
+    assert.equal(bad.msg, 'Эти даты уже заняты');
+    assert.equal(await blocking(from, from + 3), 1);
+  }
+});
+
+test('PG шаг 2: транзакция квартиры упорядочивает процессы (FOR NO KEY UPDATE): та же квартира ждёт, другая — нет, посторонние записи не блокируются', { skip }, async () => {
+  const apt2 = await prisma.apartment.create({ data: { accountId: acc.id, title: 'Тест шаг 2 · блокировка', address: 'ул. Тестовая, 44', district: 'Есиль', rooms: '1-комн.', maxGuests: 2, basePriceKzt: 20000, sortOrder: -144 } });
+  let locked; const isLocked = new Promise(r => { locked = r; });
+  const holder = appChild({ mode: 'hold', holdMs: 2000, startAt: 0, apartmentId: apt.id }, (l) => { if (l === 'LOCKED') locked(); });
+  await isLocked;
+  const t0 = Date.now();
+  // запись, ссылающаяся на ту же квартиру (подготовка), не ждёт блокировку квартиры — она не меняет ключ строки
+  await prisma.cleaningTask.create({ data: { accountId: acc.id, apartmentId: apt.id, date: today } });
+  const fkMs = Date.now() - t0;
+  const [same, other] = await Promise.all([
+    appChild({ mode: 'touch', startAt: 0, apartmentId: apt.id }),
+    appChild({ mode: 'touch', startAt: 0, apartmentId: apt2.id }),
+  ]);
+  const h = await holder;
+  assert.equal(h.ok, true);
+  assert.ok(fkMs < 1000, `подготовка создана без ожидания (${fkMs} мс)`);
+  assert.ok(same.ok && other.ok);
+  assert.ok(Date.now() - t0 >= 1000, 'та же квартира дождалась окончания чужой транзакции');
+  assert.ok(other.ms < same.ms, `другая квартира не ждала (${other.ms} мс против ${same.ms} мс)`);
+  await prisma.apartment.delete({ where: { id: apt2.id } });
+});
+
+test('PG шаг 2: настоящий 23P01 внутри транзакции квартиры → 409 «Эти даты уже заняты»; настоящий 40P01 распознаётся', { skip }, async () => {
+  const { withApartmentTx } = await import('../src/services/bookings.js');
+  const { isDeadlockError, isOverlapError } = await import('../src/lib/dbErrors.js');
+  await prisma.booking.create({ data: bookingData({ checkIn: addDays(today, 400), checkOut: addDays(today, 403) }) });
+  // запись в обход проверки isAvailable — ловит ограничение базы, а клиент получает 409
+  const e = await withApartmentTx(apt.id, (tx) => tx.booking.create({ data: bookingData({ checkIn: addDays(today, 401), checkOut: addDays(today, 402) }) })).catch(x => x);
+  assert.equal(e.status, 409);
+  assert.equal(e.message, 'Эти даты уже заняты');
+  // сырая ошибка Prisma при нарушении ограничения распознаётся
+  const raw = await prisma.booking.create({ data: bookingData({ checkIn: addDays(today, 401), checkOut: addDays(today, 402) }) }).catch(x => x);
+  assert.ok(isOverlapError(raw));
+  // настоящая взаимная блокировка двух транзакций (две строки в обратном порядке) распознаётся как 40P01
+  const [a1, a2] = await Promise.all([1, 2].map(n => prisma.apartment.create({ data: { accountId: acc.id, title: `Тест deadlock ${n}`, address: 'ул. Тестовая, 45', district: 'Есиль', rooms: '1-комн.', maxGuests: 2, basePriceKzt: 1, sortOrder: -145 } })));
+  const lockBoth = (x, y) => prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Apartment" WHERE id = ${x} FOR UPDATE`;
+    await new Promise(r => setTimeout(r, 300));
+    await tx.$queryRaw`SELECT id FROM "Apartment" WHERE id = ${y} FOR UPDATE`;
+  }, { timeout: 10000 });
+  const rs = await Promise.allSettled([lockBoth(a1.id, a2.id), lockBoth(a2.id, a1.id)]);
+  const failed = rs.filter(r => r.status === 'rejected');
+  assert.equal(failed.length, 1, 'база прервала одну из двух транзакций');
+  assert.ok(isDeadlockError(failed[0].reason), `распознано как deadlock: ${failed[0].reason?.code} ${String(failed[0].reason?.message).slice(0, 200)}`);
+  await prisma.apartment.deleteMany({ where: { id: { in: [a1.id, a2.id] } } });
+});

@@ -384,7 +384,7 @@ ALTER TABLE "Booking" ADD CONSTRAINT booking_no_overlap
 const isPostgres = /^postgres/.test(process.env.DATABASE_URL || '');
 export async function withApartmentTx(apartmentId, fn) {
   const run = () => prisma.$transaction(async (tx) => {
-    if (isPostgres) await tx.$queryRaw`SELECT id FROM "Apartment" WHERE id = ${apartmentId} FOR UPDATE`;
+    if (isPostgres) await tx.$queryRaw`SELECT id FROM "Apartment" WHERE id = ${apartmentId} FOR NO KEY UPDATE`;
     await releaseExpiredHolds(tx, { apartmentId, now: new Date() });   // иначе EXCLUDE «увидит» истёкшее удержание
     return fn(tx);
   }, isPostgres ? { isolationLevel: 'ReadCommitted', timeout: 10000 } : { timeout: 10000 });   // SQLite знает только Serializable
@@ -413,11 +413,23 @@ export async function withApartmentTx(apartmentId, fn) {
 | Закрытие дат ремонтом | `routes/admin/workRequests.js → POST /repairs` (`blockDays > 0`) → `workRequests.create()` — только блокировка строки квартиры (ремонт — не бронь; при пересечении с бронью — существующее поведение, предупреждение в «Сегодня») |
 | Отмена брони | `cancelBooking()` — в транзакции; освобождает даты, `EXCLUDE` не нарушает |
 
+**Уточнения по итогам реализации шага 2 (4 октября 2026):**
+- Блокировка — `FOR NO KEY UPDATE`, а не `FOR UPDATE`: транзакции квартиры так же упорядочены между собой, но не блокируют посторонние записи со ссылкой на квартиру (подготовки, трансферы, недочёты — внешний ключ берёт `FOR KEY SHARE`, с `FOR UPDATE` они ждали бы). Проверено тестом PG.
+- `40P01` (взаимная блокировка) → один повтор всей транзакции, затем 409 «Эту квартиру сейчас меняют одновременно…». `P2028` (не дождались очереди) → тоже 409. Сырые ошибки базы клиенту не уходят: общий обработчик ошибок тоже превращает `23P01`/`40P01` в 409 (`src/lib/dbErrors.js`).
+- Повтор при занятом номере брони (`P2002`) — повтором всей транзакции снаружи: внутри транзакции PostgreSQL после ошибки продолжать нельзя.
+- На шаге 2 через `withApartmentTx` переведены: создание заявки (`createBookingRequest`, ею пользуется сайт; отдельного создания брони в админке в коде нет) и смена дат (`PATCH /bookings/:id`, вместе со сдвигом подготовки; водители — после коммита). Не переведены, сознательно:
+  - `confirmBooking` — занятость не меняет (заявка уже держит даты в базе); в транзакцию переходит на шаге 3 вместе с подготовкой и журналом; иначе пришлось бы уже сейчас решать оплату после истечения (шаг 4);
+  - отмена — только освобождает даты, `EXCLUDE` нарушить не может; `cancelBooking()` — шаг 3;
+  - ранний заезд — меняет только время заезда, не даты (ограничение работает по датам);
+  - ремонт с `blockDays` — бронь не проверяет и пересекаться с бронью может по правилам прохода 3 (предупреждение в «Сегодня»); блокировка квартиры здесь гарантий не добавляет. Ремонты по-прежнему учитываются в `isAvailable/busyRanges` (через `tx`).
+- `releaseExpiredHolds` на шаге 2 только отменяет заявки с истёкшим сроком (в транзакции квартиры); строки журнала `event:booking.hold_expired` добавятся на шаге 3 (журнал), ссылки — на шаге 6.
+- `withLock` вынесен в `src/lib/lock.js` для броней; копия в `services/defects.js` (проход 3) не тронута.
+
 Других путей создания или изменения дат брони в коде нет: `prisma.booking.create` есть только в `createBookingRequest()`, а `seed.js` — не путь работы системы.
 
 ## 11. Удержание дат и истечение (общее для ссылки и сайта)
 
-**Правило занятости:** бронь блокирует даты, если `status = 'confirmed'` или `status = 'request' AND holdUntil > now`. Меняется условие в `BLOCKING`-запросах `isAvailable()` / `busyRanges()` и в календаре. Запрос с `holdUntil` в прошлом даты **не держит**, даже если ещё не снят.
+**Правило занятости:** бронь блокирует даты, если `status = 'confirmed'` или `status = 'request' AND (holdUntil IS NULL OR holdUntil > now)`. `holdUntil = null` — срок не задан (заявки до шага 4; миграция M1 выставила старым 24 ч): держит даты, как в проходе 3, и совпадает с базой (`EXCLUDE` считает любую `request`, а `releaseExpiredHolds` такие не снимает). С шага 4 все новые заявки получают срок. Функции `holdsDates()` / `blockingWhere()` в `services/bookings.js`. Меняется условие в `BLOCKING`-запросах `isAvailable()` / `busyRanges()` и в календаре. Запрос с `holdUntil` в прошлом даты **не держит**, даже если ещё не снят.
 
 **Снятие:** `releaseExpiredHolds(tx|prisma, {accountId?, apartmentId?, now})`:
 - брони `status:'request' AND holdUntil <= now` → `cancelled`;
@@ -600,7 +612,7 @@ export async function withApartmentTx(apartmentId, fn) {
 - **Готово, когда:** миграции применяются на пустой базе и на базе с сидом (SQLite и PG); все существующие тесты зелёные.
 - **Тесты:** A-PG-1 (ограничение есть: прямая вставка пересекающейся брони через `$executeRaw` отклоняется кодом `23P01`), A-PG-2 (две брони встык, выезд = заезд, допустимы).
 
-### Шаг 2. Транзакционная занятость
+### Шаг 2. Транзакционная занятость — СДЕЛАН (уточнения — раздел 10)
 - **Цель:** одна защита на всех путях, меняющих занятость.
 - **Что меняется:**
   - `withApartmentTx`, `releaseExpiredHolds`, правило `holdUntil > now` в `isAvailable/busyRanges` и календаре;
@@ -751,7 +763,7 @@ SQLite — разработка, демо в браузере и быстрые 
 | Можно проверить одинаково на обеих | Только PostgreSQL |
 |---|---|
 | вся бизнес-логика ссылки (переходы, `missing`, права, индивидуальная цена и журнал) | ограничение `EXCLUDE` и расширение `btree_gist` |
-| правило `holdUntil` в занятости, ленивое истечение, граница `now < holdUntil` | `SELECT … FOR UPDATE` строки квартиры (в SQLite не нужен и не выполняется) |
+| правило `holdUntil` в занятости, ленивое истечение, граница `now < holdUntil` | `SELECT … FOR NO KEY UPDATE` строки квартиры (в SQLite не нужен и не выполняется) |
 | транзакционное подтверждение (откат при ошибке внутри транзакции) | гонки из **разных процессов и копий** приложения на одной базе |
 | уникальные ключи (`autoKey`, `transferId`, `dedupeKey`, `tokenHash`) | захват строк журнала несколькими копиями одновременно (аренда условной записью; `FOR UPDATE SKIP LOCKED` не используется и не нужен) |
 | восстановление журнала после «падения» внутри одного теста | уровень изоляции `ReadCommitted` и ошибка `23P01` → 409 |

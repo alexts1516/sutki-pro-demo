@@ -16,7 +16,7 @@ export default function calendarRouter() {
     const acc = req.accountId;
     const [apartments, bookings, cleanings, repairs, transfers] = await Promise.all([
       prisma.apartment.findMany({ where: { accountId: acc, active: true }, orderBy: { sortOrder: 'asc' }, select: { id: true, title: true, code: true, floor: true } }),
-      prisma.booking.findMany({ where: { accountId: acc, status: { in: ['request', 'confirmed', 'completed'] }, checkIn: { lt: to }, checkOut: { gt: from } }, include: { guest: { select: { name: true } } }, orderBy: { checkIn: 'asc' } }),
+      prisma.booking.findMany({ where: { accountId: acc, status: { in: ['request', 'confirmed', 'completed'] }, NOT: { status: 'request', holdUntil: { lte: new Date() } }, checkIn: { lt: to }, checkOut: { gt: from } }, include: { guest: { select: { name: true } } }, orderBy: { checkIn: 'asc' } }),
       prisma.cleaningTask.findMany({ where: { accountId: acc, date: { gte: from, lt: to } }, include: { assignee: { select: { name: true } } } }),
       prisma.repairTask.findMany({ where: { accountId: acc, status: { not: 'CANCELLED' }, date: { gte: from, lt: to } }, select: { id: true, apartmentId: true, date: true, title: true, status: true, priority: true } }),
       prisma.transfer.findMany({ where: { accountId: acc, status: { not: 'cancelled' }, date: { gte: from, lt: to } }, include: { job: true, apartment: true, booking: { select: { number: true, status: true } } }, orderBy: [{ date: 'asc' }, { time: 'asc' }] }),

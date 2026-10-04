@@ -8,6 +8,7 @@ import { prisma } from './db.js';
 import { authenticate, requireRole } from './auth/middleware.js';
 import { MANAGERS } from './auth/roles.js';
 import { HttpError } from './lib/errors.js';
+import { isOverlapError, isDeadlockError, toConflict } from './lib/dbErrors.js';
 import authRouter from './routes/auth.js';
 import settingsRouter from './routes/admin/settings.js';
 import linkKindRouter from './routes/linkKind.js';
@@ -116,6 +117,7 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
     if (err.code === 'LIMIT_FILE_SIZE') { status = 413; message = `Файл слишком большой (максимум ${config.storage.maxUploadMb} МБ)`; }
     else if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') { status = 400; message = 'Слишком много файлов или неверное поле формы'; }
     else if (err.type === 'entity.parse.failed') { status = 400; message = 'Неверный JSON'; }
+    else if (isOverlapError(err) || isDeadlockError(err)) { const c = toConflict(err); status = c.status; message = c.message; }   // конфликт занятости из базы — не «ошибка сервера»
     if (status >= 500) { logger.error('[error]', req.method, req.originalUrl, err); message = 'Ошибка сервера'; }
     res.status(status).json({ error: message, ...(err.details ? { details: err.details } : {}) });
   });
