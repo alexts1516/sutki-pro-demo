@@ -58,6 +58,7 @@ model Account {
   payouts        Payout[]
   cleaningPhotos CleaningPhoto[]
   defects        Defect[]
+  bookingLinks   BookingLink[]
 }
 
 /// Настройки владельца: комиссия с трансферов, кому слать уведомления менеджерам, кто одобряет сметы.
@@ -118,6 +119,7 @@ model Membership {
   payoutPercent  Float? /// своя ставка водителя: бизнес оставляет столько % от цены трансфера (перекрывает настройку аккаунта)
   payoutFixedKzt Int? /// или своя фиксированная сумма за поездку (важнее процента)
   paidAsDriver   Boolean  @default(true) /// платим как водителю; false — человек «от бизнеса» (например, совладелец): выплаты нет, вся цена бизнесу
+  canSetLinkPrice Boolean @default(false) /// проход 4: админ может ставить индивидуальную цену брони по ссылке (выдаёт и забирает только владелец; у владельца право есть всегда)
   createdAt      DateTime @default(now())
 
   user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -265,6 +267,7 @@ model Booking {
   cleanings    CleaningTask[]
   payments     Payment[]
   transferJobs TransferJob[]
+  link         BookingLink?
 
   @@unique([accountId, number])
   @@index([accountId, checkIn])
@@ -784,4 +787,61 @@ model OutboxEvent {
   doneAt        DateTime?
 
   @@index([status, nextAttemptAt])
+}
+
+/// Проход 4: личная ссылка для особой брони (раздел 5 спецификации). Шаг 5 — только модель и миграция M2;
+/// создание, токены, гостевое API и подтверждение — шаги 6–7. Срок ссылки — Booking.holdUntil (своего срока нет).
+model BookingLink {
+  id                 String    @id @default(cuid())
+  accountId          String
+  bookingId          String    @unique
+  tokenHash          String    @unique /// sha256(token), hex; сам токен не хранится
+  status             String    @default("active") /// active | completed | expired | revoked | cancelled
+  terms              String /// cash_on_arrival | deposit
+  depositKzt         Int?
+  extraCheckRequired Boolean   @default(false) /// владелец/админ попросил доп. подтверждение (паспорт/билет — вне системы)
+  extraCheckNote     String? /// что и куда прислать, для гостя
+  extraCheckedAt     DateTime?
+  extraCheckedBy     String?
+  note               String?
+  termsHash          String?
+  termsAcceptedAt    DateTime?
+  guestStartedAt     DateTime?
+  submittedAt        DateTime?
+  depositReceivedAt  DateTime?
+  depositMarkedBy    String?
+  completedAt        DateTime?
+  closedAt           DateTime?
+  closedByName       String?
+  openCount          Int       @default(0)
+  lastOpenedAt       DateTime?
+  createdById        String?
+  createdByName      String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  booking Booking @relation(fields: [bookingId], references: [id], onDelete: Cascade)
+
+  @@index([accountId, status])
+}
+
+/// Проход 4: журнал индивидуальной цены (раздел 3а). Только добавление: в коде нет изменения и удаления записей.
+/// Без внешних ключей — запись переживает удаление брони/ссылки. Пишет только services/linkPrice.js (сервер ставит
+/// аккаунт, автора, старую цену и время).
+model BookingPriceChange {
+  id               String   @id @default(cuid())
+  accountId        String
+  bookingId        String
+  linkId           String?
+  oldTotalKzt      Int
+  newTotalKzt      Int
+  standardTotalKzt Int /// стандартный расчёт quote() на тот момент — для сравнения
+  reason           String /// link_created | manual | dates_changed
+  byUserId         String?
+  byName           String?
+  byRole           String? /// owner | admin
+  createdAt        DateTime @default(now())
+
+  @@index([accountId, bookingId])
 }

@@ -3,6 +3,7 @@
 //   POST /api/admin/team                         — добавить сотрудника { name, email|phone, password, role }
 //   PATCH /api/admin/team/:userId                — { active, canDrive, vehicle, vehicleSeats, vehicleBags, vehicleClass: sedan|minivan|bus } — доступ; «Водит» (получает заказы на трансфер) и машина;
 //                                                  { payoutPercent, payoutFixedKzt } — своя ставка водителя, { paidAsDriver } — платим ли как водителю (только владелец)
+//                                                  { canSetLinkPrice } — право админа на индивидуальную цену брони по ссылке (только владелец, только для роли admin)
 //   POST /api/admin/team/:userId/telegram-invite — ссылка t.me/<бот>?start=i_<код> (действует 7 дней)
 import { Router } from 'express';
 import { z } from 'zod';
@@ -11,15 +12,18 @@ import { hashPassword } from '../../auth/password.js';
 import { forbidden, notFound, badRequest, HttpError, parse } from '../../lib/errors.js';
 import { inviteCode } from '../../lib/tokens.js';
 import { deepLink } from '../../telegram/linking.js';
+import { hasLinkPriceRight } from '../../services/linkPrice.js';
 
 export default function teamRouter({ config }) {
   const r = Router();
   // админ может управлять только клинингом и мастерами; владелец — всеми, кроме других владельцев
+  // право на индивидуальную цену (проход 4, раздел 3а) — видно только владельцу: действующее право с учётом роли и «отключён»
+  const priceRight = (req, m) => (req.role === 'owner' ? { canSetLinkPrice: m.role === 'admin' ? m.canSetLinkPrice : m.role === 'owner', linkPriceActive: hasLinkPriceRight(m) } : {});
   const canManage = (actorRole, targetRole) => actorRole === 'owner' ? targetRole !== 'owner' : ['cleaning', 'master', 'driver'].includes(targetRole);
 
   r.get('/team', async (req, res) => {
     const list = await prisma.membership.findMany({ where: { accountId: req.accountId }, include: { user: true }, orderBy: { createdAt: 'asc' } });
-    res.json(list.map(m => ({ userId: m.userId, name: m.user.name, email: m.user.email, phone: m.user.phone, role: m.role, active: m.active, canDrive: m.canDrive || m.role === 'driver', vehicle: m.vehicle, vehicleSeats: m.vehicleSeats, vehicleBags: m.vehicleBags, vehicleClass: m.vehicleClass, telegramLinked: !!m.user.telegramId, ...(req.role === 'owner' ? { payoutPercent: m.payoutPercent, payoutFixedKzt: m.payoutFixedKzt, paidAsDriver: m.paidAsDriver } : {}) })));
+    res.json(list.map(m => ({ userId: m.userId, name: m.user.name, email: m.user.email, phone: m.user.phone, role: m.role, active: m.active, canDrive: m.canDrive || m.role === 'driver', vehicle: m.vehicle, vehicleSeats: m.vehicleSeats, vehicleBags: m.vehicleBags, vehicleClass: m.vehicleClass, telegramLinked: !!m.user.telegramId, ...(req.role === 'owner' ? { payoutPercent: m.payoutPercent, payoutFixedKzt: m.payoutFixedKzt, paidAsDriver: m.paidAsDriver } : {}), ...priceRight(req, m) })));
   });
   r.post('/team', async (req, res) => {
     const d = parse(z.object({
@@ -39,7 +43,7 @@ export default function teamRouter({ config }) {
   r.patch('/team/:userId', async (req, res) => {
     const d = parse(z.object({ active: z.boolean().optional(), canDrive: z.boolean().optional(), vehicle: z.string().max(120).nullable().optional(),
       vehicleSeats: z.number().int().min(1).max(60).nullable().optional(), vehicleBags: z.number().int().min(0).max(60).nullable().optional(), vehicleClass: z.enum(['sedan', 'minivan', 'bus']).nullable().optional(),
-      payoutPercent: z.number().min(0).max(100).nullable().optional(), payoutFixedKzt: z.number().int().min(0).max(10000000).nullable().optional(), paidAsDriver: z.boolean().optional() }), req.body);
+      payoutPercent: z.number().min(0).max(100).nullable().optional(), payoutFixedKzt: z.number().int().min(0).max(10000000).nullable().optional(), paidAsDriver: z.boolean().optional(), canSetLinkPrice: z.boolean().optional() }), req.body);
     const m = await prisma.membership.findUnique({ where: { userId_accountId: { userId: req.params.userId, accountId: req.accountId } } });
     if (!m) throw notFound('Сотрудник не найден');
     const self = m.userId === req.user.id;
@@ -48,9 +52,11 @@ export default function teamRouter({ config }) {
     if ((d.canDrive !== undefined || d.vehicle !== undefined || d.vehicleSeats !== undefined || d.vehicleBags !== undefined || d.vehicleClass !== undefined) && !self && !canManage(req.role, m.role)) throw forbidden();   // себя в водители — можно всегда
     if ((d.payoutPercent !== undefined || d.payoutFixedKzt !== undefined || d.paidAsDriver !== undefined) && req.role !== 'owner') throw forbidden('Ставку водителя меняет только владелец');
     if (d.paidAsDriver !== undefined && m.role === 'owner') throw badRequest('Для владельца — настройка «Везёт сам владелец» в разделе «Настройки»');
+    if (d.canSetLinkPrice !== undefined && req.role !== 'owner') throw forbidden('Право на индивидуальную цену выдаёт и забирает только владелец');
+    if (d.canSetLinkPrice !== undefined && m.role !== 'admin') throw badRequest(m.role === 'owner' ? 'У владельца право на индивидуальную цену есть всегда' : 'Право на индивидуальную цену — только для администратора');
     if (m.role === 'driver' && d.canDrive === false) throw badRequest('У роли «Водитель» флаг «Водит» всегда включён');
     const u = await prisma.membership.update({ where: { id: m.id }, data: d });
-    res.json({ ok: true, active: u.active, canDrive: u.canDrive || u.role === 'driver', vehicle: u.vehicle, vehicleSeats: u.vehicleSeats, vehicleBags: u.vehicleBags, vehicleClass: u.vehicleClass, ...(req.role === 'owner' ? { payoutPercent: u.payoutPercent, payoutFixedKzt: u.payoutFixedKzt, paidAsDriver: u.paidAsDriver } : {}) });
+    res.json({ ok: true, active: u.active, canDrive: u.canDrive || u.role === 'driver', vehicle: u.vehicle, vehicleSeats: u.vehicleSeats, vehicleBags: u.vehicleBags, vehicleClass: u.vehicleClass, ...(req.role === 'owner' ? { payoutPercent: u.payoutPercent, payoutFixedKzt: u.payoutFixedKzt, paidAsDriver: u.paidAsDriver } : {}), ...priceRight(req, u) });
   });
   r.post('/team/:userId/telegram-invite', async (req, res) => {
     const m = await prisma.membership.findUnique({ where: { userId_accountId: { userId: req.params.userId, accountId: req.accountId } } });
