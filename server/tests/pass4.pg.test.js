@@ -158,7 +158,20 @@ try {
   await prisma.$queryRaw\`SELECT 1\`;
   while (Date.now() < a.startAt) await new Promise(r => setTimeout(r, 1));
   const t0 = Date.now();
-  if (a.mode === 'create') {
+  if (a.mode === 'confirm' || a.mode === 'outbox') {   // шаг 3: настоящий диспетчер водителей и шина событий в этом процессе
+    const { createEventBus } = await import('./src/notifications/events.js');
+    const { createTransferDispatch } = await import('./src/services/transferJobs.js');
+    const events = createEventBus({ logger: { error() {} } });
+    const dispatch = createTransferDispatch({ events });
+    if (a.mode === 'confirm') {
+      const { confirmBooking } = await import('./src/services/bookings.js');
+      const b = await confirmBooking({ accountId: a.accountId, bookingId: a.bookingId, events, dispatch });
+      out = { ok: true, status: b.status, ms: Date.now() - t0 };
+    } else {
+      const { runOutbox } = await import('./src/services/outbox.js');
+      out = { ok: true, ...(await runOutbox({ events, dispatch, keys: a.keys })), ms: Date.now() - t0 };
+    }
+  } else if (a.mode === 'create') {
     const apartment = await prisma.apartment.findUnique({ where: { id: a.apartmentId } });
     const b = await createBookingRequest({ accountId: a.accountId, apartment, checkIn: new Date(a.checkIn), checkOut: new Date(a.checkOut), guestsCount: 1, guest: null, paymentMethod: 'card' });
     out = { ok: true, id: b.id, ms: Date.now() - t0 };
@@ -240,4 +253,48 @@ test('PG шаг 2: настоящий 23P01 внутри транзакции к
   assert.equal(failed.length, 1, 'база прервала одну из двух транзакций');
   assert.ok(isDeadlockError(failed[0].reason), `распознано как deadlock: ${failed[0].reason?.code} ${String(failed[0].reason?.message).slice(0, 200)}`);
   await prisma.apartment.deleteMany({ where: { id: { in: [a1.id, a2.id] } } });
+});
+
+// ---------- Шаг 3: надёжное подтверждение и журнал отложенных действий — два процесса ----------
+
+test('PG шаг 3: два процесса одновременно подтверждают одну бронь → одна подготовка, один заказ, одно предложение водителям', { skip }, async () => {
+  const { makeApp, request } = await import('./helpers.js');
+  const { createBookingRequest } = await import('../src/services/bookings.js');
+  const { app } = makeApp();
+  for (let round = 0; round < 3; round++) {
+    const from = 500 + round * 10;
+    const b = await createBookingRequest({ accountId: acc.id, apartment: apt, checkIn: addDays(today, from), checkOut: addDays(today, from + 2), guestsCount: 1, guest: null, paymentMethod: 'card' });
+    const tr = await request(app).post('/api/public/astana-stay/transfers').send({ bookingToken: b.token, direction: 'in', place: 'airport', date: addDays(today, from).toISOString().slice(0, 10), time: '15:00', pax: 1, bags: 1, name: 'Гость', phone: '+7 701 000 00 00' });
+    assert.equal(tr.status, 201);
+    const startAt = Date.now() + 2500;
+    const rs = await Promise.all([0, 1].map(() => appChild({ mode: 'confirm', startAt, accountId: acc.id, bookingId: b.id })));
+    assert.deepEqual(rs.map(r => r.ok && r.status), ['confirmed', 'confirmed'], JSON.stringify(rs));
+    const preps = await prisma.cleaningTask.findMany({ where: { bookingId: b.id } });
+    const jobs = await prisma.transferJob.findMany({ where: { bookingId: b.id } });
+    assert.equal(preps.length, 1);
+    assert.equal(jobs.length, 1);
+    assert.equal(await prisma.transferEvent.count({ where: { jobId: jobs[0].id, type: 'offered' } }), 1, 'предложение водителям — один раз');
+    const rows = await prisma.outboxEvent.findMany({ where: { dedupeKey: { contains: b.id } } });
+    assert.deepEqual(rows.map(r => r.status).sort(), ['done', 'done']);
+  }
+});
+
+test('PG шаг 3: два процесса одновременно прогоняют журнал → каждая строка выполнена один раз (аренда)', { skip }, async () => {
+  const { createBookingRequest, confirmBooking, confirmKeys } = await import('../src/services/bookings.js');
+  const { makeApp, request } = await import('./helpers.js');
+  const { app } = makeApp();
+  const from = 560;
+  const b = await createBookingRequest({ accountId: acc.id, apartment: apt, checkIn: addDays(today, from), checkOut: addDays(today, from + 2), guestsCount: 1, guest: null, paymentMethod: 'card' });
+  await request(app).post('/api/public/astana-stay/transfers').send({ bookingToken: b.token, direction: 'in', place: 'airport', date: addDays(today, from).toISOString().slice(0, 10), time: '15:00', pax: 1, bags: 1, name: 'Гость', phone: '+7 701 000 00 00' });
+  await confirmBooking({ accountId: acc.id, bookingId: b.id, events: null, dispatch: null });   // как «упал после коммита»: строки ждут
+  assert.equal(await prisma.outboxEvent.count({ where: { dedupeKey: { in: confirmKeys(b.id) }, status: 'pending' } }), 2);
+  const startAt = Date.now() + 2500;
+  const rs = await Promise.all([0, 1, 2].map(() => appChild({ mode: 'outbox', startAt, keys: confirmKeys(b.id) })));
+  assert.ok(rs.every(r => r.ok), JSON.stringify(rs));
+  assert.equal(rs.reduce((x, r) => x + r.done, 0), 2, `всего выполнено ровно 2 строки: ${JSON.stringify(rs)}`);
+  const jobs = await prisma.transferJob.findMany({ where: { bookingId: b.id } });
+  assert.equal(jobs.length, 1);
+  assert.equal(await prisma.transferEvent.count({ where: { jobId: jobs[0].id, type: 'offered' } }), 1);
+  const rows = await prisma.outboxEvent.findMany({ where: { dedupeKey: { in: confirmKeys(b.id) } } });
+  assert.ok(rows.every(r => r.status === 'done' && r.attempts === 0));
 });

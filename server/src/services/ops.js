@@ -142,6 +142,17 @@ async function buildItems(snap, { role, accountId }) {
     }
   }
   for (const b of snap.holds) push('info', 'awaiting_payment', { ref: b.id, problem: `Бронь №${b.number} ждёт оплаты гостем`, action: null, object: aptLabel(b.apartment), details: `${b.guest?.name || ''} · ${isoDay(b.checkIn)} — подтвердится сама после оплаты на сайте`, open: `bk:${b.id}`, aptId: b.apartmentId });
+  // проход 4, шаг 3: строка журнала отложенных действий не выполнилась за 5 попыток — разбор вручную
+  const failed = await prisma.outboxEvent.findMany({ where: { accountId, status: 'failed' }, orderBy: { createdAt: 'asc' }, take: 50 });
+  if (failed.length) {
+    const bid = (f) => f.payload?.bookingId || f.payload?.data?.bookingId || null;
+    const bks = await prisma.booking.findMany({ where: { accountId, id: { in: failed.map(bid).filter(Boolean) } }, select: { id: true, number: true, apartmentId: true } });
+    const WHAT = { 'transfers.dispatch': 'заказ водителям', 'transfers.cancel': 'отмена заказов водителям', event: 'уведомление' };
+    for (const f of failed) {
+      const b = bks.find(x => x.id === bid(f));
+      push('critical', 'outbox_failed', { ref: f.id, problem: `Не завершена цепочка брони №${b?.number || '—'}`, action: 'Разобрать вручную', object: b ? byApt[b.apartmentId]?.label || '' : '', details: `${WHAT[f.kind] || f.kind}: ${f.lastError || 'ошибка'}`, open: b ? `bk:${b.id}` : null, aptId: b?.apartmentId || null });
+    }
+  }
   // план дня: заезды, выезды, подготовка
   for (const s of states) {
     for (const b of snap.bookings.filter(x => x.apartmentId === s.apartment.id)) {

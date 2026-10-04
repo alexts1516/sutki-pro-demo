@@ -7,7 +7,7 @@ import { requireRole } from '../../auth/middleware.js';
 import { notFound, badRequest, HttpError, parse } from '../../lib/errors.js';
 import { bookingOut } from '../../lib/serialize.js';
 import { parseDay, isoDay, addDays, todayIn } from '../../lib/dates.js';
-import { confirmBooking, isAvailable, withApartmentTx } from '../../services/bookings.js';
+import { cancelBooking, confirmBooking, isAvailable, withApartmentTx } from '../../services/bookings.js';
 import { loadCurrency } from '../../site/config.js';
 import { cleaningReport } from '../../services/cleaning.js';
 
@@ -40,13 +40,8 @@ export default function operationsRouter({ events, dispatch, cleaning }) {
     res.json(bookingOut(b));
   });
   r.post('/bookings/:id/cancel', async (req, res) => {
-    const b = await prisma.booking.findFirst({ where: { id: req.params.id, accountId: req.accountId } });
-    if (!b) throw notFound('Бронь не найдена');
-    if (!['request', 'confirmed'].includes(b.status)) throw new HttpError(409, b.status === 'cancelled' ? 'Бронь уже отменена' : 'Бронь завершена — отменить нельзя');
-    if (b.status === 'confirmed' && b.checkOut <= todayIn(req.account.timezone)) throw new HttpError(409, 'Гость уже выехал — отменить нельзя');
-    const u = await prisma.booking.update({ where: { id: b.id }, data: { status: 'cancelled' }, include: { apartment: true, guest: true } });
-    await dispatch.cancelForBooking({ accountId: req.accountId, bookingId: b.id, actor: actorOf(req), reason: 'Бронь отменена' });   // водитель получит «заказ отменён»
-    await prisma.cleaningTask.deleteMany({ where: { bookingId: b.id, status: 'assigned' } });
+    // единая отмена (проход 4, шаг 3): транзакция квартиры + журнал отложенных действий для водителей
+    const u = await cancelBooking({ accountId: req.accountId, bookingId: req.params.id, today: todayIn(req.account.timezone), events, dispatch, actor: actorOf(req) });
     res.json(bookingOut(u));
   });
   r.patch('/bookings/:id', async (req, res) => {
