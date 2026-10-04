@@ -215,13 +215,13 @@ export async function revokeLink({ accountId, linkId, actor = null, events = nul
 
 // ---------- отметки админа и подтверждение ----------
 /** Подтвердить, если всё выполнено (раздел 4.3): ссылка active, гость нажал «Подтвердить» (submittedAt), missing() пуст,
- *  удержание живо (now < holdUntil). Внутри транзакции квартиры. Даты закрыты (ремонт) — подтверждения нет, строка
- *  event:link.conflict (раздел 4.3; пункт «Сегодня» — шаг 8). Возвращает { completed?, conflict?, keys }. */
+ *  удержание живо (now < holdUntil). Внутри транзакции квартиры. Ремонт, созданный до брони, закрывает даты — подтверждения нет, строка
+ *  event:link.conflict. Поздний ремонт не отменяет ранее принятое обязательство: конфликт виден в «Сегодня». Возвращает { completed?, conflict?, keys }. */
 export async function completeIfReadyInTx(tx, linkId, { actor = null, now = new Date() } = {}) {
   const link = await tx.bookingLink.findUnique({ where: { id: linkId }, include: { booking: { include: { guest: true } } } });
   const b = link?.booking;
   if (!b || link.status !== 'active' || !link.submittedAt || b.status !== 'request' || holdExpired(b, now) || missing(link, b).length) return { keys: [] };
-  if (!(await isAvailable(b.accountId, b.apartmentId, b.checkIn, b.checkOut, b.id, tx))) {
+  if (!(await isAvailable(b.accountId, b.apartmentId, b.checkIn, b.checkOut, b.id, tx, b.createdAt))) {
     const key = `event:link.conflict:${link.id}`;
     await enqueue(tx, { accountId: b.accountId, kind: 'event', payload: { name: 'link.conflict', data: { accountId: b.accountId, bookingId: b.id, linkId: link.id } }, dedupeKey: key });
     return { conflict: true, keys: [key] };

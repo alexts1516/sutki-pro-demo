@@ -10,6 +10,7 @@ import { parseDay, isoDay, addDays, todayIn } from '../../lib/dates.js';
 import { cancelBooking, confirmBooking, isAvailable, withApartmentTx } from '../../services/bookings.js';
 import { loadCurrency } from '../../site/config.js';
 import { cleaningReport } from '../../services/cleaning.js';
+import { linkOut, releaseExpiredLinks } from '../../services/bookingLinks.js';
 import { logDatesChangedInTx } from '../../services/linkPrice.js';
 
 export default function operationsRouter({ events, dispatch, cleaning }) {
@@ -19,19 +20,22 @@ export default function operationsRouter({ events, dispatch, cleaning }) {
 
   // ---------- брони ----------
   r.get('/bookings', async (req, res) => {
+    await releaseExpiredLinks(req.accountId);
     const today = todayIn(req.account.timezone);
     const from = day(req.query.from, addDays(today, -7)), to = day(req.query.to, addDays(today, 60));
     const where = { accountId: req.accountId, checkIn: { lt: to }, checkOut: { gt: from } };
     if (req.query.status) where.status = String(req.query.status);
+    if (req.query.source === 'link') { where.source = 'link'; delete where.checkIn; delete where.checkOut; }
     if (req.query.status === 'request') { delete where.checkIn; delete where.checkOut; }
-    const list = await prisma.booking.findMany({ where, include: { apartment: true, guest: true }, orderBy: { checkIn: 'asc' }, take: 1000 });
-    res.json(list.map(bookingOut));
+    const list = await prisma.booking.findMany({ where, include: { apartment: true, guest: true, link: true }, orderBy: req.query.source === 'link' ? { createdAt: 'desc' } : { checkIn: 'asc' }, take: 1000 });
+    res.json(list.map(b => ({ ...bookingOut(b), ...(b.source === 'link' ? { link: b.link ? linkOut(b.link, b) : null } : {}) })));
   });
   r.get('/bookings/:id', async (req, res) => {
-    const b = await prisma.booking.findFirst({ where: { id: req.params.id, accountId: req.accountId }, include: { apartment: true, guest: true, transfers: { include: { job: { select: { id: true, status: true, driverName: true } } } }, cleanings: { include: { assignee: { select: { name: true } } } } } });
+    await releaseExpiredLinks(req.accountId);
+    const b = await prisma.booking.findFirst({ where: { id: req.params.id, accountId: req.accountId }, include: { apartment: true, guest: true, link: true, transfers: { include: { job: { select: { id: true, status: true, driverName: true } } } }, cleanings: { include: { assignee: { select: { name: true } } } } } });
     if (!b) throw notFound('Бронь не найдена');
     res.json({
-      ...bookingOut(b), apartmentId: b.apartmentId,
+      ...bookingOut(b), apartmentId: b.apartmentId, ...(b.source === 'link' ? { link: b.link ? linkOut(b.link, b) : null } : {}),
       transfers: b.transfers.map(t => ({ id: t.id, direction: t.direction, place: t.place, date: isoDay(t.date), time: t.time, flight: t.flight, pax: t.pax, priceKzt: t.priceKzt, status: t.status, driverName: t.driverName, job: t.job })),
       cleanings: b.cleanings.map(c => ({ id: c.id, date: isoDay(c.date), status: c.status, assignee: c.assignee?.name || null })),
     });

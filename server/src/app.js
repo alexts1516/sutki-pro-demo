@@ -107,7 +107,7 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
   app.use('/admin', express.static(path.join(pub, 'admin'), { extensions: ['html'] }));
   app.use('/app', express.static(path.join(pub, 'app'), { extensions: ['html'] }));     // приложение водителя/мастера/клининга
   app.use('/shared', express.static(path.join(pub, 'shared'), { maxAge: '1h' }));
-  app.get('/link/:token', (_req, res) => res.sendFile(path.join(pub, 'link', 'index.html')));   // одна задача по ссылке без входа
+  app.get('/link/:token', (_req, res) => res.sendFile('index.html', { root: path.join(pub, 'link') }));   // одна задача по ссылке без входа
   app.use('/link-assets', express.static(path.join(pub, 'link'), { maxAge: '1h' }));
   app.use('/brand-assets', express.static(path.join(config.root, '..', 'assets'), { maxAge: '1h' }));   // стили и шрифты прототипа
 

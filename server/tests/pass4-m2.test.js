@@ -6,7 +6,7 @@
 // В памяти (демо) миграций нет — пропускается.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -35,11 +35,14 @@ function workspace(upTo) {
     fs.cpSync(path.join(srcDir, 'migrations', f), path.join(dir, 'migrations', f), { recursive: true });
   }
   let url;
-  if (isPg) { const u = new URL(process.env.DATABASE_URL); u.pathname = `${u.pathname}_m2_${n}`; url = u.toString(); pgDbs.push(u.pathname.slice(1)); } else url = `file:${path.join(dir, 'm.db')}`;
+  if (isPg) { const u = new URL(process.env.DATABASE_URL); u.pathname = `${u.pathname}_m2_${n}`; url = u.toString(); pgDbs.push(u.pathname.slice(1)); } else { fs.closeSync(fs.openSync(path.join(dir, 'm.db'), 'a')); url = `file:${path.join(dir, 'm.db')}`; }
   return { schema: path.join(dir, 'schema.prisma'), url, migDir: path.join(dir, 'migrations') };
 }
 const sh = (cmd, url) => execSync(cmd, { cwd: root, env: { ...process.env, DATABASE_URL: url, PRISMA_HIDE_UPDATE_MESSAGE: '1' }, stdio: 'pipe' }).toString();
-const deploy = (w) => sh(`npx prisma migrate deploy --schema ${w.schema}`, w.url);
+const deploy = (w) => {
+  if (isPg && !w.created) { const adminUrl = new URL(w.url); const name = adminUrl.pathname.slice(1); adminUrl.pathname = '/postgres'; execFileSync('npx', ['prisma', 'db', 'execute', '--stdin', '--url', adminUrl.toString()], { cwd: root, input: `CREATE DATABASE "${name.replaceAll('"', '""')}";`, stdio: 'pipe' }); w.created = true; }
+  return sh(`npx prisma migrate deploy --schema ${w.schema}`, w.url);
+};
 const status = (w) => { try { return sh(`npx prisma migrate status --schema ${w.schema}`, w.url); } catch (e) { return String(e.stdout || '') + String(e.stderr || ''); } };
 const execSql = (w, sql) => { const f = path.join(path.dirname(w.schema), `data-${n}.sql`); fs.writeFileSync(f, sql); sh(`npx prisma db execute --file ${f} --schema ${w.schema}`, w.url); };
 

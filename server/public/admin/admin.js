@@ -5,7 +5,8 @@ const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<'
 const money = (n) => String(Math.round(n || 0)).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0') + '\u00a0₸';
 const fmtDay = (iso) => { const [y, m, d] = iso.split('-').map(Number); return `${d} ${['янв', 'фев', 'мар', 'апр', 'мая', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'][m - 1]}`; };
 const ROLE = { owner: 'Владелец', admin: 'Администратор', cleaning: 'Специалист по подготовке', master: 'Мастер', driver: 'Водитель' };
-const SRC = { site: 'Сайт', link: 'Личная ссылка', airbnb: 'Airbnb', booking: 'Booking', telegram: 'Telegram', whatsapp: 'WhatsApp', direct: 'Напрямую' };
+const SRC = { site: 'Сайт', link: 'Особая бронь', airbnb: 'Airbnb', booking: 'Booking', telegram: 'Telegram', whatsapp: 'WhatsApp', direct: 'Напрямую' };
+const linkSecrets = new Map(); // Только URL из create/rotate, в памяти текущего входа.
 const S = { me: null, view: 'today', apt: null, txLang: 'ru', texts: null, brand: null, drag: null };
 
 async function api(path, opts = {}) {
@@ -29,7 +30,7 @@ async function copyText(t) { try { await navigator.clipboard.writeText(t); toast
 const guard = (fn) => async (...a) => { try { await fn(...a); } catch (e) { toast(e.message, true); } };
 
 // ---------------- вход ----------------
-function showLogin() { $('#app').hidden = true; $('#login').hidden = false; $('#lgLogin').focus(); }
+function showLogin() { linkSecrets.clear(); $('#app').hidden = true; $('#login').hidden = false; $('#lgLogin').focus(); }
 $('#loginForm').addEventListener('submit', async (e) => {
   e.preventDefault(); $('#lgErr').hidden = true; $('#lgBtn').disabled = true;
   try {
@@ -38,7 +39,7 @@ $('#loginForm').addEventListener('submit', async (e) => {
     start(me);
   } catch (err) { $('#lgErr').textContent = err.message; $('#lgErr').hidden = false; } finally { $('#lgBtn').disabled = false; }
 });
-$('#logoutBtn').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); location.hash = ''; showLogin(); });
+$('#logoutBtn').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); linkSecrets.clear(); location.hash = ''; showLogin(); });
 $('#menuBtn').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
 
 const VIEWS = [['today', '🔥', 'Сегодня'], ['calendar', '🗓', 'Календарь'], ['bookings', '📅', 'Брони'], ['transfers', '🚗', 'Трансферы'], ['repairs', '🛠', 'Заявки мастерам'], ['apartments', '🏠', 'Квартиры и фото'], ['texts', '✏️', 'Тексты сайта'], ['brand', '🎨', 'Бренд и логотип'], ['team', '👥', 'Команда и Telegram'], ['payouts', '💵', 'Выплаты', 'owner'], ['finance', '💰', 'Финансы', 'owner'], ['notifications', '🔔', 'Уведомления'], ['settings', '⚙️', 'Настройки']];
@@ -259,21 +260,111 @@ async function renderBrand() {
 
 // ---------------- брони ----------------
 async function renderBookings() {
-  const [req, list] = await Promise.all([api('/api/admin/bookings?status=request'), api('/api/admin/bookings')]);
-  const st = BK_ST;
-  const row = (b, actions) => `<tr class="click" data-open="bk:${b.id}"><td><b>№${b.number}</b><div class="muted small">${SRC[b.source] || b.source}</div></td><td>${esc(b.guest?.name || '—')}<div class="muted small">${esc(b.guest?.phone || '')}${b.guest?.telegramLinked ? ' · Telegram ✓' : ''}</div></td>
-    <td>${esc(b.apartment?.title || '')}</td><td style="white-space:nowrap">${fmtDay(b.checkIn)} → ${fmtDay(b.checkOut)}<div class="muted small">${b.guestsCount} гост.</div></td><td style="white-space:nowrap">${money(b.totalKzt)}${b.currencyShown !== 'KZT' && b.amountShown ? `<div class="muted small">гость видел ${b.amountShown} ${b.currencyShown}</div>` : ''}</td>
-    <td>${b.status === 'confirmed' || b.status === 'completed' ? '' : `<span class="chip ${st[b.status][0]}">${st[b.status][1]}</span> `}${payChip(b)}${b.earlyCheckInStatus === 'requested' ? ' <span class="chip amber">🕙 ранний заезд?</span>' : ''}</td><td>${actions || ''}</td></tr>`;
-  view(`<div class="page-head"><div><h1>Брони</h1><p class="sub">Обычная бронь — только оплаченная на сайте (подтверждается сама после оплаты). Особая — только по личной ссылке от вас: наличные при заезде или залог. Нажмите на строку — откроется карточка брони.</p></div></div>
-    <div class="stack">${req.length ? `<div class="card"><div class="card-h"><h2>Ждут оплаты гостем · ${req.length}</h2><span class="muted small">даты держатся, пока гость оплачивает на сайте; подтверждать не нужно</span></div><div class="table-wrap"><table class="t"><thead><tr><th>Бронь</th><th>Гость</th><th>Квартира</th><th>Даты</th><th>Сумма</th><th>Статус</th><th></th></tr></thead><tbody>
-      ${req.map(b => row(b, `<button class="btn sm" data-cancel="${b.id}">Снять</button>`)).join('')}</tbody></table></div></div>` : ''}
-    <div class="card"><div class="card-h"><h2>Ближайшие брони</h2><span class="muted small">неделя назад — 2 месяца вперёд</span></div><div class="table-wrap"><table class="t"><thead><tr><th>Бронь</th><th>Гость</th><th>Квартира</th><th>Даты</th><th>Сумма</th><th>Статус</th><th></th></tr></thead><tbody>
-      ${list.filter(b => b.status !== 'request').slice(0, 150).map(b => row(b)).join('')}</tbody></table></div></div></div>`);
+  const [req, list, history] = await Promise.all([api('/api/admin/bookings?status=request'), api('/api/admin/bookings'), api('/api/admin/bookings?source=link')]);
+  const special = [...new Map([...req.filter(b => b.source === 'link'), ...history].map(b => [b.id, b])).values()];
+  const publicReq = req.filter(b => b.source !== 'link');
+  const row = (b, actions = '') => `<tr class="click" data-open="bk:${b.id}"><td><b>№${b.number}</b><div class="muted small">${SRC[b.source] || esc(b.source)}</div></td><td>${esc(b.guest?.name || '—')}<div class="muted small">${esc(b.guest?.phone || '')}${b.guest?.telegramLinked ? ' · Telegram ✓' : ''}</div></td>
+    <td>${esc(b.apartment?.title || '')}</td><td>${fmtDay(b.checkIn)} → ${fmtDay(b.checkOut)}<div class="muted small">${b.guestsCount} гост.</div></td><td>${money(b.totalKzt)}${b.currencyShown !== 'KZT' && b.amountShown ? `<div class="muted small">гость видел ${b.amountShown} ${esc(b.currencyShown)}</div>` : ''}</td>
+    <td>${b.source === 'link' ? specialChip(b.link, b) : badge(BK_ST, b.status) + payChip(b)}${b.earlyCheckInStatus === 'requested' ? ' <span class="chip amber">🕙 ранний заезд?</span>' : ''}${b.link?.status === 'active' ? `<div class="muted small">Удерживаем квартиру до ${linkTime(b.link.holdUntil)}</div>` : ''}</td><td>${actions}</td></tr>`;
+  const table = (items, actions) => `<div class="table-wrap"><table class="t"><thead><tr><th>Бронь</th><th>Гость</th><th>Квартира</th><th>Даты</th><th>Сумма</th><th>Статус</th><th></th></tr></thead><tbody>${items.map(b => row(b, actions?.(b))).join('')}</tbody></table></div>`;
+  const group = (title, items, actions) => `<section class="card"><div class="card-h"><h2>${title} · ${items.length}</h2></div>${items.length ? table(items, actions) : '<div class="card-b muted">Пока нет броней</div>'}</section>`;
+  view(`<div class="page-head"><div><h1>Брони</h1><p class="sub">Оплата на сайте или особая бронь по договорённости с гостем. Нажмите на строку, чтобы открыть карточку.</p></div><button class="btn primary" id="specialNew">+ Особая бронь</button></div>
+    <div class="stack">${group('Оплата на сайте', publicReq, b => `<button class="btn sm" data-cancel="${b.id}">Снять</button>`)}
+    ${group('Особые брони', special.filter(b => b.status === 'request' && b.link?.status === 'active'))}
+    <details class="card"><summary class="card-h">Особые брони: подтверждённые и закрытые</summary>${table(special.filter(b => b.status !== 'request' || b.link?.status !== 'active'))}</details>
+    ${group('Ближайшие брони', list.filter(b => b.source !== 'link' && b.status !== 'request').slice(0, 150))}</div>`);
+  $('#specialNew').onclick = guard(newSpecialBooking);
   $('#view').onclick = guard(async (e) => {
-    const b = e.target.closest('button');
-    if (!b) { const o = e.target.closest('[data-open]'); if (o) openItem(o.dataset.open); return; }
-    if (b.dataset.cancel) { if (!confirm('Снять неоплаченную бронь? Даты освободятся.')) return; const x = await api(`/api/admin/bookings/${b.dataset.cancel}/cancel`, { method: 'POST' }); toast(`Бронь №${x.number} снята`); renderBookings(); }
+    const b = e.target.closest('[data-cancel]');
+    if (b) { if (!confirm('Снять неоплаченную бронь? Даты освободятся.')) return; await api(`/api/admin/bookings/${b.dataset.cancel}/cancel`, { method: 'POST' }); toast('Бронь снята'); return renderBookings(); }
+    const o = e.target.closest('[data-open]'); if (o) return openItem(o.dataset.open);
   });
+}
+
+const linkTime = (v) => v ? new Intl.DateTimeFormat('ru-RU', { timeZone: 'Asia/Almaty', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(v)) : '—';
+const LINK_STAGE = { waiting_guest: 'Ждём гостя', guest_started: 'Гость начал оформление', waiting_admin: 'Ждём дополнительное подтверждение', ready: 'Готово к подтверждению', completed: 'Подтверждено', expired: 'Истекло', revoked: 'Отозвано', cancelled: 'Отменено' };
+const LINK_STATUS = { active: 'Действует', completed: 'Подтверждено', expired: 'Истекло', revoked: 'Отозвано', cancelled: 'Отменено' };
+const linkStageLabel = (l) => l.stage === 'waiting_admin' && l.missing?.includes('deposit') && !l.missing?.includes('extra_check') ? 'Ждём отметку залога' : LINK_STAGE[l.stage] || l.stage;
+function specialChip(l, b = {}) {
+  if (!l) return badge(BK_ST, b.status);
+  const soon = l.status === 'active' && new Date(l.holdUntil) - Date.now() <= 3 * 3600000;
+  const label = soon ? 'Предложение скоро истечёт' : linkStageLabel(l);
+  return `<span class="chip ${l.status === 'completed' ? 'green' : soon ? 'amber' : ''}">${esc(label)}</span>`;
+}
+async function pricePermission() {
+  S.me = await api('/api/auth/session');
+  return S.me.canSetLinkPrice === true;
+}
+async function newSpecialBooking() {
+  const [apts, canPrice] = await Promise.all([api('/api/admin/apartments'), pricePermission()]);
+  const body = drawer(`<div class="dh"><h2>Особая бронь</h2><p class="muted">Оплата при заезде / по договорённости с гостем</p></div>
+    <form id="specialForm" class="special-form"><div class="grid g2">
+    <label class="wide">Квартира<select name="apartmentId" required><option value="">Выберите квартиру</option>${apts.filter(a => a.active).map(a => `<option value="${a.id}">${esc(a.title)}</option>`).join('')}</select></label>
+    <label>Дата заезда<input type="date" name="checkIn" min="${todayIso()}" required></label><label>Дата выезда<input type="date" name="checkOut" min="${todayIso()}" required></label>
+    <label>Количество гостей<input type="number" name="guestsCount" min="1" value="1" required></label><label>Срок предложения, часы<input type="number" name="expiresInHours" min="1" max="72" value="24" required></label>
+    <label>Имя гостя (необязательно)<input name="guestName" maxlength="80"></label><label>Телефон (необязательно)<input name="guestPhone" maxlength="30" type="tel"></label>
+    <div class="wide"><b id="standardPrice">Стандартная цена: выберите квартиру и даты</b>${canPrice ? '<div class="row"><button class="btn sm" type="button" id="customPrice">Изменить цену</button></div><label id="customPriceField" hidden>Индивидуальная цена, ₸<input type="number" name="totalKzt" min="1" max="1000000000"></label>' : ''}</div>
+    <label class="wide">Комментарий для гостя (необязательно)<textarea name="note" maxlength="1000" rows="2"></textarea></label>
+    <label class="chk wide"><input type="checkbox" name="extraCheckRequired"> Дополнительное подтверждение</label>
+    <label class="wide" id="extraInstruction" hidden>Инструкция для гостя<textarea name="extraCheckNote" maxlength="500" rows="2"></textarea></label>
+    </div><div class="alert red" id="specialError" role="alert" hidden></div><div class="row"><button class="btn primary" type="submit">Создать особую бронь</button></div></form>`);
+  const f = $('#specialForm', body);
+  f.oninput = () => {
+    const a = apts.find(a => a.id === f.elements.apartmentId.value);
+    const n = (new Date(f.elements.checkOut.value) - new Date(f.elements.checkIn.value)) / 86400000;
+    $('#standardPrice', body).textContent = a && n > 0 ? `Стандартная цена: ${money(a.basePriceKzt * n)}` : 'Стандартная цена: выберите квартиру и даты';
+    if (a) f.elements.guestsCount.max = a.maxGuests;
+    $('#extraInstruction', body).hidden = !f.elements.extraCheckRequired.checked;
+  };
+  if (canPrice) $('#customPrice', body).onclick = () => { $('#customPriceField', body).hidden = !$('#customPriceField', body).hidden; if ($('#customPriceField', body).hidden) f.elements.totalKzt.value = ''; else f.elements.totalKzt.focus(); };
+  f.onsubmit = async (e) => {
+    e.preventDefault(); const btn = f.querySelector('[type=submit]'); if (btn.disabled) return; btn.disabled = true;
+    const err = $('#specialError', body); err.hidden = true;
+    try {
+      const v = f.elements;
+      const d = { apartmentId: v.apartmentId.value, checkIn: v.checkIn.value, checkOut: v.checkOut.value, guestsCount: Number(v.guestsCount.value), expiresInHours: Number(v.expiresInHours.value), terms: 'cash_on_arrival', guestName: v.guestName.value.trim(), guestPhone: v.guestPhone.value.trim(), note: v.note.value.trim(), extraCheckRequired: v.extraCheckRequired.checked, extraCheckNote: v.extraCheckRequired.checked ? v.extraCheckNote.value.trim() : null };
+      if (canPrice && v.totalKzt.value) d.totalKzt = Number(v.totalKzt.value);
+      const r = await api('/api/admin/booking-links', { method: 'POST', body: d });
+      linkSecrets.set(r.link.id, r.url); await renderBookings(); await bookingCard(r.link.bookingId, true);
+    } catch (e) { err.textContent = e.message; err.hidden = false; } finally { btn.disabled = false; }
+  };
+}
+function specialBookingBlock(l, b, canPrice, created) {
+  if (!l) return '<section class="ds"><h3>Особая бронь</h3><p class="muted">Предложение по ссылке не выпускалось.</p></section>';
+  const active = l.status === 'active';
+  return `<section class="ds special-block"><h3>${created ? `Особая бронь №${b.number} создана` : 'Особая бронь'}</h3>${specialChip(l, b)}
+    ${active ? `<div class="alert violet">Квартира удерживается за гостем до ${linkTime(l.holdUntil)}</div>` : ''}
+    <dl class="kv"><dt>Квартира</dt><dd>${esc(l.apartment.title)}</dd><dt>Даты</dt><dd>${fmtDay(l.checkIn)} → ${fmtDay(l.checkOut)}</dd><dt>Сумма</dt><dd>${money(l.totalKzt)}</dd><dt>Статус предложения</dt><dd>${esc(LINK_STATUS[l.status] || l.status)}</dd><dt>Этап</dt><dd>${esc(linkStageLabel(l))}</dd><dt>Срок действия</dt><dd>${linkTime(l.holdUntil)}</dd>
+    <dt>Открывал ссылку</dt><dd>${l.openCount ? `Да · ${linkTime(l.lastOpenedAt)}` : 'Нет'}</dd><dt>Начал оформление</dt><dd>${l.guestStartedAt ? linkTime(l.guestStartedAt) : 'Нет'}</dd>
+    <dt>Принял условия</dt><dd>${l.termsAcceptedAt && !l.missing.includes('terms') ? 'Да' : 'Нет'}</dd><dt>Дополнительное подтверждение</dt><dd>${l.extraCheckRequired ? l.extraCheckedAt ? 'Получено' : 'Требуется' : 'Не требуется'}${l.extraCheckNote ? `<div class="muted small">${esc(l.extraCheckNote)}</div>` : ''}</dd>
+    <dt>Стандартная цена</dt><dd>${money(l.standardTotalKzt)}</dd>${l.individualPrice ? `<dt>Индивидуальная цена</dt><dd>${money(l.totalKzt)}</dd>` : ''}
+    <dt>Создал</dt><dd>${esc(l.createdByName || '—')} · ${linkTime(l.createdAt)}</dd></dl>
+    ${active ? `<div class="stack">${linkSecrets.has(l.id) ? `<label>Ссылка для гостя<input class="secret-url" value="${esc(linkSecrets.get(l.id))}" readonly></label><button class="btn primary" data-link-act="copy">Скопировать ссылку</button>` : '<div class="muted small">Чтобы снова скопировать ссылку, выпустите новую. Предыдущая перестанет действовать.</div>'}
+    <form id="linkExtend" class="row"><label>Продлить на, ч<input name="hours" type="number" min="1" max="72" value="24" required></label><button class="btn" type="submit">Продлить</button></form>
+    <div class="row"><button class="btn" data-link-act="rotate">Новая ссылка</button><button class="btn danger" data-link-act="revoke">Отозвать предложение</button>
+    ${l.extraCheckRequired && !l.extraCheckedAt ? '<button class="btn success" data-link-act="extra-check">Подтверждение получено</button>' : ''}
+    ${l.terms === 'deposit' && !l.depositReceivedAt ? '<button class="btn" data-link-act="deposit">Залог получен</button>' : ''}</div>
+    ${canPrice ? `<details><summary>Изменить цену</summary><form id="linkPrice" class="row"><label>Индивидуальная цена, ₸<input name="totalKzt" type="number" min="1" max="1000000000" value="${l.totalKzt}" required></label><button class="btn" type="submit">Сохранить цену</button></form></details>` : ''}</div>` : ''}</section>`;
+}
+function bindSpecialActions(body, b) {
+  const l = b.link; if (!l || l.status !== 'active') return;
+  const perform = async (action, data = {}) => {
+    const r = await api(`/api/admin/booking-links/${l.id}/${action}`, { method: action === 'price' ? 'PATCH' : 'POST', body: data });
+    if (action === 'rotate') linkSecrets.set(l.id, r.url);
+    if (action === 'revoke') linkSecrets.delete(l.id);
+    await refresh(); await bookingCard(b.id);
+  };
+  body.querySelectorAll('[data-link-act]').forEach(btn => btn.onclick = guard(async (e) => {
+    e.stopPropagation(); const act = btn.dataset.linkAct;
+    if (act === 'copy') return copyText(linkSecrets.get(l.id));
+    if (act === 'rotate' && !confirm('Выпустить новую ссылку? Предыдущая перестанет действовать.')) return;
+    if (act === 'revoke' && !confirm('Отозвать предложение? Квартира освободится.')) return;
+    btn.disabled = true; try { await perform(act); } finally { btn.disabled = false; }
+  }));
+  for (const [sel, act, field] of [['#linkExtend', 'extend', 'hours'], ['#linkPrice', 'price', 'totalKzt']]) {
+    const f = $(sel, body); if (!f) continue;
+    f.onsubmit = guard(async e => { e.preventDefault(); e.stopPropagation(); const btn = f.querySelector('button'); if (btn.disabled) return; btn.disabled = true; try { await perform(act, { [field]: Number(f.elements[field].value) }); } finally { btn.disabled = false; } });
+  }
 }
 
 // ---------------- заявки мастерам ----------------
@@ -408,7 +499,7 @@ async function renderTeam() {
   if (S.me.role === 'owner' && !S.settings) S.settings = await api('/api/admin/settings').catch(() => null);
   view(`<div class="page-head"><div><h1>Команда и Telegram</h1><p class="sub">Чтобы получать уведомления, каждый открывает свою ссылку-приглашение в Telegram (нужен бот — см. README_SERVER.md). «Водит» — человек получает заказы на трансфер и может нажать «Беру».</p></div></div>
     <div class="card"><div class="table-wrap"><table class="t"><thead><tr><th>Сотрудник</th><th>Роль</th><th>Доступ</th><th>Водит (трансферы)</th><th>Telegram</th><th></th></tr></thead><tbody>
-    ${list.map(m => `<tr><td><b>${esc(m.name)}</b><div class="muted small">${esc(m.email || m.phone || '')}</div></td><td>${ROLE[m.role] || m.role}</td><td>${m.active ? '<span class="chip green">включён</span>' : '<span class="chip">отключён</span>'}</td>
+    ${list.map(m => `<tr><td><b>${esc(m.name)}</b><div class="muted small">${esc(m.email || m.phone || '')}</div></td><td>${ROLE[m.role] || m.role}${S.me.role === 'owner' && m.role === 'admin' ? `<label class="chk small"><input type="checkbox" data-link-price="${m.userId}" ${m.canSetLinkPrice ? 'checked' : ''}> Может назначать индивидуальную цену особой брони</label>` : ''}</td><td>${m.active ? '<span class="chip green">включён</span>' : '<span class="chip">отключён</span>'}</td>
       <td>${m.role === 'driver' ? '<span class="chip blue">🚗 водитель</span>' : `<button class="btn sm ${m.canDrive ? 'success' : ''}" data-drive="${m.userId}" data-on="${m.canDrive ? 1 : 0}">${m.canDrive ? '🚗 Водит' : 'Не водит'}</button>`}
         ${m.canDrive ? `<input class="veh" data-veh="${m.userId}" value="${esc(m.vehicle || '')}" placeholder="Машина, цвет, номер" title="Гость увидит машину, когда водитель возьмёт заказ">
           <div class="row small" style="gap:6px;margin-top:6px;flex-wrap:nowrap"><select data-cap="vehicleClass" data-u="${m.userId}" title="Класс машины">${[['sedan', 'седан'], ['minivan', 'минивэн'], ['bus', 'микроавтобус']].map(([k, l]) => `<option value="${k}" ${(m.vehicleClass || 'sedan') === k ? 'selected' : ''}>${l}</option>`).join('')}</select>
@@ -419,6 +510,8 @@ async function renderTeam() {
         ${m.canDrive && S.me.role === 'owner' && m.role !== 'owner' && m.paidAsDriver !== false ? `<input class="veh" data-rate="${m.userId}" value="${m.payoutFixedKzt != null ? m.payoutFixedKzt : m.payoutPercent != null ? m.payoutPercent + '%' : ''}" placeholder="Ставка: как в настройках" title="Своя ставка водителя: «15%» — комиссия бизнеса, «7000» — фиксированно водителю за поездку. Пусто — как в «Настройках».">` : ''}</td>
       <td>${m.telegramLinked ? '<span class="chip green">подключён</span>' : '<span class="chip amber">не подключён</span>'}</td><td><button class="btn sm" data-invite="${m.userId}">Ссылка для Telegram</button><div class="muted small" id="inv-${m.userId}"></div></td></tr>`).join('')}</tbody></table></div></div>`);
   $('#view').onchange = guard(async (e) => {
+    const lp = e.target.closest('[data-link-price]');
+    if (lp) { lp.disabled = true; try { await api(`/api/admin/team/${lp.dataset.linkPrice}`, { method: 'PATCH', body: { canSetLinkPrice: lp.checked } }); toast('Право индивидуальной цены сохранено'); } catch (e) { lp.checked = !lp.checked; throw e; } finally { lp.disabled = false; } return; }
     const pa = e.target.closest('[data-paid-as]');
     if (pa) { await api(`/api/admin/team/${pa.dataset.paidAs}`, { method: 'PATCH', body: { paidAsDriver: pa.checked } }); toast(pa.checked ? 'Платим как водителю — выплата по ставке' : 'Без выплаты — вся сумма его поездок остаётся бизнесу'); return renderTeam(); }
     const rt = e.target.closest('[data-rate]');
@@ -565,9 +658,10 @@ const BK_ST = { request: ['', 'Ждёт оплаты'], confirmed: ['green', 'П
 const PAY_ST = { paid: ['green', 'Оплачено'], prepaid: ['blue', 'Залог внесён'], unpaid: ['', 'Оплата при заезде'], refunded: ['', 'Возврат'] };
 /** Оплата брони по модели: сайт — оплачено; личная ссылка — наличные при заезде / залог; «ждёт оплаты» — серым (никакого красного «не оплачено») */
 function payChip(b) {
-  if (b.status === 'request') return '<span class="chip">ждёт оплаты на сайте</span>';
+  if (b.status === 'request' && b.source !== 'link') return '<span class="chip">ждёт оплаты на сайте</span>';
   if (b.status === 'cancelled') return '';
   if (b.paymentStatus === 'paid') return `<span class="chip green">${b.source === 'site' ? 'оплачено на сайте' : b.source === 'airbnb' ? 'оплачено (Airbnb)' : 'оплачено'}</span>`;
+  if (b.source === 'link' && b.link?.terms === 'deposit' && !b.link.depositReceivedAt) return '<span class="chip">ждём залог</span>';
   if (b.paymentMethod === 'deposit' || b.paymentStatus === 'prepaid') return '<span class="chip blue">залог внесён · остаток при заезде</span>';
   if (b.paymentMethod === 'cash_on_arrival' || b.source === 'link') return '<span class="chip blue">наличные при заезде</span>';
   return badge(PAY_ST, b.paymentStatus);
@@ -614,7 +708,7 @@ const openItem = guard(async (code) => {
   if (k === 'cl') return cleaningCard(a);
   if (k === 'wr') return repairCard(a);
 });
-const refresh = () => { if (S.view === 'today') renderToday(); else if (S.view === 'calendar') renderCalendar(); else if (S.view === 'transfers') renderTransfers(); else if (S.view === 'bookings') renderBookings(); };
+const refresh = () => ({ today: renderToday, calendar: renderCalendar, transfers: renderTransfers, bookings: renderBookings })[S.view]?.();
 
 // ---------------- «Сегодня»: что происходит и где нужно действие ----------------
 // Порядок: КРИТИЧНО → ТРЕБУЕТ ДЕЙСТВИЯ → СЕГОДНЯ ПО ПЛАНУ → ИНФОРМАЦИЯ. Обычные дела не шумят — наверх поднимаются только исключения.
@@ -807,21 +901,23 @@ function calList(cal, from, n, inDrawer) {
 }
 
 // ---------------- карточки ----------------
-async function bookingCard(id) {
+async function bookingCard(id, created = false) {
+  const canPrice = await pricePermission();
   const b = await api('/api/admin/bookings/' + id);
   const nights = Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 86400000);
   const early = b.earlyCheckInStatus === 'requested' && b.earlyCheckIn ? `<div class="alert amber">🕙 Гость просит ранний заезд в <b>${esc(b.earlyCheckIn)}</b> (обычно ${esc(b.checkInTime)}). Если согласуете — срок подготовки сдвинется на ${esc(b.earlyCheckIn)}.
       <div class="row" style="margin-top:8px"><button class="btn sm success" data-act="early-yes">Согласовать</button><button class="btn sm" data-act="early-no">Отказать</button></div></div>`
     : b.earlyCheckInStatus === 'approved' ? `<div class="muted small">🕙 Ранний заезд согласован: ${esc(b.checkInTime)}</div>` : b.earlyCheckInStatus === 'declined' ? `<div class="muted small">🕙 В раннем заезде (${esc(b.earlyCheckIn || '')}) отказано</div>` : '';
-  const body = drawer(`<div class="dh"><div class="muted small">▬ Бронь №${b.number} · ${SRC[b.source] || b.source}</div><h2>${esc(b.guest?.name || 'Гость')}</h2><div class="row">${badge(BK_ST, b.status)}${payChip(b)}</div></div>
-    ${b.status === 'request' ? '<div class="alert violet">Гость ещё не оплатил на сайте. После оплаты бронь подтвердится сама — подготовка и заказ водителю появятся автоматически.</div>' : ''}${early}
+  const body = drawer(`<div class="dh"><div class="muted small">▬ Бронь №${b.number} · ${SRC[b.source] || b.source}</div><h2>${esc(b.guest?.name || 'Гость')}</h2><div class="row">${b.source === 'link' ? specialChip(b.link, b) : badge(BK_ST, b.status)}${payChip(b)}</div></div>
+    ${b.status === 'request' && b.source !== 'link' ? '<div class="alert violet">Гость ещё не оплатил на сайте. После оплаты бронь подтвердится сама — подготовка и заказ водителю появятся автоматически.</div>' : ''}${early}
+    ${b.source === 'link' ? specialBookingBlock(b.link, b, canPrice, created) : ''}
     <section class="ds"><dl class="kv"><dt>Квартира</dt><dd>${esc(b.apartment?.title || '')}</dd><dt>Даты</dt><dd>${fmtDay(b.checkIn)} с ${b.checkInTime} → ${fmtDay(b.checkOut)} до ${b.checkOutTime} · ${nights} ноч.</dd>
       <dt>Гостей</dt><dd>${b.guestsCount}${b.pets ? ' · с животным' : ''}</dd><dt>Телефон</dt><dd>${b.guest?.phone ? `<a href="tel:${esc(b.guest.phone.replace(/\s/g, ''))}">${esc(b.guest.phone)}</a>` : '—'}${b.guest?.telegramLinked ? ' · Telegram ✓' : ''}</dd>
       <dt>Сумма</dt><dd>${money(b.totalKzt)}</dd>${b.note ? `<dt>Комментарий</dt><dd>${esc(b.note)}</dd>` : ''}</dl></section>
     <section class="ds"><h3>Трансферы</h3>${b.transfers.length ? b.transfers.map(t => `<button class="li" data-open="tr:${t.job?.id || ''}:${t.id}"><span>🚗 ${DIR[t.direction]} · ${fmtDay(t.date)} ${t.time}${t.flight ? ' · ' + esc(t.flight) : ''}${t.job?.driverName ? ` · ${esc(t.job.driverName)}` : ''}</span>${badge(TR_ST, trStatus(t))}</button>`).join('') : '<div class="muted small">Трансфер не заказан</div>'}
-      ${b.status === 'request' && b.transfers.length ? '<div class="muted small" style="margin-top:6px">Заказ водителям уйдёт сам после оплаты брони.</div>' : ''}</section>
+      ${b.status === 'request' && b.source !== 'link' && b.transfers.length ? '<div class="muted small" style="margin-top:6px">Заказ водителям уйдёт сам после оплаты брони.</div>' : ''}</section>
     <section class="ds"><h3>Подготовка квартиры</h3>${b.cleanings.length ? b.cleanings.map(c => `<button class="li" data-open="cl:${c.id}"><span>✨ ${fmtDay(c.date)} · ${esc(c.assignee || 'не назначена')}</span>${badge(CL_ST, c.status)}</button>`).join('') : `<div class="muted small">${b.status === 'request' ? 'Появится после подтверждения' : 'Не запланирована'}</div>`}</section>
-    <div class="row"><button class="btn sm" data-open="apt:${b.apartment?.id}">🏠 Квартира: готовность и недочёты</button>${b.status === 'request' ? '<button class="btn sm" data-act="cancel">Снять неоплаченную бронь</button>' : b.status === 'confirmed' ? '<button class="btn danger sm" data-act="cancel">Отменить бронь</button>' : ''}</div>`);
+    <div class="row"><button class="btn sm" data-open="apt:${b.apartment?.id}">🏠 Квартира: готовность и недочёты</button>${b.status === 'request' && b.source !== 'link' ? '<button class="btn sm" data-act="cancel">Снять неоплаченную бронь</button>' : b.status === 'confirmed' ? '<button class="btn danger sm" data-act="cancel">Отменить бронь</button>' : ''}</div>`);
   body.onclick = guard(async (e) => {
     const o = e.target.closest('[data-open]'); if (o) return openItem(o.dataset.open);
     const a = e.target.closest('[data-act]'); if (!a) return;
@@ -829,6 +925,7 @@ async function bookingCard(id) {
     if (a.dataset.act === 'cancel') { if (!confirm(b.status === 'request' ? 'Снять неоплаченную бронь? Даты освободятся.' : 'Отменить бронь? Трансфер и подготовка тоже отменятся, водитель получит уведомление.')) return; await api(`/api/admin/bookings/${b.id}/cancel`, { method: 'POST' }); toast('Готово'); }
     await bookingCard(b.id); refresh();
   });
+  bindSpecialActions(body, b);
 }
 /** Полный отчёт о подготовке прямо в календаре: кто, начало/окончание, чек-лист, фото, проблемы, комментарии, выплата */
 async function cleaningCard(id) {

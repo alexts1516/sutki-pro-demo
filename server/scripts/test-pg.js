@@ -2,7 +2,7 @@
 // К имени базы добавляется метка времени (sutki_test_t1700000000) — каждый прогон идёт на новой пустой базе,
 // существующие базы не трогаются; старые тестовые базы можно удалить вручную.
 // Временно генерирует Prisma Client для PostgreSQL, а в конце возвращает клиент для SQLite (основной режим).
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -21,8 +21,10 @@ let code = 0;
 try {
   run('node scripts/pg-schema.js');
   run('npx prisma generate --schema prisma/postgres/schema.prisma');
+  const adminUrl = new URL(u); adminUrl.pathname = '/postgres';
+  execFileSync('npx', ['prisma', 'db', 'execute', '--stdin', '--url', adminUrl.toString()], { cwd: root, input: `CREATE DATABASE "${u.pathname.slice(1).replaceAll('"', '""')}";`, stdio: ['pipe', 'inherit', 'inherit'] });
   run('node scripts/test-db.js');
-  run('node --test --test-force-exit --test-concurrency=1 tests/');
+  run('node --test --test-force-exit --test-concurrency=1 tests/*.test.js');
 } catch { code = 1; } finally {
   run('npx prisma generate');   // назад на SQLite
 }

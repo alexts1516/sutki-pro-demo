@@ -297,11 +297,11 @@ test('шаг 6: подтверждение админом (существующ�
   assert.equal((await dbLink(c.id)).status, 'completed');
 });
 
-test('шаг 6: даты закрыты ремонтом в момент подтверждения → не подтверждено, link.conflict (один), ссылка active', async () => {
+test('шаг 6: ранее созданный ремонт закрывает даты в момент подтверждения → не подтверждено, link.conflict (один), ссылка active', async () => {
   const c = await created(owner, { extraCheckRequired: true });
   await guestDone(c.id);
   const b = await dbBooking(c.bookingId);
-  const rep = await prisma.repairTask.create({ data: { accountId: acc.id, apartmentId: apt.id, title: 'Потоп', date: b.checkIn, blockDays: 1 } });
+  const rep = await prisma.repairTask.create({ data: { accountId: acc.id, apartmentId: apt.id, title: 'Потоп', createdAt: new Date(+b.createdAt - 1000), date: b.checkIn, blockDays: 1 } });
   const r = await api(admin).post(`/booking-links/${c.id}/extra-check`);
   assert.equal(r.status, 200);
   assert.equal(r.body.status, 'active'); assert.match(r.body.conflict, /недоступны/);

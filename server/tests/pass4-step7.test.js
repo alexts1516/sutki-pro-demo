@@ -375,11 +375,11 @@ test('шаг 7: подтверждённая — просмотр до дня в
   await assert.rejects(guestView({ token: c.token, now: new Date(+addDays(b.checkOut, 2) + 12 * 3600000) }), (err) => err.status === 410);
 });
 
-test('шаг 7 (7 конфликт): даты закрыты ремонтом в момент «Подтвердить» — 409 понятным текстом, новой брони нет, заявка и ссылка как были; событие link.conflict', async () => {
+test('шаг 7 (7 конфликт): ранее созданный ремонт закрывает даты в момент «Подтвердить» — 409 понятным текстом, новой брони нет, заявка и ссылка как были; событие link.conflict', async () => {
   const c = await created();
   assert.equal((await G(c.token).guest(GOOD)).status, 200);
   const b = await dbBooking(c.bookingId);
-  const rep = await prisma.repairTask.create({ data: { accountId: acc.id, apartmentId: apt.id, title: 'Потоп (шаг 7)', date: b.checkIn, blockDays: 1 } });
+  const rep = await prisma.repairTask.create({ data: { accountId: acc.id, apartmentId: apt.id, title: 'Потоп (шаг 7)', createdAt: new Date(+b.createdAt - 1000), date: b.checkIn, blockDays: 1 } });
   try {
     const count = await prisma.booking.count({ where: { apartmentId: apt.id } });
     const r = await G(c.token).submit();

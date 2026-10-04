@@ -2,6 +2,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db.js';
+import { hasLinkPriceRight } from '../services/linkPrice.js';
 import { checkPassword } from '../auth/password.js';
 import { authenticate, signToken, setAuthCookie, COOKIE } from '../auth/middleware.js';
 import { HttpError, parse } from '../lib/errors.js';
@@ -14,7 +15,7 @@ const accountsOf = (userId) => prisma.membership.findMany({ where: { userId, act
 const me = (user, m, list) => ({
   user: { id: user.id, name: user.name, email: user.email, phone: user.phone, locale: user.locale, telegramLinked: !!user.telegramId },
   account: m.account ? { id: m.account.id, name: m.account.name, slug: m.account.slug, plan: m.account.plan, status: m.account.status, trialEndsAt: m.account.trialEndsAt } : undefined,
-  role: m.role,
+  role: m.role, canSetLinkPrice: hasLinkPriceRight(m),
   accounts: list.map(x => ({ id: x.account.id, name: x.account.name, role: x.role })),
 });
 

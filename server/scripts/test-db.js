@@ -1,7 +1,7 @@
 // Готовит отдельную тестовую базу с демо-данными. Рабочую dev.db не трогает.
 //   по умолчанию — SQLite prisma/test.db;
 //   TEST_DATABASE_URL=postgresql://… — новая пустая база PostgreSQL (схема prisma/postgres). Ничего не удаляет:
-//   migrate deploy сам создаёт базу, если её нет (npm run test:pg каждый раз берёт новое имя базы).
+//   npm run test:pg создаёт пустую базу с новым именем перед миграциями.
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -16,6 +16,7 @@ if (pg) {
   execSync('npx prisma migrate deploy --schema prisma/postgres/schema.prisma', { cwd: root, env, stdio: 'ignore' });
 } else {
   for (const f of ['prisma/test.db', 'prisma/test.db-journal']) fs.rmSync(path.join(root, f), { force: true });
+  fs.closeSync(fs.openSync(path.join(root, 'prisma/test.db'), 'a')); // Prisma/macOS: создать пустой SQLite-файл до миграций
   execSync('npx prisma migrate deploy', { cwd: root, env, stdio: 'ignore' });
 }
 execSync('node prisma/seed.js', { cwd: root, env, stdio: 'inherit' });

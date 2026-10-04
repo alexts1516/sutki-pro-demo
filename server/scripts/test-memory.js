@@ -13,7 +13,7 @@ const imp = '--import ./demo/node/register.mjs';
 fs.rmSync(path.join(root, 'uploads-test'), { recursive: true, force: true });
 execSync(`node ${imp} prisma/seed.js`, { cwd: root, env: { ...env, MEMORY_DB_DUMP: snap }, stdio: 'inherit' });
 console.log('Снимок демо-данных в памяти готов');
-const files = process.argv.slice(2).length ? process.argv.slice(2).join(' ') : 'tests/';
+const files = process.argv.slice(2).length ? process.argv.slice(2).join(' ') : 'tests/*.test.js';
 try {
   execSync(`node ${imp} --test --test-force-exit --test-concurrency=1 ${files}`, { cwd: root, env: { ...env, MEMORY_DB_SNAPSHOT: snap }, stdio: 'inherit' });
 } finally { fs.rmSync(snap, { force: true }); }

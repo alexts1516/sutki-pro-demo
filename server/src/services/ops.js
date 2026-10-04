@@ -7,6 +7,7 @@
 //   2) последняя подготовка закончена полностью (все пункты и обязательные фото) — или отчёт принят владельцем/админом;
 //   3) нет открытого срочного недочёта и нет ремонта, закрывающего даты.
 // Гость сейчас в квартире — «Гость живёт» (готовность к следующему заезду считается так же).
+import { releaseExpiredLinks, stage } from './bookingLinks.js';
 import { prisma } from '../db.js';
 import { todayIn, addDays, isoDay, atLocal } from '../lib/dates.js';
 import { getSettings, canApprove } from './settings.js';
@@ -32,20 +33,22 @@ export function cleaningDeadline(task, bookings, tz) {
 }
 
 async function snapshot(accountId, now) {
+  await releaseExpiredLinks(accountId);
   const acc = await prisma.account.findUnique({ where: { id: accountId }, select: { timezone: true } });
   const tz = acc?.timezone || 'Asia/Almaty';
   const today = todayIn(tz, now);
-  const [apartments, bookings, cleanings, defects, repairs, jobs, holds, settings] = await Promise.all([
+  const [apartments, bookings, cleanings, defects, repairs, jobs, holds, settings, specialBookings] = await Promise.all([
     prisma.apartment.findMany({ where: { accountId, active: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }], select: { id: true, title: true, code: true, complex: true, address: true } }),
-    prisma.booking.findMany({ where: { accountId, status: { in: ['confirmed', 'completed'] }, checkOut: { gte: addDays(today, -1) }, checkIn: { lte: addDays(today, 30) } }, include: { guest: { select: { name: true, phone: true } } }, orderBy: { checkIn: 'asc' } }),
+    prisma.booking.findMany({ where: { accountId, status: { in: ['confirmed', 'completed'] }, checkOut: { gte: addDays(today, -1) }, checkIn: { lte: addDays(today, 30) } }, include: { guest: { select: { name: true, phone: true } }, link: true }, orderBy: { checkIn: 'asc' } }),
     prisma.cleaningTask.findMany({ where: { accountId, date: { gte: addDays(today, -14), lte: addDays(today, 14) } }, include: { assignee: { select: { id: true, name: true } }, photos: true }, orderBy: [{ date: 'asc' }, { fromTime: 'asc' }] }),
     prisma.defect.findMany({ where: { accountId, status: 'open' }, include: { repairTask: { select: { id: true, status: true, title: true } } }, orderBy: { createdAt: 'asc' } }),
     prisma.repairTask.findMany({ where: { accountId, status: { notIn: ['DONE', 'CANCELLED'] } }, include: { estimates: true, extras: true, contractor: { select: { name: true } }, assignee: { select: { name: true } } }, orderBy: { date: 'asc' } }),
     prisma.transferJob.findMany({ where: { accountId, status: { not: 'CANCELLED' }, pickupAt: { gte: new Date(now.getTime() - 6 * H), lt: atLocal(addDays(today, 2), '00:00', tz) } }, include: { transfer: true, apartment: { select: { id: true, title: true, code: true } } }, orderBy: { pickupAt: 'asc' } }),
-    prisma.booking.findMany({ where: { accountId, status: 'request', NOT: { holdUntil: { lte: now } } }, include: { guest: { select: { name: true } }, apartment: { select: { title: true, code: true } } }, orderBy: { createdAt: 'asc' } }),   // истёкшее удержание даты уже не держит
+    prisma.booking.findMany({ where: { accountId, status: 'request', NOT: { holdUntil: { lte: now } } }, include: { link: true, guest: { select: { name: true, phone: true } }, apartment: { select: { title: true, code: true } } }, orderBy: { createdAt: 'asc' } }),   // истёкшее удержание даты уже не держит
     getSettings(accountId),
+    prisma.booking.findMany({ where: { accountId, source: 'link', status: 'confirmed', checkOut: { gte: today } }, include: { link: true } }),
   ]);
-  return { tz, today, now, apartments, bookings, cleanings, defects, repairs, jobs, holds, settings };
+  return { tz, today, now, apartments, bookings, cleanings, defects, repairs, jobs, holds, settings, specialBookings };
 }
 
 /** Состояние одной квартиры из снимка */
@@ -141,7 +144,21 @@ async function buildItems(snap, { role, accountId }) {
       push('action', 'early_checkin', { ref: b.id, problem: `Гость просит ранний заезд в ${b.earlyCheckIn} (обычно ${b.checkInTime})`, action: 'Согласовать или отказать', deadline: atLocal(b.checkIn, b.earlyCheckIn, tz), object: byApt[b.apartmentId]?.label || '', details: `${b.guest?.name || ''} · №${b.number} · ${isoDay(b.checkIn)}`, open: `bk:${b.id}`, aptId: b.apartmentId, decision: true });
     }
   }
-  for (const b of snap.holds) push('info', 'awaiting_payment', { ref: b.id, problem: `Бронь №${b.number} ждёт оплаты гостем`, action: null, object: aptLabel(b.apartment), details: `${b.guest?.name || ''} · ${isoDay(b.checkIn)} — подтвердится сама после оплаты на сайте`, open: `bk:${b.id}`, aptId: b.apartmentId });
+  for (const b of snap.holds.filter(b => b.source !== 'link')) push('info', 'awaiting_payment', { ref: b.id, problem: `Бронь №${b.number} ждёт оплаты гостем`, action: null, object: aptLabel(b.apartment), details: `${b.guest?.name || ''} · ${isoDay(b.checkIn)} — подтвердится сама после оплаты на сайте`, open: `bk:${b.id}`, aptId: b.apartmentId });
+  // Особые брони: только отклонения, никаких строк для спокойного ожидания гостя.
+  for (const b of [...snap.holds, ...snap.specialBookings].filter(b => b.source === 'link' && b.link)) {
+    const l = b.link;
+    const open = `bk:${b.id}`;
+    const object = byApt[b.apartmentId]?.label || aptLabel(b.apartment);
+    const conflicting = snap.repairs.filter(r => r.apartmentId === b.apartmentId && r.blockDays > 0 && r.date < b.checkOut && addDays(r.date, r.blockDays) > b.checkIn);
+    if (conflicting.length && ['request', 'confirmed'].includes(b.status)) {
+      push('critical', 'link_conflict', { ref: b.id, problem: `Особая бронь №${b.number}: ремонт пересекается с проживанием`, action: 'Перенести ремонт или связаться с гостем', object, details: conflicting.map(r => r.title).join(', '), open, aptId: b.apartmentId, decision: true });
+    }
+    if (l.status !== 'active' || b.status !== 'request') continue;
+    const left = +b.holdUntil - now;
+    if (b.holdUntil && left > 0 && left <= 3 * H) push(left <= H ? 'critical' : 'action', 'link_expiring', { ref: b.id, problem: `Предложение №${b.number} скоро истечёт`, action: 'Напомнить гостю или продлить', deadline: b.holdUntil, object, details: 'Квартира удерживается до конца срока', open, aptId: b.apartmentId, decision: true });
+    if (l.submittedAt && stage(l, b, now) === 'waiting_admin') push('action', 'link_waiting_admin', { ref: b.id, problem: l.extraCheckRequired && !l.extraCheckedAt ? 'Ждём дополнительное подтверждение' : 'Гость закончил оформление — ждём отметку залога', action: 'Проверить и отметить полученным', object, open, aptId: b.apartmentId, decision: true });
+  }
   // проход 4, шаг 3: строка журнала отложенных действий не выполнилась за 5 попыток — разбор вручную
   const failed = await prisma.outboxEvent.findMany({ where: { accountId, status: 'failed' }, orderBy: { createdAt: 'asc' }, take: 50 });
   if (failed.length) {

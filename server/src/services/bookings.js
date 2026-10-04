@@ -103,11 +103,11 @@ export async function withApartmentLock(apartmentId, fn) {
 }
 
 /** Занятые интервалы квартиры (брони + закрытия на ремонт). db — общий клиент или tx транзакции. */
-export async function busyRanges(accountId, apartmentId, from, to, db = prisma) {
+export async function busyRanges(accountId, apartmentId, from, to, db = prisma, repairCreatedBefore = null) {
   const now = new Date();
   const [bookings, repairs] = await Promise.all([
     db.booking.findMany({ where: { accountId, apartmentId, AND: [blockingWhere(now)], checkIn: { lt: to }, checkOut: { gt: from } }, select: { checkIn: true, checkOut: true }, orderBy: { checkIn: 'asc' } }),
-    db.repairTask.findMany({ where: { accountId, apartmentId, blockDays: { gt: 0 }, status: { notIn: ['DONE', 'CANCELLED'] } }, select: { date: true, blockDays: true } }),
+    db.repairTask.findMany({ where: { accountId, apartmentId, blockDays: { gt: 0 }, status: { notIn: ['DONE', 'CANCELLED'] }, ...(repairCreatedBefore ? { createdAt: { lte: repairCreatedBefore } } : {}) }, select: { date: true, blockDays: true } }),
   ]);
   return [
     ...bookings.map(b => ({ from: b.checkIn, to: b.checkOut, kind: 'booking' })),
@@ -116,13 +116,13 @@ export async function busyRanges(accountId, apartmentId, from, to, db = prisma) 
 }
 
 /** Свободна ли квартира. Внутри withApartmentTx передавайте tx — проверка и запись идут одной операцией. */
-export async function isAvailable(accountId, apartmentId, checkIn, checkOut, excludeBookingId, db = prisma) {
+export async function isAvailable(accountId, apartmentId, checkIn, checkOut, excludeBookingId, db = prisma, repairCreatedBefore = null) {
   const clash = await db.booking.findFirst({
     where: { accountId, apartmentId, AND: [blockingWhere()], checkIn: { lt: checkOut }, checkOut: { gt: checkIn }, ...(excludeBookingId ? { NOT: { id: excludeBookingId } } : {}) },
     select: { id: true },
   });
   if (clash) return false;
-  const blocks = await busyRanges(accountId, apartmentId, checkIn, checkOut, db);
+  const blocks = await busyRanges(accountId, apartmentId, checkIn, checkOut, db, repairCreatedBefore);
   return !blocks.some(b => b.kind === 'repair');
 }
 
