@@ -156,6 +156,12 @@ const { prisma } = await import('./src/db.js');
 let out;
 try {
   await prisma.$queryRaw\`SELECT 1\`;
+  let http;
+  if (a.mode === 'dates') {
+    const H = await import('./tests/helpers.js');
+    const x = H.makeApp(); const auth = (await H.login(x.app, 'azamat@astanastay.example')).auth;
+    http = { H, app: x.app, auth };
+  }
   while (Date.now() < a.startAt) await new Promise(r => setTimeout(r, 1));
   const t0 = Date.now();
   if (a.mode === 'confirm' || a.mode === 'outbox') {   // шаг 3: настоящий диспетчер водителей и шина событий в этом процессе
@@ -171,6 +177,9 @@ try {
       const { runOutbox } = await import('./src/services/outbox.js');
       out = { ok: true, ...(await runOutbox({ events, dispatch, keys: a.keys })), ms: Date.now() - t0 };
     }
+  } else if (a.mode === 'dates') {
+    const r = await http.H.request(http.app).patch('/api/admin/bookings/' + a.bookingId).set(http.auth).send({ checkIn: a.checkIn.slice(0,10), checkOut: a.checkOut.slice(0,10) });
+    out = { ok: r.status === 200, status: r.status, error: r.body.error || null };
   } else if (a.mode === 'pay') {   // шаг 4: вебхук оплаты в отдельном процессе (своя шина и диспетчер)
     const { createEventBus } = await import('./src/notifications/events.js');
     const { createTransferDispatch } = await import('./src/services/transferJobs.js');
@@ -496,5 +505,24 @@ test('PG шаг 7: «Подтвердить» против истечения (�
       assert.equal(await prisma.cleaningTask.count({ where: { bookingId: b.id } }), 0);
       assert.ok(await isAvailable(acc.id, apt.id, b.checkIn, b.checkOut), 'даты свободны');
     }
+  }
+});
+
+// A-CON-4: прежний набор покрывал отдельные смены дат, но не гонку PATCH с новой бронью между процессами.
+test('PG A-CON-4: смена дат через API против новой брони из разных процессов — без пересечения', { skip }, async () => {
+  for (let round = 0; round < 2; round++) {
+    const from = 900 + round * 10;
+    const old = await prisma.booking.create({ data: bookingData({ checkIn: addDays(today, from - 4), checkOut: addDays(today, from - 2) }) });
+    const startAt = Date.now() + 2200;
+    const target = range(from, from + 2);
+    const results = await Promise.all([
+      appChild({ mode: 'dates', accountId: acc.id, bookingId: old.id, startAt, ...target }),
+      appChild({ mode: 'create', accountId: acc.id, apartmentId: apt.id, startAt, ...target }),
+    ]);
+    assert.equal(new Set(results.map(r => r.pid)).size, 2);
+    assert.equal(results.filter(r => r.ok).length, 1, JSON.stringify(results));
+    const failed = results.find(r => !r.ok);
+    assert.equal(failed.status, 409, JSON.stringify(failed));
+    assert.equal(await blocking(from, from + 2), 1);
   }
 });

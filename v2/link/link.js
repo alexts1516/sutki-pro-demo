@@ -1,4 +1,4 @@
-// Одна задача по ссылке без входа: внешний мастер (заявка) или внешний водитель (трансфер).
+// Одна задача по ссылке без входа: внешний мастер (заявка), внешний водитель (трансфер) или гость по личной ссылке (special, проход 4).
 // Ссылку присылает владелец/админ; после выполнения или отмены она перестаёт работать.
 import { $, api, transferDetail, bindTransfer, repairDetail, bindRepair, toast } from '../shared/views.js';
 
@@ -11,6 +11,7 @@ async function start() {
   try {
     const { kind } = await api(`/api/link/${encodeURIComponent(token)}`);
     if (kind === 'transfer') return showTransfer();
+    if (kind === 'special') return (await import('./special.js')).showSpecial(token);   // вид гостя — отдельный модуль
     return showTask();
   } catch (e) {
     if (e.status === 410) return closed('Задача уже закрыта — ссылка больше не действует');

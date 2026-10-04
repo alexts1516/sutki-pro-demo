@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import { DEFAULT_BRAND } from '../src/site/defaults.js';
 import { DEFAULT_CHECKLIST } from '../src/services/cleaning.js';
 import { cleaningRate } from '../src/services/performerPayouts.js';
+import crypto from 'node:crypto';
 
 const ASSETS = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'assets');
 const BUILDING = fs.readFileSync(path.join(ASSETS, 'photos', 'highvill-g1-1200.jpg')); // фото дома (ЖК Хайвил, блок G-1)
@@ -424,6 +425,39 @@ async function main() {
     if (base != null || extrasOk) await prisma.repairTask.update({ where: { id: t.id }, data: { costKzt: (base || 0) + extrasOk } });
   }
 
+  // Pass 4: ясные начальные состояния, без основного deposit-flow.
+  // Даты относительно дня установки; 72 ч удержания не истекут при переходе на следующий день.
+  const demoLink = async (n, name, { waiting = false, confirmed = false } = {}) => {
+    const ci = d.TODAY + n, co = ci + 2;
+    const a = await freeApt(apt[1], ci, co);
+    if (!a) throw new Error('Демо Pass 4: нет свободной квартиры');
+    const g = await prisma.guest.create({ data: { accountId: acc.id, name, phone: '+77015556677' } });
+    const b = await prisma.booking.create({ data: {
+      accountId: acc.id, apartmentId: a.id, guestId: g.id, number: ++num, token: randomToken(12),
+      source: 'link', status: confirmed ? 'confirmed' : 'request', paymentMethod: 'cash_on_arrival', paymentStatus: 'unpaid',
+      checkIn: day(ci), checkOut: day(co), guestsCount: 2, nightlyKzt: a.basePriceKzt, totalKzt: a.basePriceKzt * 2,
+      holdUntil: confirmed ? null : new Date(nowMs + 72 * 3600000), confirmedAt: confirmed ? new Date(nowMs) : null,
+    } });
+    const extraCheckRequired = waiting;
+    // Токен выдаётся только при создании/rotate в UI; seed не хранит открытый секрет.
+    await prisma.bookingLink.create({ data: {
+      accountId: acc.id, bookingId: b.id, tokenHash: crypto.createHash('sha256').update(randomToken(32)).digest('hex'),
+      status: confirmed ? 'completed' : 'active', terms: 'cash_on_arrival', extraCheckRequired,
+      extraCheckNote: waiting ? 'Свяжитесь с владельцем для дополнительного подтверждения' : null,
+      note: 'Договорились о наличных при заезде', createdById: owner.id, createdByName: owner.name,
+      ...(waiting || confirmed ? { guestStartedAt: new Date(nowMs), submittedAt: new Date(nowMs), termsAcceptedAt: new Date(nowMs),
+        termsHash: crypto.createHash('sha256').update([b.checkIn.toISOString().slice(0,10), b.checkOut.toISOString().slice(0,10), b.totalKzt, 'cash_on_arrival', ''].join('|')).digest('hex') } : {}),
+      ...(confirmed ? { completedAt: new Date(nowMs) } : {}),
+    } });
+    return b;
+  };
+  await demoLink(45, 'Анна · ждём гостя');
+  await demoLink(49, 'Ильяс · дополнительное подтверждение', { waiting: true });
+  const lateRepairBooking = await demoLink(53, 'Мария · подтверждённая особая бронь', { confirmed: true });
+  await prisma.repairTask.create({ data: { accountId: acc.id, apartmentId: lateRepairBooking.apartmentId,
+    title: 'Перенести ремонт: пересекается с особой бронью', date: lateRepairBooking.checkIn, blockDays: 1,
+    createdAt: new Date(+lateRepairBooking.createdAt + 1), priority: 'medium', status: 'NEW' } });
+
   // ---------- аккаунт B — второй владелец (для проверки, что аккаунты не видят друг друга) ----------
   const accB = await prisma.account.create({ data: { name: 'Демо Б — Алматы', slug: 'demo-b', plan: 'trial', trialEndsAt: new Date(Date.now() + 14 * DAY_MS) } });
   const ownerB = await prisma.user.create({ data: { name: 'Бауыржан Демо', email: 'owner@demo-b.example', passwordHash } });
@@ -434,6 +468,15 @@ async function main() {
   await prisma.apartment.create({ data: { accountId: accB.id, title: 'Алматы, Достык 50, кв. 12', address: 'пр. Достык, 50, кв. 12', district: 'Медеуский', rooms: '2-комн.', maxGuests: 4, basePriceKzt: 30000 } });
   const gB = await prisma.guest.create({ data: { accountId: accB.id, name: 'Гость Б', phone: '+77000000001' } });
   await prisma.booking.create({ data: { accountId: accB.id, apartmentId: b1.id, guestId: gB.id, number: 1001, token: randomToken(12), source: 'direct', status: 'confirmed', checkIn: day(d.TODAY + 2), checkOut: day(d.TODAY + 4), guestsCount: 2, nightlyKzt: 22000, totalKzt: 44000 } });
+
+  // Обязательная подготовка уже есть при установке: не оставлять массовую работу reconciliation.
+  // Импортированные существующие подготовки сохраняются; получают тот же ключ, что у ядра подтверждения.
+  for (const b of await prisma.booking.findMany({ where: { accountId: { in: [acc.id, accB.id] }, status: 'confirmed' } })) {
+    const current = await prisma.cleaningTask.findFirst({ where: { bookingId: b.id } });
+    if (current) await prisma.cleaningTask.update({ where: { id: current.id }, data: { autoKey: `turnover:${b.id}` } });
+    else await prisma.cleaningTask.create({ data: { accountId: b.accountId, apartmentId: b.apartmentId, bookingId: b.id,
+      date: b.checkOut, fromTime: b.checkOutTime, status: 'assigned', autoKey: `turnover:${b.id}` } });
+  }
 
   const counts = await Promise.all([prisma.apartment.count(), prisma.apartmentPhoto.count(), prisma.booking.count(), prisma.cleaningTask.count(), prisma.repairTask.count(), prisma.transfer.count(), prisma.transferJob.count()]);
   if (!config.isTest) {

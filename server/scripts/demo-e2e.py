@@ -80,9 +80,15 @@ with sync_playwright() as p:
     shot('01-landing.png')
     shot('01-landing-full.png', True)
 
+    seed_links = db("const acc = await p.account.findUnique({where:{slug:'astana-stay'}}); const ls = await p.bookingLink.findMany({where:{accountId:acc.id},include:{booking:true}}); return ls.map(l=>({status:l.status, extra:l.extraCheckRequired, submitted:!!l.submittedAt, terms:l.terms, hold:l.booking.holdUntil}));")
+    check(len(seed_links)==3 and any(l['status']=='active' and not l['submitted'] for l in seed_links), 'Pass 4 seed: ждём гостя')
+    check(any(l['extra'] and l['submitted'] and l['status']=='active' for l in seed_links), 'Pass 4 seed: ждём дополнительное подтверждение')
+    check(any(l['status']=='completed' for l in seed_links) and all(l['terms']=='cash_on_arrival' for l in seed_links), 'Pass 4 seed: подтверждённая особая бронь, основной сценарий без залога')
+    check(db("return await p.booking.count({where:{status:'confirmed',cleanings:{none:{}}}});")==0, 'Pass 4 seed: confirmed уже имеют подготовку, массовой достройки нет')
+
     # ---------- проход 3: «Сегодня», недочёты, брони без «подтвердите» ----------
     print('«Сегодня»: исключения первыми, ⚠ недочёты, карточка квартиры, брони без красного «не оплачено»')
-    check(db("return await p.booking.count({ where: { status: 'request' } });") == 0, 'в демо-данных нет неоплаченных броней «подтвердите»')
+    check(db("return await p.booking.count({ where: { source: 'site', status: 'request' } });") == 0, 'в демо-данных нет неоплаченных обычных броней «подтвердите»')
     pg.click('text=Начать: администратор'); pg.wait_for_url('**/admin/**'); pg.wait_for_selector('h1:has-text("Сегодня")')
     pg.wait_for_selector('.op-sec')
     first = pg.locator('#view .op-sec').first
@@ -324,6 +330,8 @@ with sync_playwright() as p:
       const j = await r.json(); return { s: r.status, token: (j.url || '').split('/link/')[1]?.replace(/^#/, ''), bookingId: j.link?.bookingId, title: a.title, address: a.address, err: j.error }; }"""
     sl = ev(mk_link, 300)
     check(sl['s'] == 201 and len(sl['token'] or '') == 43, 'владелец создал личную ссылку (демо): ' + str(sl.get('err') or 'токен 43 символа'))
+    conflict = ev(mk_link, 300)
+    check(conflict['s'] == 409 and not conflict.get('bookingId'), 'E2E конфликт дат: вторая личная ссылка на удерживаемые даты не создаётся (409)')
     pg.goto(B + 'link/#' + sl['token']); pg.wait_for_selector('#spSubmit', timeout=20000); pg.wait_for_timeout(300)
     t = pg.inner_text('#view')
     check(all(x in t for x in [sl['title'], 'Предложение действует до', 'Оплата наличными при заезде', 'Договорились в WhatsApp', 'Ночей']) and sl['address'].split(',')[0] not in t,
@@ -362,6 +370,26 @@ with sync_playwright() as p:
     rv = ev("async (id) => (await fetch('/api/admin/booking-links/' + id + '/revoke', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })).status", lid)
     pg.reload(); pg.wait_for_selector('[data-state="revoked"]', timeout=20000)
     check(rv == 200 and 'Ссылка отозвана' in pg.inner_text('#view'), 'отозванная ссылка — «Ссылка отозвана»')
+    overlay_role('Владелец Азамат', '/admin/')
+    extra = ev(mk_link.replace("terms: 'cash_on_arrival'", "terms: 'cash_on_arrival', extraCheckRequired: true, extraCheckNote: 'Позвоните владельцу'"), 330)
+    pg.goto(B+'link/#'+extra['token']); pg.wait_for_selector('#spSubmit'); pg.fill('#spName','Гость подтверждения'); pg.fill('#spPhone','+77015556679'); pg.check('#spTerms'); pg.click('#spSubmit')
+    pg.wait_for_selector('[data-state="waiting_extra_check"]')
+    check('Позвоните владельцу' in pg.inner_text('#view'), 'доп. подтверждение: гость завершил свою часть, ждёт менеджера без загрузки документов')
+    check(ev("async id => {const r=await fetch('/api/admin/today');const j=await r.json();return j.items.some(i=>i.kind==='link_waiting_admin'&&i.ref===id);}",extra['bookingId']), 'Сегодня: гость завершил свою часть, требуется действие менеджера')
+    pg.screenshot(path=os.path.join(OUT,'22-special-waiting-admin.png'),full_page=True)
+    lid=db(f"return (await p.bookingLink.findUnique({{where:{{bookingId:'{extra['bookingId']}'}}}})).id;")
+    rc=ev("async id => (await fetch('/api/admin/booking-links/'+id+'/extra-check',{method:'POST',headers:{'Content-Type':'application/json'},body:'{}'})).status",lid)
+    pg.reload(); pg.wait_for_selector('[data-state="confirmed"]')
+    check(rc==200 and extra['address'] in pg.inner_text('#view'),'отметка менеджера автоматически подтверждает, адрес показан')
+    prep=db(f"return await p.cleaningTask.findFirst({{where:{{bookingId:'{extra['bookingId']}'}}}});")
+    check(bool(prep), 'счастливый путь: обязательная подготовка сохранена')
+    overlay_role('Владелец Азамат','/admin/')
+    pg.get_by_role('button',name='Меню',exact=True).click()
+    pg.click('nav button:has-text("Календарь")'); pg.wait_for_timeout(600)
+    # API календаря проверяет присутствие реальной подготовки даже вне текущего окна на экране.
+    cal=ev("async r => { const x=await fetch('/api/admin/calendar?from='+r[0]+'&to='+r[1]);return x.json(); }",[str(prep['date'])[:10],str(prep['date'])[:10]])
+    check(str(prep['id']) in str(cal), 'подготовка особой брони доступна в календаре')
+
     pg.goto(B + 'link/#' + 'x' * 43); pg.wait_for_selector('#view .card', timeout=20000); pg.wait_for_timeout(300)
     check('Ссылка недействительна' in pg.inner_text('#view'), 'неверная личная ссылка — «Ссылка недействительна или заменена новой»')
 

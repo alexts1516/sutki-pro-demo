@@ -229,3 +229,7 @@ button.cal-apt{text-align:left;cursor:pointer}button.cal-apt:hover{background:#f
 .wr-item.urgent{border-color:#fca5a5;background:#fef2f2}.wr-item.closed{opacity:.7}.wr-item+.wr-item{margin-top:6px}
 .reasons{margin:4px 0 0;padding-left:18px}
 .chip.blue{background:var(--blue-50);color:#075985}
+
+/* Особая бронь продолжает существующий drawer. */
+.special-form .wide{grid-column:1/-1}.special-form input,.special-form select,.special-form textarea{min-width:0;max-width:100%}.special-form .grid>label{min-width:0}.special-form .row{margin-top:14px}.special-block .alert{margin-top:12px}.special-block .stack{gap:12px}.special-block .row{flex-wrap:wrap}.secret-url{width:100%;min-width:0}.special-block .row label{min-width:0;flex:1}.special-block dd{overflow-wrap:anywhere}
+@media(max-width:600px){.special-form .grid{grid-template-columns:1fr}.special-block .kv{grid-template-columns:1fr}.special-block .kv dd{margin-bottom:8px}.special-block .row button{flex-shrink:0}.page-head{flex-wrap:wrap}}

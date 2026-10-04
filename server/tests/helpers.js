@@ -1,6 +1,7 @@
 import { tzOffsetMin } from '../src/lib/dates.js';
 import './_env.js';
-import request from 'supertest';
+import supertest from 'supertest';
+import http from 'node:http';
 import zlib from 'node:zlib';
 import { config } from '../src/config.js';
 import { prisma } from '../src/db.js';
@@ -9,7 +10,21 @@ import { createEventBus } from '../src/notifications/events.js';
 import { createNotificationService } from '../src/notifications/service.js';
 import { createStorage } from '../src/storage/index.js';
 
-export { prisma, config, request };
+// Один listener на экземпляр приложения: не создавать/закрывать новый случайный порт для каждого HTTP-запроса.
+// Это стабилизирует локальный HTTP-harness без повторов запроса или изменения ожидаемых ответов.
+const testServers = new WeakMap();
+export function request(app, options) {
+  if (typeof app !== 'function') return supertest(app, options);
+  let server = testServers.get(app);
+  if (!server) {
+    server = http.createServer(app).listen(0);
+    server.unref();
+    testServers.set(app, server);
+  }
+  return supertest(server, options);
+}
+Object.assign(request, supertest); // agent/Test/cookies: прежний API Supertest сохранён
+export { prisma, config };
 export const PASS = 'demo12345';
 
 /** Приложение для тестов. transport — подменный «бот» (или null — бот выключен). */
