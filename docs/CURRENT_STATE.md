@@ -1,14 +1,23 @@
 # Текущее состояние (для передачи работы)
 
-Обновлено: 8 октября 2026 (Pass 5 Step 1 завершён; Step 2 не начат). Короткая выжимка; подробности — в `docs/ПЛАН.md` и спецификации.
+Обновлено: 8 октября 2026 (Pass 5 Step 2 завершён; Step 3 не начат). Короткая выжимка; подробности — в `docs/ПЛАН.md` и спецификации.
 
-## CURRENT STOP — PASS 5 STEP 1 COMPLETE
+## CURRENT STOP — PASS 5 STEP 2 COMPLETE
 
 **СЛЕДУЮЩИЙ ПРОДУКТОВЫЙ PASS НЕ НАЧИНАТЬ АВТОМАТИЧЕСКИ.**
 
-**Architecture/Product Gate «Guest Site → Real Server» — PASS.** Определён **PASS 5 — PRODUCTION GUEST SITE**, архитектура зафиксирована в [PASS5_PRODUCTION_GUEST_SITE_SPEC.md](PASS5_PRODUCTION_GUEST_SITE_SPEC.md). Step 1 реализован; production launch не готов и не заявляется. Отсутствие реальных банковских credentials не препятствует проверке реализации через существующий test adapter/stub; боевой запуск принимается отдельно.
+**Architecture/Product Gate «Guest Site → Real Server» — PASS.** Определён **PASS 5 — PRODUCTION GUEST SITE**, архитектура зафиксирована в [PASS5_PRODUCTION_GUEST_SITE_SPEC.md](PASS5_PRODUCTION_GUEST_SITE_SPEC.md). Steps 1–2 реализованы; production launch не готов и не заявляется. Отсутствие реальных банковских credentials не препятствует проверке реализации через существующий test adapter/stub; боевой запуск принимается отдельно.
 
-Следующий единственный этап — **PASS 5 STEP 2 — REAL GUEST CATALOGUE / AVAILABILITY / SERVER PRICE / CHECKOUT**, по отдельному handoff с Resource Budget. Step 2 не начат.
+Следующий единственный этап — **PASS 5 STEP 3 — PAYMENT FLOW / CALLBACK / RETRY / LATE PAYMENT**, по отдельному handoff с Resource Budget. Step 3 не начат.
+
+### Pass 5 Step 2 — завершён
+
+- **Production guest frontend:** существующее server application раздаёт с `/` отдельную гостевую страницу и assets того же origin. Визуальная оболочка адаптивная; browser demo shim, `Store` и `localStorage` не используются. Admin, team и link routes сохранены.
+- **Server catalogue и availability:** каталог получает активные test/demo квартиры из существующего public API и показывает только allow-list DTO с opaque `ref`, разрешёнными характеристиками, описанием и public media URLs. Выбранные даты, гости и питомец проверяются сервером; availability использует существующие Booking, active hold и repair/closure rules.
+- **Server price:** новый минимальный `GET /api/public/:slug/apartments/:ref/quote` возвращает даты, ночи, nightly price, pet fee, total и фактическую availability. Каталог получает такой же server preview. Клиент показывает серверный total и не отправляет авторитетную цену; checkout повторно рассчитывает и сохраняет snapshot на сервере.
+- **Checkout:** production form получает signed operation key и создаёт через Step 1 один `Booking(request)` с finite hold и booking-scoped access. Double-click/retry с той же операцией не создаёт дубль. Результат Step 2 — «бронь создана / ожидает оплату»; payment start/provider UI не вызываются.
+- **Targeted verification 8 октября 2026:** `pass5-step2.test.js` — **4/4 PASS**: server-served shell без demo/local authority, public DTO без internal ids, server quote, защита от browser price tampering, один Booking при retry, active hold во всех read/write проверках и 409 на занятые даты. `pass5-step2-e2e.py` — **desktop 1280×900 PASS, mobile 390×844 PASS**, каталог → даты → server quote → данные гостя → Booking(request); console/page errors **0**, горизонтального переполнения на 390 px нет.
+- **Граница готовности:** реальные квартиры владельца ещё не загружены; используются существующие test/demo данные. Payment provider, callback/retry/late-payment UI, protected post-booking page, online transfer payment, production deployment и live acceptance относятся к следующим шагам. Schema/migration в Step 2 не менялись; Step 1 security/concurrency/full suites не повторялись по Verification Budget.
 
 ### Pass 5 Step 1 — завершён
 
@@ -90,4 +99,4 @@ Pass 4 технически завершён и принят; live demo тепе
   - оплата после истечения срока при занятых датах — редкий ручной возврат (пункт «Сегодня» `payment_orphaned`);
   - прежний дефицит ~260 подготовок в seed устранён: обязательные подготовки создаются сразу; сверка даёт `preps=0`.
 - **Не пересматривать:** проход 3; решения по паспорту и билету, по оплате только картой на сайте, по индивидуальной цене; выбор «одна система Booking для обычных и особых броней». Не добавлять: загрузку документов, Telegram-напоминания, `minPrepMinutes`, Airbnb/iCal — это не проход 4.
-- **Остановка:** приёмка Pass 4 и live UX correction сохранены. Архитектура Pass 5 зафиксирована, Step 1 завершён. Единственный следующий этап — Step 2, указанный в текущем STOP; без отдельного handoff не запускать.
+- **Остановка:** приёмка Pass 4 и live UX correction сохранены. Архитектура Pass 5 зафиксирована, Steps 1–2 завершены. Единственный следующий этап — Step 3, указанный в текущем STOP; без отдельного handoff не запускать.

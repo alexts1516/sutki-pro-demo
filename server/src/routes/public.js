@@ -3,6 +3,7 @@
 //   GET  /api/public/:slug/apartments?checkIn&checkOut&guests&lang — квартиры с фото и подписями
 //   GET  /api/public/:slug/apartments/:id               — квартира + занятые даты на 6 месяцев
 //   GET  /api/public/:slug/apartments/:id/availability?from&to — занятые интервалы
+//   GET  /api/public/:slug/apartments/:id/quote          — серверная доступность и итоговая цена
 //   POST /api/public/:slug/bookings                     — заявка на бронь
 //   GET  /api/public/:slug/bookings/:token              — статус брони для гостя
 //   POST /api/public/:slug/bookings/:token/pay          — начать онлайн-оплату (если включена)
@@ -93,11 +94,12 @@ export default function publicRouter({ events, payments, config, dispatch, stora
     const lang = req.query.lang === 'en' ? 'en' : 'ru';
     const ci = parseDay(req.query.checkIn), co = parseDay(req.query.checkOut);
     const guests = Number(req.query.guests) || 0;
+    const pets = req.query.pets === '1' || req.query.pets === 'true';
     const list = await prisma.apartment.findMany({ where: { accountId: req.accountId, active: true, ...(guests ? { maxGuests: { gte: guests } } : {}) }, include: { photos: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] });
     const out = [];
     for (const a of list) {
       const item = apartmentPublic(a, lang);
-      if (ci && co && co > ci) { item.available = await isAvailable(req.accountId, a.id, ci, co); item.quote = quote(a, ci, co); }
+      if (ci && co && co > ci) { item.available = await isAvailable(req.accountId, a.id, ci, co); item.quote = quote(a, ci, co, pets); }
       out.push(apartmentGuest(item,config,req.accountId,req.params.slug));
     }
     res.json(out);
@@ -119,6 +121,17 @@ export default function publicRouter({ events, payments, config, dispatch, stora
     const from = parseDay(req.query.from) || today, to = parseDay(req.query.to) || addDays(from, 92);
     if (to <= from || nights(from, to) > 400) throw badRequest('Неверный период');
     res.json({ ref: publicRef(config,req.accountId,a.id), from: isoDay(from), to: isoDay(to), busy: await ranges(req, a, from, to) });
+  });
+  r.get('/apartments/:id/quote', async (req, res) => {
+    const a = await findApt(req); const checkIn = parseDay(req.query.checkIn), checkOut = parseDay(req.query.checkOut);
+    const guests = Number(req.query.guests), pets = req.query.pets === '1' || req.query.pets === 'true';
+    if (!checkIn || !checkOut || checkOut <= checkIn) throw badRequest('Проверьте даты заезда и выезда');
+    if (checkIn < todayIn(req.account.timezone)) throw badRequest('Дата заезда уже прошла');
+    if (nights(checkIn, checkOut) > 90) throw badRequest('Максимум 90 ночей');
+    if (!Number.isInteger(guests) || guests < 1 || guests > a.maxGuests) throw badRequest(`В этой квартире максимум ${a.maxGuests} гостей`);
+    if (pets && !a.petsAllowed) throw badRequest('В этой квартире нельзя с животными');
+    const available = await isAvailable(req.accountId, a.id, checkIn, checkOut);
+    res.json({ ref: publicRef(config,req.accountId,a.id), checkIn:isoDay(checkIn), checkOut:isoDay(checkOut), guests, pets, available, ...quote(a,checkIn,checkOut,pets) });
   });
 
   r.post('/bookings', async (req, res) => {

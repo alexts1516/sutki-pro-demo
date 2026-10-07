@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#17191d">
+  <meta name="referrer" content="no-referrer">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2317191d'/%3E%3Ctext x='16' y='22' text-anchor='middle' fill='white' font-size='18' font-family='Arial'%3EA%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/guest-assets/guest.css">
+  <title>The Address · Apart Hotel</title>
+</head>
+<body data-production-guest data-account="astana-stay">
+  <header class="topbar">
+    <a class="brand" href="#top" aria-label="На главную">
+      <span class="brand-mark" id="brandMark">TA</span>
+      <span><strong id="brandName">The Address</strong><small id="brandTagline">Apart Hotel</small></span>
+    </a>
+    <a class="contact-link" id="contactLink" href="#checkout">Забронировать</a>
+  </header>
+
+  <main id="top">
+    <section class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Астана · Highvill</p>
+        <h1 id="heroTitle">Апартаменты в самой высокой башне ЖК Хайвил</h1>
+        <p id="heroSubtitle">Комфортное самостоятельное заселение и поддержка 24/7.</p>
+      </div>
+      <div class="search-panel" aria-label="Поиск свободных квартир">
+        <label>Заезд<input id="checkIn" type="date" required></label>
+        <label>Выезд<input id="checkOut" type="date" required></label>
+        <label>Гостей<select id="guests"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
+        <label class="pet-toggle"><input id="pets" type="checkbox"> С питомцем</label>
+        <button class="primary" id="search" type="button">Найти квартиру</button>
+      </div>
+    </section>
+
+    <section class="catalog-section" aria-labelledby="catalogTitle">
+      <div class="section-heading"><div><p class="eyebrow">Серверная доступность</p><h2 id="catalogTitle">Наши квартиры</h2></div><p id="catalogStatus" class="status" aria-live="polite">Загружаем каталог…</p></div>
+      <div id="catalog" class="catalog" data-testid="catalog"></div>
+    </section>
+
+    <section class="checkout-section" id="checkout" aria-labelledby="checkoutTitle">
+      <div class="checkout-summary">
+        <p class="eyebrow">Выбранная квартира</p>
+        <h2 id="checkoutTitle">Проверьте даты и цену</h2>
+        <div id="selection" class="selection muted">Выберите свободную квартиру из каталога.</div>
+        <div id="quote" class="quote" data-testid="server-quote" hidden></div>
+        <p class="server-note">Доступность и итоговая сумма проверяются сервером. Бронь удерживает даты ограниченное время.</p>
+      </div>
+
+      <form id="checkoutForm" class="checkout-form" novalidate>
+        <div class="field-grid">
+          <label>Имя и фамилия<input id="guestName" name="name" autocomplete="name" minlength="2" maxlength="80" required></label>
+          <label>Телефон<input id="guestPhone" name="phone" type="tel" autocomplete="tel" placeholder="+7 700 000 00 00" required></label>
+        </div>
+        <label>Email <span class="muted">необязательно</span><input id="guestEmail" name="email" type="email" autocomplete="email"></label>
+        <label>Комментарий <span class="muted">необязательно</span><textarea id="guestComment" name="comment" maxlength="1000" rows="3"></textarea></label>
+        <label class="agreement"><input id="agreement" type="checkbox" required> Подтверждаю выбранные даты и данные гостя</label>
+        <button class="primary checkout-button" id="checkoutButton" type="submit" disabled>Создать бронь</button>
+        <p class="payment-note">После создания бронь будет ожидать оплату. Платёжный шаг подключается отдельно.</p>
+        <div id="checkoutResult" aria-live="polite"></div>
+      </form>
+    </section>
+  </main>
+
+  <footer><span id="footerAbout">The Address · Apart Hotel</span><a id="footerPhone" href="#checkout">Связаться</a></footer>
+  <script type="module" src="/guest-assets/guest.js"></script>
+</body>
+</html>

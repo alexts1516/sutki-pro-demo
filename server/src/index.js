@@ -33,6 +33,7 @@ if (bot) {
 }
 const server = app.listen(config.port, async () => {
   console.log(`\n  Сервер запущен: http://localhost:${config.port}`);
+  console.log(`  Сайт гостей:    http://localhost:${config.port}/`);
   console.log(`  Админка:        http://localhost:${config.port}/admin/`);
   console.log(`  Проверка:       http://localhost:${config.port}/api/health`);
   console.log(`  Telegram-бот:   ${bot ? 'включён (' + config.telegram.mode + ')' : 'выключен — уведомления пишутся в консоль и журнал'}`);

@@ -103,7 +103,8 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
   // файлы и админка
   if (storage.driver === 'local') app.use('/uploads', express.static(storage.uploadDir, { maxAge: '7d', fallthrough: false }));
   const pub = path.join(config.root, 'public');
-  app.get('/', (_req, res) => res.redirect('/admin/'));
+  app.get('/', (_req, res) => res.sendFile('index.html', { root: path.join(pub, 'guest') }));
+  app.use('/guest-assets', express.static(path.join(pub, 'guest'), { maxAge: '1h' }));
   app.use('/admin', express.static(path.join(pub, 'admin'), { extensions: ['html'] }));
   app.use('/app', express.static(path.join(pub, 'app'), { extensions: ['html'] }));     // приложение водителя/мастера/клининга
   app.use('/shared', express.static(path.join(pub, 'shared'), { maxAge: '1h' }));
