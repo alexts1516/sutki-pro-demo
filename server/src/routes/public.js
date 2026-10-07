@@ -155,7 +155,6 @@ export default function publicRouter({ events, payments, config, dispatch, stora
     const amountShown = convertKzt(q.totalKzt, d.currency, cur.rates, cur.roundStep);
     const result = await checkout({ accountId:req.accountId,apartment:apt,data:d,guestData:{name:d.name,phone:d.phone,email:d.email,locale:d.lang},key,config,
       amountShown,holdUntil:new Date(Date.now()+PUBLIC_HOLD_MIN*60000) });
-    if(!result.replayed) events.emit('booking.requested',{accountId:req.accountId,bookingId:result.booking.id});
     // Creation reply may be replayed only with the same high-entropy checkout proof.
     res.status(201).json({...bookingGuest(result.booking),token:result.token,payOnline:!!payments && payments.guestCheckoutReady !== false,telegramLink:deepLink(config.telegram.username,`b_${result.token}`)});
   });

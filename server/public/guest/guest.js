@@ -94,14 +94,14 @@ async function checkoutOperation(body) {
 $('#checkoutForm').addEventListener('submit',async event=>{
   event.preventDefault(); if(state.submitting || !state.selected || !state.quote?.available)return;
   if(!event.currentTarget.reportValidity())return;
-  state.submitting=true;$('#checkoutButton').disabled=true;$('#checkoutButton').textContent='Создаём бронь…';$('#checkoutResult').innerHTML='';
+  state.submitting=true;$('#checkoutButton').disabled=true;$('#checkoutButton').textContent='Удерживаем даты…';$('#checkoutResult').innerHTML='';
   const selected=state.apartments.find(a=>a.ref===state.selected),values=query();
   const body={apartmentId:state.selected,checkIn:values.checkIn,checkOut:values.checkOut,guests:values.guests,pets:values.pets,name:$('#guestName').value.trim(),phone:$('#guestPhone').value.trim(),email:$('#guestEmail').value.trim(),comment:$('#guestComment').value.trim(),paymentMethod:'card'};
   try{
     const booking=await checkoutOperation(body);
-    $('#checkoutResult').innerHTML=`<div class="result success" data-testid="booking-created"><strong>Бронь №${escapeHtml(booking.number)} создана</strong>${escapeHtml(selected.title)}, ${escapeHtml(booking.checkIn)} → ${escapeHtml(booking.checkOut)} · ${booking.nights} ноч. · ${money(booking.totalKzt)}.<br>Статус: ожидает оплату. Даты удерживаются до ${new Date(booking.holdUntil).toLocaleString('ru-RU')}.</div>`;
+    $('#checkoutResult').innerHTML=`<div class="result success" data-testid="hold-created"><strong>Даты временно удерживаются</strong>${escapeHtml(selected.title)}, ${escapeHtml(booking.checkIn)} → ${escapeHtml(booking.checkOut)} · ${booking.nights} ноч. · ${money(booking.totalKzt)}.<br>Даты временно удерживаются за вами до ${new Date(booking.holdUntil).toLocaleString('ru-RU')}. Завершите оплату, чтобы подтвердить бронирование.<br><span class="muted">Платёжный шаг пока не подключён.</span></div>`;
   }catch(error){$('#checkoutResult').innerHTML=`<div class="result error">${escapeHtml(error.message)}</div>`;if(/занят|недоступ/i.test(error.message))await loadCatalog();}
-  finally{state.submitting=false;$('#checkoutButton').textContent='Создать бронь';$('#checkoutButton').disabled=!state.quote?.available;}
+  finally{state.submitting=false;$('#checkoutButton').textContent='Перейти к оплате';$('#checkoutButton').disabled=!state.quote?.available;}
 });
 
 $('#search').addEventListener('click',loadCatalog);
