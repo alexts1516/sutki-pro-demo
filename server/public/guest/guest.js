@@ -100,9 +100,9 @@ function rememberedBooking() {
   try{return sessionStorage.getItem(`guest-payment:${slug}`);}catch{return null;}
 }
 function paymentMessage(html,kind='success') { $('#checkoutResult').innerHTML=`<div class="result ${kind}" data-testid="payment-state">${html}</div>`; }
-function renderServerPayment(result) {
+function renderServerPayment(result,token) {
   if(result.bookingStatus==='confirmed') {
-    paymentMessage('<strong>Бронирование подтверждено</strong>Оплата проверена сервером. Бронирование подтверждено.');
+    paymentMessage(`<strong>Бронирование подтверждено</strong>Оплата проверена сервером. Бронирование подтверждено.<br><a class="choose payment-link" href="/booking/${encodeURIComponent(token)}">Открыть бронь и инструкции</a>`);
     return 'confirmed';
   }
   if(['failed','cancelled'].includes(result.payment?.status)) {
@@ -117,7 +117,7 @@ async function refreshPaymentStatus(token,{poll=false,attempt=0}={}) {
   if(!token)return;
   try {
     const result=await api(`/bookings/${encodeURIComponent(token)}/payment`);
-    const stateName=renderServerPayment(result);
+    const stateName=renderServerPayment(result,token);
     if(poll && stateName==='processing' && attempt<90)setTimeout(()=>refreshPaymentStatus(token,{poll:true,attempt:attempt+1}),1000);
   } catch(error) { paymentMessage(escapeHtml(error.message),'error'); }
 }

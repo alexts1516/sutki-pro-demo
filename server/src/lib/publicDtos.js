@@ -19,6 +19,23 @@ export function bookingGuest(b) {
     paymentMethod: b.paymentMethod, paymentStatus: b.paymentStatus, holdUntil: b.holdUntil, pets: !!b.pets, petFeeKzt: b.petFeeKzt,
     apartment: b.apartment ? { title: [b.apartment.rooms, b.apartment.complex || b.apartment.district].filter(Boolean).join(' · '), ...(b.status === 'confirmed' ? { address: b.apartment.address } : {}) } : undefined };
 }
+export function bookingPageGuest({ booking:b, brand, payment, orphaned=false, now=new Date() }) {
+  const past = b.status === 'completed' || new Date(b.checkOut) <= now;
+  const failed = ['failed','cancelled'].includes(payment?.status);
+  const state = past ? 'completed' : orphaned ? 'payment_orphaned' : b.status === 'confirmed' ? 'confirmed' : b.status === 'request' ? (failed ? 'payment_failed' : 'payment_pending') : 'cancelled';
+  const confirmed = state === 'confirmed';
+  const apartment = { title: [b.apartment.rooms,b.apartment.complex||b.apartment.district].filter(Boolean).join(' · ') };
+  if(confirmed) apartment.address=b.apartment.address;
+  const out = {
+    number:b.number,state,status:b.status,checkIn:isoDay(b.checkIn),checkOut:isoDay(b.checkOut),checkInTime:b.checkInTime,checkOutTime:b.checkOutTime,
+    guestsCount:b.guestsCount,totalKzt:b.totalKzt,payment:{status:payment?.status||b.paymentStatus,paidKzt:payment?.status==='succeeded'?payment.amountKzt:null},apartment,
+    contact:{phone:brand.contacts?.phone||null,telegram:brand.contacts?.telegram||null,whatsapp:brand.contacts?.whatsapp||null,email:brand.contacts?.email||null},
+    transfers:(b.transfers||[]).map(t=>({direction:t.direction,place:t.place,date:isoDay(t.date),time:t.time,status:t.status,flight:t.flight||null})),
+    nextAction:confirmed?'follow_checkin':state==='payment_pending'?'wait_payment':state==='payment_failed'?'retry_payment':state==='payment_orphaned'?'contact_support':state==='completed'?'stay_complete':'contact_support',
+  };
+  if(confirmed) out.instructions={entrance:b.apartment.entrance||null,floor:b.apartment.floor??null,intercom:b.apartment.intercom||null,lockCode:b.apartment.lockCode||null,keyboxCode:b.apartment.keyboxCode||null,wifiName:b.apartment.wifiName||null,wifiPassword:b.apartment.wifiPassword||null,note:b.apartment.accessNote||null};
+  return out;
+}
 export function paymentGuest(p) {
   const intent = p.intent || {};
   return { paymentRef: p.publicRef, status: p.status, ...intent, ...(p.status === 'succeeded' ? { paid: true } : {}) };

@@ -19,7 +19,7 @@ import { busyRanges, isAvailable, quote, PUBLIC_HOLD_MIN } from '../services/boo
 import { transferLegPrice } from '../services/transfers.js';
 import { loadBrand, loadTexts, loadCurrency } from '../site/config.js';
 import { deepLink } from '../telegram/linking.js';
-import { apartmentGuest, bookingGuest, paymentGuest, publicRef } from '../lib/publicDtos.js';
+import { apartmentGuest, bookingGuest, bookingPageGuest, paymentGuest, publicRef } from '../lib/publicDtos.js';
 import { checkout, operationKey, issueOperationKey, findGuestBooking, startAttempt } from '../services/publicCheckout.js';
 import { linkGuard, createLimiter, tooMany } from '../lib/rateLimit.js';
 
@@ -159,6 +159,15 @@ export default function publicRouter({ events, payments, config, dispatch, stora
 
   const byToken = req => findGuestBooking(req.accountId,req.params.token);
   r.get('/bookings/:token',async(req,res)=>res.json(bookingGuest(await byToken(req))));
+  r.get('/bookings/:token/page',async(req,res)=>{
+    let booking;try{booking=await byToken(req);}catch(error){if(error instanceof HttpError&&error.status===404)return res.json({state:'invalid'});throw error;}
+    const [payment,brand]=await Promise.all([
+      prisma.payment.findFirst({where:{bookingId:booking.id},orderBy:{createdAt:'desc'}}),
+      loadBrand(prisma,req.accountId),
+    ]);
+    const orphaned=payment ? !!(await prisma.outboxEvent.findUnique({where:{dedupeKey:`event:payment.orphaned:${payment.id}`},select:{id:true}})) : false;
+    res.json(bookingPageGuest({booking,brand,payment,orphaned}));
+  });
   r.get('/bookings/:token/payment',async(req,res)=>{
     const booking=await byToken(req);
     const payment=await prisma.payment.findFirst({where:{bookingId:booking.id},orderBy:{createdAt:'desc'}});

@@ -1,14 +1,23 @@
 # Текущее состояние (для передачи работы)
 
-Обновлено: 8 октября 2026 (Pass 5 Step 3 завершён; Step 4 не начат). Короткая выжимка; подробности — в `docs/ПЛАН.md` и спецификации.
+Обновлено: 8 октября 2026 (Pass 5 Step 4 завершён; Step 5 не начат). Короткая выжимка; подробности — в `docs/ПЛАН.md` и спецификации.
 
-## CURRENT STOP — PASS 5 STEP 3 COMPLETE
+## CURRENT STOP — PASS 5 STEP 4 COMPLETE
 
 **СЛЕДУЮЩИЙ ПРОДУКТОВЫЙ PASS НЕ НАЧИНАТЬ АВТОМАТИЧЕСКИ.**
 
-**Architecture/Product Gate «Guest Site → Real Server» — PASS.** Определён **PASS 5 — PRODUCTION GUEST SITE**, архитектура зафиксирована в [PASS5_PRODUCTION_GUEST_SITE_SPEC.md](PASS5_PRODUCTION_GUEST_SITE_SPEC.md). Steps 1–3 реализованы; production launch не готов и не заявляется. Отсутствие реальных банковских credentials не препятствует проверке реализации через существующий подписанный test adapter/stub; боевой запуск принимается отдельно.
+**Architecture/Product Gate «Guest Site → Real Server» — PASS.** Определён **PASS 5 — PRODUCTION GUEST SITE**, архитектура зафиксирована в [PASS5_PRODUCTION_GUEST_SITE_SPEC.md](PASS5_PRODUCTION_GUEST_SITE_SPEC.md). Steps 1–4 реализованы; production launch не готов и не заявляется. Отсутствие реальных банковских credentials не препятствует проверке реализации через существующий подписанный test adapter/stub; боевой запуск принимается отдельно.
 
-Следующий единственный этап — **PASS 5 STEP 4 — PROTECTED POST-BOOKING GUEST PAGE**, по отдельному handoff с Resource Budget. Step 4 не начат.
+Следующий единственный этап — **PASS 5 STEP 5 — ONLINE TRANSFER PAYMENT**, по отдельному handoff с Resource Budget. Step 5 не начат.
+
+### Pass 5 Step 4 — завершён
+
+- **Protected page:** `/booking/:token` загружает статическую безопасную оболочку и получает данные только через существующий booking-scoped capability. Внутренний Booking id, номер, телефон и capability другой брони не дают доступ; HTML не встраивает секрет или данные брони.
+- **Guest-safe DTO:** отдельный allow-list содержит только публичный номер, гостевой статус, квартиру, даты, сумму/статус оплаты, публичный контакт, безопасное состояние трансфера и следующий шаг. Internal ids, provider operation, служебные комментарии, payout/task/log fields и внутренняя причина `payment_orphaned` не выдаются.
+- **State boundary:** active `confirmed` показывает точный адрес и существующие инструкции заселения. `payment_pending`, `payment_failed`, `cancelled` и `payment_orphaned` не показывают приватные инструкции; orphaned даёт нейтральный ручной follow-up. `completed` и прошедшее проживание скрывают адрес, коды и Wi-Fi. Reload заново читает server state; `localStorage`/demo Store не используются.
+- **Schema/migration:** не менялись; существующих Booking, Apartment, Payment, Transfer, Brand и Outbox данных достаточно.
+- **Targeted verification 8 октября 2026:** `pass5-step4.test.js` — **5/5 PASS** по девяти обязательным сценариям; после safe invalid-state и no-referrer/no-store corrections два прямо затронутых теста повторно прошли **1/1** каждый. Единственный targeted public-access regression — **2/2 PASS**. HTTP browser flow: desktop confirmed/pending/invalid и mobile 390 px confirmed/invalid — **PASS**; reload/server state, отсутствие overflow, console/page errors **0**.
+- **Граница готовности:** online transfer payment не реализован; production deployment/live acceptance этой server-backed страницы не выполнялись. Step 5 не начат.
 
 ### Pass 5 Step 3 — завершён
 
@@ -17,7 +26,7 @@
 - **Confirmation и late payment:** verified success переводит ту же `Booking(request)` в `Booking(confirmed)` через существующее confirmation ядро. Duplicate callback не повторяет подготовку/Outbox/downstream. Late success восстанавливает ту же Booking, если даты свободны; если даты заняты, Booking не дублируется, создаётся один `payment_orphaned` для ручного возврата. Automatic refund не добавлялся.
 - **Schema/migration:** не менялись; полей `Payment` из Step 1 достаточно для attempt identity, provider operation, callback outcome и timestamps.
 - **Targeted verification 8 октября 2026:** `pass5-step3.test.js` — **5/5 PASS**, покрыты все девять обязательных сценариев Step 3. Единственный targeted regression двух прежних test-provider сценариев Pass 3/Pass 4 — **2/2 PASS**. Реальный HTTP browser flow `pass5-step3-e2e.py` — **desktop 1280×900 PASS, mobile 390×844 PASS**: return не заявляет успех, signed callback даёт подтверждённое server state, после reload состояние сохраняется, console/page errors **0**.
-- **Граница готовности:** использован только подписанный stub; реальные bank credentials, реальные списания и production payment acceptance не выполнялись. Protected post-booking guest page относится к Step 4 и не начата.
+- **Граница готовности:** использован только подписанный stub; реальные bank credentials, реальные списания и production payment acceptance не выполнялись. Protected post-booking guest page реализована в Step 4.
 
 ### Pass 5 Step 2 — завершён
 
@@ -109,4 +118,4 @@ Pass 4 технически завершён и принят; live demo тепе
   - оплата после истечения срока при занятых датах — редкий ручной возврат (пункт «Сегодня» `payment_orphaned`);
   - прежний дефицит ~260 подготовок в seed устранён: обязательные подготовки создаются сразу; сверка даёт `preps=0`.
 - **Не пересматривать:** проход 3; решения по паспорту и билету, по оплате только картой на сайте, по индивидуальной цене; выбор «одна система Booking для обычных и особых броней». Не добавлять: загрузку документов, Telegram-напоминания, `minPrepMinutes`, Airbnb/iCal — это не проход 4.
-- **Остановка:** приёмка Pass 4 и live UX correction сохранены. Архитектура Pass 5 зафиксирована, Steps 1–3 завершены. Единственный следующий этап — Step 4, указанный в текущем STOP; без отдельного handoff не запускать.
+- **Остановка:** приёмка Pass 4 и live UX correction сохранены. Архитектура Pass 5 зафиксирована, Steps 1–4 завершены. Единственный следующий этап — Step 5, указанный в текущем STOP; без отдельного handoff не запускать.
