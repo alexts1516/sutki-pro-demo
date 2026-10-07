@@ -10,6 +10,13 @@
 
 Следующий единственный этап — **PASS 5 STEP 1 — PUBLIC CONTRACTS / SECURITY / IDEMPOTENCY FOUNDATION**, по отдельному заданию. В текущей документационной фиксации Step 1 не запускался: код, UI, schema/migrations, тесты и Vercel не менялись.
 
+## PROCESS CORRECTION — AI RESOURCE BUDGET GATE
+
+- **7 октября 2026 выявлен `PROCESS FAIL`:** чрезмерное углубление verification в Pass 5 Step 1 потребовало ручной остановки владельцем.
+- Введены обязательные Verification Budget и Resource Stop Conditions.
+- Следующий крупный handoff без Resource Budget запрещён.
+- Незавершённый Pass 5 Step 1 сохранён отдельно и этой задачей не изменяется; Step 1 не объявляется завершённым.
+
 ## Зафиксированная live acceptance UX correction
 
 Pass 4 технически завершён и принят; live demo теперь показывает принятый Systemic UX Correction Package из `19badc5`. Automated Role UX Gate выявил два P1 и системные P2. Один Systemic UX Correction Package устранил подтверждённые причины, без новых модулей, schema и миграций.
