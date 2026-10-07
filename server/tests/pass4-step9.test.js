@@ -1,6 +1,6 @@
 import { test, before, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeApp, login, prisma, request } from './helpers.js';
+import { makeApp, login, prisma, request, guestBooking } from './helpers.js';
 import { runOutbox } from '../src/services/outbox.js';
 import { runBookingMaintenance } from '../src/notifications/scheduler.js';
 import { reconcileLinkConflicts } from '../src/services/bookingLinks.js';
@@ -55,7 +55,7 @@ test('шаг 9: поздняя оплата после занятия дат д�
  const n=offset;offset+=5;const day=todayIn(acc.timezone);
  const body={apartmentId:apt.id,checkIn:isoDay(addDays(day,n)),checkOut:isoDay(addDays(day,n+2)),guests:1,name:'Гость оплаты',phone:'+77015550099'};
  const first=await request(X.app).post('/api/public/astana-stay/bookings').send(body);assert.equal(first.status,201,JSON.stringify(first.body));
- const b=await prisma.booking.findUnique({where:{token:first.body.token}});
+ const b=await guestBooking(first.body.token);
  const pay=await prisma.payment.create({data:{accountId:acc.id,bookingId:b.id,provider:'test',amountKzt:40000,amount:40000,status:'pending'}});
  await prisma.booking.update({where:{id:b.id},data:{holdUntil:new Date(Date.now()-1000)}});
  const second=await request(X.app).post('/api/public/astana-stay/bookings').send({...body,name:'Другой гость',phone:'+77015550100'});assert.equal(second.status,201,JSON.stringify(second.body));
@@ -65,7 +65,7 @@ test('шаг 9: поздняя оплата после занятия дат д�
  const ls=await prisma.notificationLog.findMany({where:{dedupeKey:{startsWith:`payment.orphaned:${pay.id}:`}}});
  assert.equal(ls.length,2);assert.ok(ls.every(l=>l.text.includes('возврат')&&l.text.includes('40 000')&&l.text.includes('Сегодня')));
  assert.equal((await prisma.booking.findUnique({where:{id:b.id}})).status,'cancelled');
- assert.equal((await prisma.booking.findUnique({where:{token:second.body.token}})).status,'request');
+ assert.equal((await guestBooking(second.body.token)).status,'request');
 });
 test('шаг 9: поздний ремонт в день выезда не теряется из-за полуночи UTC', async () => {
  const c=await create();await save(c);await submit(c);const b=await prisma.booking.findUnique({where:{id:c.link.bookingId}});

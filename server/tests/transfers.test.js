@@ -2,7 +2,7 @@
 // первый «Беру» получает заказ, эскалация «никто не взял», отмена/перенос брони, выплата водителю, ссылка внешнего водителя.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeApp, login, prisma, request, freeDates, extConfig, extDriver, pickupSoon } from './helpers.js';
+import { makeApp, login, prisma, request, freeDates, extConfig, extDriver, pickupSoon, guestBooking, guestTransfer } from './helpers.js';
 
 const { app, events } = makeApp({ config: extConfig });   // внешние водители включены только для этих сценариев
 let acc, apt, owner, admin, ruslan, bauyrzhan, kanat, cleaner, master, ownerB;
@@ -23,8 +23,8 @@ async function requestWithTransfer(tr = {}) {
   assert.equal(b.status, 201, JSON.stringify(b.body));
   const t = await request(app).post('/api/public/astana-stay/transfers').send({ bookingToken: b.body.token, direction: 'in', place: 'airport', date: dates.checkIn, time: '15:30', flight: 'KC 101', pax: 2, bags: 3, childSeats: 1, ...tr });
   assert.equal(t.status, 201, JSON.stringify(t.body));
-  const booking = await prisma.booking.findUnique({ where: { token: b.body.token } });
-  return { booking, transferId: t.body.id, dates };
+  const booking = await guestBooking(b.body.token);
+  return { booking, transferId: (await guestTransfer(t.body.ref)).id, dates };
 }
 async function confirmedJob(tr) {
   const x = await requestWithTransfer(tr);
@@ -58,7 +58,7 @@ test('подтверждение брони с трансфером автома
   // трансфер, добавленный к уже подтверждённой брони, сразу уходит водителям
   const t2 = await request(app).post('/api/public/astana-stay/transfers').send({ bookingToken: x.booking.token, direction: 'out', place: 'station', date: x.dates.checkOut, time: '10:00' });
   assert.equal(t2.body.status, 'planned');
-  const j2 = await prisma.transferJob.findUnique({ where: { transferId: t2.body.id } });
+  const j2 = await prisma.transferJob.findUnique({ where: { transferId: (await guestTransfer(t2.body.ref)).id } });
   assert.equal(j2.status, 'OFFERED'); assert.equal(j2.freeWaitMin, 15, 'проводы от квартиры — 15 минут ожидания');
 });
 

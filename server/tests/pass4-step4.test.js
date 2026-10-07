@@ -3,7 +3,7 @@
 // Работает на SQLite, в памяти и на PostgreSQL; два отдельных процесса — в pass4.pg.test.js.
 import { test, before, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeApp, login, prisma, request } from './helpers.js';
+import { makeApp, login, prisma, request, guestPayment, guestBooking } from './helpers.js';
 import { isAvailable, PUBLIC_HOLD_MIN, PAY_EXTEND_MIN, turnoverKey, confirmKeys } from '../src/services/bookings.js';
 import { applyPaymentResult, orphanKey } from '../src/payments/index.js';
 import { createTestPayments } from '../src/payments/test.js';
@@ -31,7 +31,7 @@ let phoneN = 1000;
 async function book(dt, body = {}, x = X) {
   return pub(x).post('/api/public/astana-stay/bookings').send({ apartmentId: apt.id, ...dt, guests: 1, name: 'Гость Шаг4', phone: `+7 701 444 ${String(phoneN++).padStart(4, '0')}`, ...body });
 }
-const byToken = (token) => prisma.booking.findUnique({ where: { token } });
+const byToken = guestBooking;
 async function startPay(token, x = X) { return pub(x).post(`/api/public/astana-stay/bookings/${token}/pay`).send({}); }
 const pay = (paymentId, x = X) => applyPaymentResult({ prisma, events: x.events, dispatch: x.dispatch, result: { paymentId, status: 'succeeded', providerPaymentId: 'prov-' + paymentId } });
 const expire = (id, msAgo = 1000) => prisma.booking.update({ where: { id }, data: { holdUntil: new Date(Date.now() - msAgo) } });
@@ -42,7 +42,7 @@ const orphanItems = async () => (await todayView(acc.id, { role: 'admin' })).ite
 async function requestWithPayment(dt = dates()) {
   const r = await book(dt); assert.equal(r.status, 201, JSON.stringify(r.body));
   const p = await startPay(r.body.token); assert.equal(p.status, 201, JSON.stringify(p.body));
-  return { dt, token: r.body.token, booking: await byToken(r.body.token), paymentId: p.body.paymentId };
+  return { dt, token: r.body.token, booking: await byToken(r.body.token), paymentId: (await guestPayment(p.body.paymentRef)).id };
 }
 
 before(async () => {
@@ -121,7 +121,7 @@ test('шаг 4: открытие оплаты продлевает удержа�
   assert.equal(p.status, 201); assert.equal(p.body.type, 'redirect');
   const nb = await byToken(r.body.token);
   assert.ok(+nb.holdUntil >= t0 + PAY_EXTEND_MIN * MIN - 50 && +nb.holdUntil <= Date.now() + PAY_EXTEND_MIN * MIN + 50, String(nb.holdUntil));
-  const pm = await prisma.payment.findUnique({ where: { id: p.body.paymentId } });
+  const pm = await guestPayment(p.body.paymentRef);
   assert.equal(pm.status, 'created'); assert.equal(pm.bookingId, b.id); assert.equal(pm.amountKzt, b.totalKzt);
 });
 
@@ -131,7 +131,7 @@ test('шаг 4: продление никогда не укорачивает б
   assert.equal(+(await byToken(r.body.token)).holdUntil, +b.holdUntil);
   const long = new Date(Date.now() + 3 * 60 * MIN);
   await prisma.booking.update({ where: { id: b.id }, data: { holdUntil: long } });
-  assert.equal((await startPay(r.body.token)).status, 201);
+  assert.equal((await startPay(r.body.token)).status, 409, 'новая попытка до завершения предыдущей запрещена');
   assert.equal(+(await byToken(r.body.token)).holdUntil, +long);
 });
 
@@ -169,7 +169,7 @@ test('шаг 4: демо-оплата (мгновенный тестовый п�
   const T = boot(createTestPayments());
   const r = await book(dates(), {}, T);
   const p = await startPay(r.body.token, T);
-  assert.equal(p.status, 201); assert.equal(p.body.paid, true); assert.equal(p.body.status, 'confirmed');
+  assert.equal(p.status, 201); assert.equal(p.body.paid, true); assert.equal(p.body.bookingStatus, 'confirmed');
   assert.equal((await startPay(r.body.token, T)).status, 409, 'повторно не оплатить');
 });
 
@@ -223,7 +223,7 @@ test('шаг 4: оплата после истечения, даты занят�
   assert.equal(b.status, 'cancelled', 'даты не заняты повторно');
   assert.equal(b.paymentStatus, 'paid', 'деньги получены — их нужно вернуть');
   const holders = await blockingIn(x.dt);
-  assert.deepEqual(holders.map(h => h.token), [other.body.token]);
+  assert.deepEqual(holders.map(h => h.id), [(await byToken(other.body.token)).id]);
   assert.equal(await prisma.cleaningTask.count({ where: { bookingId: b.id } }), 0);
   let items = (await orphanItems()).filter(i => i.ref === x.paymentId);
   assert.equal(items.length, 1);
@@ -285,12 +285,12 @@ test('шаг 4: гонка «поздняя оплата» vs «новая бр�
     assert.equal(holders.length, 1, 'на даты ровно одна бронь');
     if (other.status === 201) {
       assert.equal(out.outcome, 'orphaned');
-      assert.equal(holders[0].token, other.body.token);
+      assert.equal(holders[0].id, (await byToken(other.body.token)).id);
       assert.equal(await prisma.outboxEvent.count({ where: { dedupeKey: orphanKey(x.paymentId) } }), 1);
     } else {
       assert.equal(other.status, 409, JSON.stringify(other.body));
       assert.equal(out.outcome, 'restored');
-      assert.equal(holders[0].token, x.token);
+      assert.equal(holders[0].id, x.booking.id);
       assert.equal(await prisma.outboxEvent.count({ where: { dedupeKey: orphanKey(x.paymentId) } }), 0);
     }
   }

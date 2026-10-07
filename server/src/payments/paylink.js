@@ -32,6 +32,7 @@ export function verifyPaylinkNotification({ rawBody, headers, shopId, secretKey,
 export function createPaylink({ shopId, secretKey, publicKey, testMode = true, publicUrl, fetchImpl = globalThis.fetch }) {
   return {
     name: 'paylink',
+    guestCheckoutReady: !!publicKey,
     async createPayment({ payment, description, lang = 'ru', returnUrl }) {
       const body = {
         checkout: {
@@ -57,10 +58,11 @@ export function createPaylink({ shopId, secretKey, publicKey, testMode = true, p
       let b = {}; try { b = JSON.parse(Buffer.isBuffer(rawBody) ? rawBody.toString('utf8') : rawBody); } catch { /* пусто */ }
       const tr = b.transaction || {};
       const trackingId = tr.tracking_id || b.order?.tracking_id;
-      const payment = trackingId ? await prisma.payment.findUnique({ where: { id: String(trackingId) } }) : null;
+      const payment = trackingId ? await prisma.payment.findFirst({ where: { OR:[{publicRef:String(trackingId)},{id:String(trackingId)}] } }) : null;
       if (!payment || payment.provider !== 'paylink') return { status: 200, body: { ok: true, ignored: true } };
-      const amountOk = tr.amount == null || (Number(tr.amount) === Math.round(payment.amount * 100) && (!tr.currency || tr.currency === payment.currency));
-      const status = !amountOk ? 'failed' : tr.status === 'successful' ? 'succeeded' : ['failed', 'expired', 'declined'].includes(tr.status) || b.expired ? 'failed' : 'pending';
+      const amountOk = tr.amount != null && (Number(tr.amount) === Math.round(payment.amount * 100) && (payment.attemptKeyHash ? tr.currency===payment.currency : (!tr.currency || tr.currency === payment.currency)));
+      if(!amountOk || !(tr.uid || b.token) || (payment.providerPaymentId && payment.providerPaymentId!==(tr.uid || b.token))) return {status:200,body:{ok:true,ignored:true}};
+      const status = tr.status === 'successful' ? 'succeeded' : ['failed', 'expired', 'declined'].includes(tr.status) || b.expired ? 'failed' : 'pending';
       return { status: 200, body: { ok: true }, result: { paymentId: payment.id, status, providerPaymentId: tr.uid || b.token || null, raw: b } };
     },
   };

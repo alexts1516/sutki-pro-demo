@@ -2,7 +2,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
-import { makeApp, prisma, request, freeDates } from './helpers.js';
+import { makeApp, prisma, request, freeDates, guestPayment } from './helpers.js';
 import { createCloudPayments, verifyCloudPaymentsSignature } from '../src/payments/cloudpayments.js';
 import { createPaylink, verifyPaylinkNotification } from '../src/payments/paylink.js';
 import { createPaymentProvider } from '../src/payments/index.js';
@@ -37,7 +37,7 @@ test('CloudPayments: параметры виджета', async () => {
   assert.equal(r.body.type, 'widget'); assert.match(r.body.script, /widget\.cloudpayments\.ru/);
   assert.equal(r.body.params.publicTerminalId, 'test_api_00000000000000000000002');
   assert.equal(r.body.params.currency, 'KZT'); assert.equal(r.body.params.amount, booking.totalKzt);
-  assert.equal(r.body.params.externalId, r.body.paymentId);
+  assert.equal(r.body.params.externalId, r.body.paymentRef);
   pay = r.body;
 });
 
@@ -54,21 +54,21 @@ const post = (kind, body, hmac = sign(body)) => request(app).post(`/api/payments
 const form = (o) => new URLSearchParams(o).toString();
 
 test('CloudPayments Check: 13 при плохой подписи, 10 — чужой заказ, 12 — не та сумма, 0 — ок', async () => {
-  const ok = form({ TransactionId: '1001', Amount: booking.totalKzt.toFixed(2), Currency: 'KZT', InvoiceId: pay.paymentId, Status: 'Completed' });
+  const ok = form({ TransactionId: '1001', Amount: booking.totalKzt.toFixed(2), Currency: 'KZT', InvoiceId: pay.paymentRef, Status: 'Completed' });
   assert.deepEqual((await post('check', ok, sign(ok, 'wrong'))).body, { code: 13 });
   assert.deepEqual((await post('check', form({ TransactionId: '1', Amount: '1.00', Currency: 'KZT', InvoiceId: 'nope' }))).body, { code: 10 });
-  const wrong = form({ TransactionId: '1', Amount: '1.00', Currency: 'KZT', InvoiceId: pay.paymentId });
+  const wrong = form({ TransactionId: '1', Amount: '1.00', Currency: 'KZT', InvoiceId: pay.paymentRef });
   assert.deepEqual((await post('check', wrong)).body, { code: 12 });
   assert.deepEqual((await post('check', ok)).body, { code: 0 });
-  assert.equal((await prisma.payment.findUnique({ where: { id: pay.paymentId } })).status, 'pending');
+  assert.equal((await guestPayment(pay.paymentRef)).status, 'pending');
 });
 
 test('CloudPayments Pay (JSON): платёж и бронь оплачены, владелец уведомлён; повтор безопасен', async () => {
-  const body = JSON.stringify({ TransactionId: 1001, Amount: booking.totalKzt, Currency: 'KZT', InvoiceId: pay.paymentId, Status: 'Completed' });
+  const body = JSON.stringify({ TransactionId: 1001, Amount: booking.totalKzt, Currency: 'KZT', InvoiceId: pay.paymentRef, Status: 'Completed' });
   const r = await request(app).post('/api/payments/cloudpayments/pay').set('Content-Type', 'application/json').set('Content-HMAC', sign(body)).send(body);
   assert.deepEqual(r.body, { code: 0 });
   await events.idle();
-  const p = await prisma.payment.findUnique({ where: { id: pay.paymentId }, include: { booking: true } });
+  const p = await guestPayment(pay.paymentRef);
   assert.equal(p.status, 'succeeded'); assert.equal(p.providerPaymentId, '1001'); assert.equal(p.booking.paymentStatus, 'paid');
   assert.ok(await prisma.notificationLog.findFirst({ where: { event: 'payment.succeeded', recipientType: 'owner', text: { contains: `№${p.booking.number}` } } }));
   const again = await request(app).post('/api/payments/cloudpayments/pay').set('Content-Type', 'application/json').set('Content-HMAC', sign(body)).send(body);

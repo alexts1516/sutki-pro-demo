@@ -180,7 +180,7 @@ $('#gIn').value = iso(4); $('#gOut').value = iso(6);
 async function loadApts() {
   const list = await (await fetch(`/api/public/astana-stay/apartments?checkIn=${$('#gIn').value}&checkOut=${$('#gOut').value}`)).json();
   list.sort((a, b) => (b.available !== false) - (a.available !== false));
-  $('#gApt').innerHTML = list.map(a => `<option value="${a.id}">${a.available === false ? '⛔ занято · ' : ''}${esc(a.title)} · ${a.rooms} · ${a.basePriceKzt.toLocaleString('ru-RU')} ₸</option>`).join('');
+  $('#gApt').innerHTML = list.map(a => `<option value="${a.ref}">${a.available === false ? '⛔ занято · ' : ''}${esc(a.title)} · ${a.rooms} · ${a.basePriceKzt.toLocaleString('ru-RU')} ₸</option>`).join('');
 }
 $('#gIn').onchange = $('#gOut').onchange = () => demo.ready.then(loadApts);
 
@@ -200,7 +200,7 @@ $('#guest').onsubmit = async (e) => {
       tr = ` + трансфер ${t.priceKzt.toLocaleString('ru-RU')} ₸`;
     }
     const p = await post(`/api/public/astana-stay/bookings/${b.token}/pay`, {});
-    res.innerHTML = `<div class="ok">✅ Бронь №${esc(b.number)} оплачена и ${p.status === 'confirmed' ? 'подтверждена автоматически' : 'принята'}${tr}${tr ? ' — заказ ушёл водителям' : ''}.${$('#gEarly').checked ? ' Просьба о раннем заезде — в «Сегодня» у администратора.' : ''}<br><button class="btn primary" data-go="driver" style="margin-top:8px">Водитель Руслан → «Беру»</button> <button class="btn" data-go="admin" data-hash="today" style="margin-top:8px">Администратор → «Сегодня»</button></div>`;
+    res.innerHTML = `<div class="ok">✅ Бронь №${esc(b.number)} оплачена и ${p.bookingStatus === 'confirmed' ? 'подтверждена автоматически' : 'принята'}${tr}${tr ? ' — заказ ушёл водителям' : ''}.${$('#gEarly').checked ? ' Просьба о раннем заезде — в «Сегодня» у администратора.' : ''}<br><button class="btn primary" data-go="driver" style="margin-top:8px">Водитель Руслан → «Беру»</button> <button class="btn" data-go="admin" data-hash="today" style="margin-top:8px">Администратор → «Сегодня»</button></div>`;
   } catch (err) { res.innerHTML = `<div class="err">${esc(err.message)}</div>`; }
   $('#gBtn').disabled = false;
 };

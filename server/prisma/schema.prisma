@@ -236,6 +236,9 @@ model Booking {
   guestId       String?
   number        Int /// номер брони для людей (1040, 1041…), уникален в аккаунте
   token         String    @unique /// секрет для ссылки гостя: t.me/<бот>?start=b_<token>
+  guestAccessHash     String? @unique
+  checkoutKeyHash     String? @unique
+  checkoutRequestHash String?
   source        String /// site | airbnb | booking | telegram | whatsapp | direct | link (личная ссылка — особая бронь)
   status        String    @default("request") /// request | confirmed | cancelled | completed
   checkIn       DateTime /// дата заезда (00:00 UTC этого дня)
@@ -724,6 +727,10 @@ model Payment {
   bookingId         String?
   provider          String /// cloudpayments | paylink | manual
   providerPaymentId String?
+  publicRef         String? @unique
+  attemptKeyHash    String? @unique
+  initState         String @default("legacy")
+  intent            Json?
   amountKzt         Int
   currency          String   @default("KZT")
   amount            Float

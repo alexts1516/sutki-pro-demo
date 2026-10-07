@@ -15,6 +15,9 @@ if (jwtSecret.length < 32) {
   if (!isTest) console.warn('[config] JWT_SECRET не задан — используется временный ключ для разработки');
 }
 
+const publicAccessSecret = env.PUBLIC_ACCESS_SECRET || jwtSecret;
+if(publicAccessSecret.length < 32) throw new Error('PUBLIC_ACCESS_SECRET должен содержать не меньше 32 символов');
+
 export const config = {
   root: ROOT,
   env: env.NODE_ENV || 'development',
@@ -22,6 +25,8 @@ export const config = {
   port: Number(env.PORT || 3000),
   publicUrl: (env.PUBLIC_URL || `http://localhost:${env.PORT || 3000}`).replace(/\/$/, ''),
   jwtSecret,
+  publicAccessSecret,
+  trustProxy: env.TRUST_PROXY ? list(env.TRUST_PROXY) : false,
   defaultAccountSlug: env.DEFAULT_ACCOUNT_SLUG || 'astana-stay',
   corsOrigins: list(env.CORS_ORIGINS),
   storage: {

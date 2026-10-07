@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { prisma } from './helpers.js';
+import { prisma, grantGuestAccess } from './helpers.js';
 import { randomToken } from '../src/lib/tokens.js';
 import { todayIn, addDays } from '../src/lib/dates.js';
 
@@ -301,7 +301,7 @@ test('PG шаг 3: два процесса одновременно подтве
   const { app } = makeApp();
   for (let round = 0; round < 3; round++) {
     const from = 500 + round * 10;
-    const b = await createBookingRequest({ accountId: acc.id, apartment: apt, checkIn: addDays(today, from), checkOut: addDays(today, from + 2), guestsCount: 1, guest: null, paymentMethod: 'card' });
+    const b = await grantGuestAccess(await createBookingRequest({ accountId: acc.id, apartment: apt, checkIn: addDays(today, from), checkOut: addDays(today, from + 2), guestsCount: 1, guest: null, paymentMethod: 'card' }));
     const tr = await request(app).post('/api/public/astana-stay/transfers').send({ bookingToken: b.token, direction: 'in', place: 'airport', date: addDays(today, from).toISOString().slice(0, 10), time: '15:00', pax: 1, bags: 1, name: 'Гость', phone: '+7 701 000 00 00' });
     assert.equal(tr.status, 201);
     const startAt = Date.now() + 2500;
@@ -322,7 +322,7 @@ test('PG шаг 3: два процесса одновременно прогон
   const { makeApp, request } = await import('./helpers.js');
   const { app } = makeApp();
   const from = 560;
-  const b = await createBookingRequest({ accountId: acc.id, apartment: apt, checkIn: addDays(today, from), checkOut: addDays(today, from + 2), guestsCount: 1, guest: null, paymentMethod: 'card' });
+  const b = await grantGuestAccess(await createBookingRequest({ accountId: acc.id, apartment: apt, checkIn: addDays(today, from), checkOut: addDays(today, from + 2), guestsCount: 1, guest: null, paymentMethod: 'card' }));
   await request(app).post('/api/public/astana-stay/transfers').send({ bookingToken: b.token, direction: 'in', place: 'airport', date: addDays(today, from).toISOString().slice(0, 10), time: '15:00', pax: 1, bags: 1, name: 'Гость', phone: '+7 701 000 00 00' });
   await confirmBooking({ accountId: acc.id, bookingId: b.id, events: null, dispatch: null });   // как «упал после коммита»: строки ждут
   assert.equal(await prisma.outboxEvent.count({ where: { dedupeKey: { in: confirmKeys(b.id) }, status: 'pending' } }), 2);
@@ -468,7 +468,7 @@ test('PG шаг 7: два процесса одновременно жмут «�
     const { link, token } = await createLink({ accountId: acc.id, actor: { id: om.userId, name: 'Тест', type: 'owner' }, apartmentId: apt.id, checkIn: addDays(today, from), checkOut: addDays(today, from + 2), guestsCount: 1, terms: 'cash_on_arrival' });
     await guestSave({ token, name: 'Гость Гонки', phone: '+7 701 000 00 00' });
     const b0 = await prisma.booking.findUnique({ where: { id: link.bookingId } });
-    const tr = await request(app).post('/api/public/astana-stay/transfers').send({ bookingToken: b0.token, direction: 'in', place: 'airport', date: addDays(today, from).toISOString().slice(0, 10), time: '15:00', pax: 1, bags: 1, name: 'Гость', phone: '+7 701 000 00 00' });
+    const tr = {status:201, body:await prisma.transfer.create({data:{accountId:acc.id,bookingId:b0.id,apartmentId:apt.id,direction:'in',place:'airport',date:addDays(today,from),time:'15:00',pax:1,bags:1,priceKzt:8000,guestName:'Гость',guestPhone:'+77010000000'}})}; // private special-booking fixture, not an ordinary guest access token
     assert.equal(tr.status, 201, JSON.stringify(tr.body));
     const startAt = Date.now() + 2500;
     const rs = await Promise.all([0, 1].map(() => appChild({ mode: 'submit', startAt, token })));

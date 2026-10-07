@@ -1,3 +1,4 @@
+import { digest } from '../lib/publicDtos.js';
 // Привязка Telegram по ссылке t.me/<бот>?start=<payload>
 //   b_<token>  — гость из подтверждения брони (token есть у каждой брони)
 //   i_<code>   — сотрудник или владелец по одноразовому коду из админки («Команда» → «Подключить Telegram»)
@@ -14,7 +15,7 @@ export async function linkByStartPayload({ prisma, payload, chatId, languageCode
   chatId = String(chatId);
 
   if (p.startsWith('b_')) {
-    const booking = await prisma.booking.findUnique({ where: { token: p.slice(2) }, include: { guest: true, apartment: true, account: true } });
+    const booking = await prisma.booking.findFirst({ where: { OR:[{guestAccessHash:digest(p.slice(2))},{token:p.slice(2)}] }, include: { guest: true, apartment: true, account: true } });
     if (!booking || !booking.guest) return { ok: false, kind: 'guest', text: lang === 'en' ? 'Booking link is invalid or expired.' : 'Ссылка на бронь недействительна.' };
     await prisma.guest.update({ where: { id: booking.guest.id }, data: { telegramChatId: chatId, locale: booking.guest.locale || lang } });
     const L = booking.guest.locale || lang;

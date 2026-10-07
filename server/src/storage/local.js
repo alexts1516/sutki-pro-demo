@@ -11,6 +11,7 @@ export function createLocalStorage({ uploadDir, publicPath = '/uploads' }) {
   };
   return {
     driver: 'local',
+    async read(key){return fs.readFile(full(key));},
     uploadDir,
     async save(key, buffer) {
       const p = full(key);

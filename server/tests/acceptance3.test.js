@@ -1,7 +1,7 @@
 // Приёмка прохода 3: регрессии найденных ошибок (повторные и одновременные действия, неверный порядок, конфликт времени).
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeApp, login, prisma, request, freeDates } from './helpers.js';
+import { makeApp, login, prisma, request, freeDates, guestBooking } from './helpers.js';
 import { apartmentOps } from '../src/services/ops.js';
 import { todayIn, addDays } from '../src/lib/dates.js';
 import { randomToken } from '../src/lib/tokens.js';
@@ -27,7 +27,7 @@ test('двойное подтверждение брони (двойной кл�
   const dates = await freeDates(acc.id, apt.id, 2, start); start += 5;
   const b = await A().post('/api/public/astana-stay/bookings').send({ apartmentId: apt.id, ...dates, guests: 1, name: 'Гость Дубль', phone: '+7 701 333 77 11' });
   await A().post('/api/public/astana-stay/transfers').send({ bookingToken: b.body.token, direction: 'in', place: 'airport', date: dates.checkIn, time: '15:00', pax: 1, bags: 1 });
-  const bk = await prisma.booking.findUnique({ where: { token: b.body.token } });
+  const bk = await guestBooking(b.body.token);
   const rs = await Promise.all([1, 2, 3].map(() => A().post(`/api/admin/bookings/${bk.id}/confirm`).set(admin.auth)));
   assert.deepEqual(rs.map(r => r.status), [200, 200, 200]);
   assert.equal(await prisma.cleaningTask.count({ where: { bookingId: bk.id } }), 1, 'подготовка не задвоилась');

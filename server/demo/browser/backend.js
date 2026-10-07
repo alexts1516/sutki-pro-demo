@@ -1,3 +1,4 @@
+import { issueOperationKey } from '../../src/services/publicCheckout.js';
 // «Сервер в браузере» для статического демо (/v2/): настоящий код сервера (src/app.js, маршруты, сервисы, уведомления, сид)
 // работает на Prisma в памяти, а запросы страниц к /api/... перехватываются (fetch) и отдаются ему.
 // Данные хранятся только в этом браузере (IndexedDB); «Сбросить демо» — заново заполнить демо-данными.
@@ -182,7 +183,10 @@ export async function handleApi(method, url, { headers = {}, body } = {}) {
   await ready;
   await syncFromOtherTabs();
   const h = {}; for (const [k, v] of Object.entries(headers)) h[k.toLowerCase()] = v;
+  // Demo server/client share one process; existing fixture actions request a fresh server-issued operation proof.
+  if(method.toUpperCase()==='POST' && url.pathname.startsWith('/api/public/') && !h['idempotency-key']) h['idempotency-key']=issueOperationKey(config,url.pathname.split('/')[3]);
   const req = {
+    get path(){return this.url.split('?')[0];},
     method: method.toUpperCase(), url: url.pathname + url.search, originalUrl: url.pathname + url.search, baseUrl: '',
     headers: h, query: parseQuery(url.search), cookies: cookies.get(), ip: 'demo', ips: [], protocol: 'https', secure: true, hostname: location.hostname, params: {},
     get(k) { return h[k.toLowerCase()]; }, header(k) { return h[k.toLowerCase()]; },

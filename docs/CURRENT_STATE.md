@@ -1,21 +1,32 @@
 # Текущее состояние (для передачи работы)
 
-Обновлено: 7 октября 2026 (архитектура Pass 5 зафиксирована; реализация не начата). Короткая выжимка; подробности — в `docs/ПЛАН.md` и спецификации.
+Обновлено: 8 октября 2026 (Pass 5 Step 1 завершён; Step 2 не начат). Короткая выжимка; подробности — в `docs/ПЛАН.md` и спецификации.
 
-## CURRENT STOP — PASS 5 ARCHITECTURE FROZEN
+## CURRENT STOP — PASS 5 STEP 1 COMPLETE
 
 **СЛЕДУЮЩИЙ ПРОДУКТОВЫЙ PASS НЕ НАЧИНАТЬ АВТОМАТИЧЕСКИ.**
 
-**Architecture/Product Gate «Guest Site → Real Server» — PASS.** Определён **PASS 5 — PRODUCTION GUEST SITE**, архитектура зафиксирована в [PASS5_PRODUCTION_GUEST_SITE_SPEC.md](PASS5_PRODUCTION_GUEST_SITE_SPEC.md). Реализация ещё не начата, production launch не готов и не заявляется. Отсутствие реальных банковских credentials не препятствует будущей проверке реализации через существующий тестовый adapter/stub; боевой запуск принимается отдельно.
+**Architecture/Product Gate «Guest Site → Real Server» — PASS.** Определён **PASS 5 — PRODUCTION GUEST SITE**, архитектура зафиксирована в [PASS5_PRODUCTION_GUEST_SITE_SPEC.md](PASS5_PRODUCTION_GUEST_SITE_SPEC.md). Step 1 реализован; production launch не готов и не заявляется. Отсутствие реальных банковских credentials не препятствует проверке реализации через существующий test adapter/stub; боевой запуск принимается отдельно.
 
-Следующий единственный этап — **PASS 5 STEP 1 — PUBLIC CONTRACTS / SECURITY / IDEMPOTENCY FOUNDATION**, по отдельному заданию. В текущей документационной фиксации Step 1 не запускался: код, UI, schema/migrations, тесты и Vercel не менялись.
+Следующий единственный этап — **PASS 5 STEP 2 — REAL GUEST CATALOGUE / AVAILABILITY / SERVER PRICE / CHECKOUT**, по отдельному handoff с Resource Budget. Step 2 не начат.
+
+### Pass 5 Step 1 — завершён
+
+- **Public boundary:** публичные ответы переведены на отдельные allow-list DTO и непривилегированные opaque references; внутренние id и storage paths не выдаются. Фото и логотип отдаются через tenant-scoped public media endpoints. Заголовки `no-store` / `no-referrer`, безопасная обработка ошибок и явная настройка trusted proxy защищают capability URLs и rate limiting.
+- **Booking-scoped access и checkout:** гостевой секрет имеет 256 бит энтропии, в базе хранится только hash; номер, телефон, внутренний id и legacy plaintext Telegram binder не дают HTTP-доступ к брони. Сервер выдаёт подписанный operation key; одинаковый checkout безопасно повторяется с тем же результатом, а Booking и Guest создаются атомарно без orphan Guest.
+- **Payment attempt:** попытка и её amount сохраняются до обращения к provider; одинаковый operation key не создаёт новую попытку или повторное внешнее списание. Новая попытка разрешается после подтверждённого отказа; неопределённый результат инициализации блокирует автоматический повтор до проверенного результата.
+- **Callbacks:** проверяются подпись, публичная identity операции, amount и currency; другая provider operation отклоняется, дублированный callback не повторяет подтверждение, подготовку и Outbox-effects.
+- **Migration:** одна согласованная migration для SQLite и PostgreSQL добавляет hashed booking access, checkout request identity, public payment reference, attempt identity, initialization state и сохранённый безопасный intent; существующие Booking/Payment и PostgreSQL overlap constraint сохранены.
+- **Финальная targeted verification 8 октября 2026:** `site-texts-brand.test.js` — **3/3**, `pass5-step1.test.js` — **12/12**, `pass5.pg.test.js` — **4/4** multi-process PostgreSQL. Устаревшее ожидание прямого `/uploads/...` для публичного логотипа заменено на утверждённый `/api/public/astana-stay/logo`; endpoint отвечает успешно. Полные suites и browser regression не повторялись по Verification Budget.
+- **Ранее полученные доказательства:** SQLite full suite — **223 pass / 23 skip**, memory — **218 / 28**, PostgreSQL full suite — **245 pass / 1 известное устаревшее brand-ожидание**, закрытое указанным targeted-тестом; новые четыре multi-process concurrency tests проходили ранее и повторно прошли **4/4**. Browser regression — **78/78**, console errors — **0**; browser-visible код после checkpoint не менялся.
+- **Production limitations:** rate limits пока process-local и для нескольких production instances потребуют общего store; `PUBLIC_ACCESS_SECRET` должен быть отдельным стабильным секретом, `TRUST_PROXY` — явно ограничен доверенным proxy. Автоматическое восстановление неизвестного результата provider initialization не реализовано: повтор блокируется до подтверждённого callback/reconciliation. Реальный guest frontend, реальные bank credentials/provider acceptance, protected post-booking page, online transfer payment, production server deployment и persistent production media относятся к следующим шагам/launch acceptance.
 
 ## PROCESS CORRECTION — AI RESOURCE BUDGET GATE
 
 - **7 октября 2026 выявлен `PROCESS FAIL`:** чрезмерное углубление verification в Pass 5 Step 1 потребовало ручной остановки владельцем.
 - Введены обязательные Verification Budget и Resource Stop Conditions.
 - Следующий крупный handoff без Resource Budget запрещён.
-- Незавершённый Pass 5 Step 1 сохранён отдельно и этой задачей не изменяется; Step 1 не объявляется завершённым.
+- На момент процессной коррекции незавершённый Pass 5 Step 1 был сохранён отдельно и не изменялся; затем он завершён отдельным handoff по введённому Resource Budget и зафиксирован выше.
 
 ## Зафиксированная live acceptance UX correction
 
@@ -79,4 +90,4 @@ Pass 4 технически завершён и принят; live demo тепе
   - оплата после истечения срока при занятых датах — редкий ручной возврат (пункт «Сегодня» `payment_orphaned`);
   - прежний дефицит ~260 подготовок в seed устранён: обязательные подготовки создаются сразу; сверка даёт `preps=0`.
 - **Не пересматривать:** проход 3; решения по паспорту и билету, по оплате только картой на сайте, по индивидуальной цене; выбор «одна система Booking для обычных и особых броней». Не добавлять: загрузку документов, Telegram-напоминания, `minPrepMinutes`, Airbnb/iCal — это не проход 4.
-- **Остановка:** приёмка Pass 4 и live UX correction сохранены. Архитектура Pass 5 зафиксирована; реализация не начата. Единственный следующий этап — Step 1, указанный в текущем STOP; без отдельного задания не запускать.
+- **Остановка:** приёмка Pass 4 и live UX correction сохранены. Архитектура Pass 5 зафиксирована, Step 1 завершён. Единственный следующий этап — Step 2, указанный в текущем STOP; без отдельного handoff не запускать.

@@ -38,7 +38,8 @@ test('бренд: цвета, название, логотип вместо за
   const logo = await request(app).post('/api/admin/brand/logo').set(owner.auth).attach('logo', png(64, 64, [11, 59, 74]), 'logo.png');
   assert.equal(logo.status, 201); assert.match(logo.body.logoUrl, /^\/uploads\/.+\.png$/);
   const site = await request(app).get('/api/public/astana-stay/site');
-  assert.equal(site.body.brand.name, 'The Address Plus'); assert.equal(site.body.brand.logoUrl, logo.body.logoUrl);
+  assert.equal(site.body.brand.name, 'The Address Plus'); assert.equal(site.body.brand.logoUrl, '/api/public/astana-stay/logo');
+  assert.equal((await request(app).get(site.body.brand.logoUrl)).status, 200);
   assert.equal((await request(app).get(logo.body.logoUrl)).status, 200);
   const del = await request(app).delete('/api/admin/brand/logo').set(owner.auth);
   assert.equal(del.body.logoUrl, null);

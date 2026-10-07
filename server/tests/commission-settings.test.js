@@ -1,7 +1,7 @@
 // Комиссия с трансферов, скрытие номера квартиры до «Беру», настройки уведомлений и одобрения смет.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeApp, login, prisma, request, freeDates, extConfig, extDriver, pickupSoon } from './helpers.js';
+import { makeApp, login, prisma, request, freeDates, extConfig, extDriver, pickupSoon, guestBooking, guestTransfer } from './helpers.js';
 import { computePayout } from '../src/services/payouts.js';
 
 const { app, events } = makeApp({ config: extConfig });   // внешние водители включены только для этих сценариев
@@ -27,10 +27,10 @@ async function confirmedJob(tr = {}) {
   assert.equal(b.status, 201, JSON.stringify(b.body));
   const t = await request(app).post('/api/public/astana-stay/transfers').send({ bookingToken: b.body.token, direction: 'in', place: 'airport', date: dates.checkIn, time: '11:00', flight: 'KC 852', pax: 1, bags: 1, ...tr });
   assert.equal(t.status, 201, JSON.stringify(t.body));
-  const booking = await prisma.booking.findUnique({ where: { token: b.body.token } });
+  const booking = await guestBooking(b.body.token);
   assert.equal((await request(app).post(`/api/admin/bookings/${booking.id}/confirm`).set(owner.auth)).status, 200);
   await events.idle();
-  return { booking, job: await prisma.transferJob.findUnique({ where: { transferId: t.body.id }, include: { transfer: true } }) };
+  return { booking, job: await prisma.transferJob.findUnique({ where: { transferId: (await guestTransfer(t.body.ref)).id }, include: { transfer: true } }) };
 }
 
 test('расчёт выплаты: ручная > ставка водителя (фикс > %) > настройка аккаунта; без настройки водителю 100%', () => {

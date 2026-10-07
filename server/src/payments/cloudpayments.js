@@ -68,20 +68,24 @@ export function createCloudPayments({ publicId, apiSecret }) {
       }
       const b = parseCloudPaymentsBody(rawBody, headers['content-type']);
       const paymentId = b.InvoiceId || b.ExternalId;
-      const payment = paymentId ? await prisma.payment.findUnique({ where: { id: String(paymentId) } }) : null;
+      const payment = paymentId ? await prisma.payment.findFirst({ where: { OR:[{publicRef:String(paymentId)},{id:String(paymentId)}] } }) : null;
       if (!payment || payment.provider !== 'cloudpayments') return { status: 200, body: { code: CP_CODES.INVALID_INVOICE } };
-      const amountOk = Math.abs(Number(b.Amount) - payment.amount) < 0.01 && (!b.Currency || b.Currency === payment.currency);
+      if (!b.TransactionId) return {status:200,body:{code:CP_CODES.NOT_ACCEPTED}};
+      const amountOk = Math.abs(Number(b.Amount) - payment.amount) < 0.01 && (payment.attemptKeyHash ? b.Currency === payment.currency : (!b.Currency || b.Currency === payment.currency));
       if (kind === 'check') {
         if (!amountOk) return { status: 200, body: { code: CP_CODES.INVALID_AMOUNT } };
+        if(payment.providerPaymentId && payment.providerPaymentId!==String(b.TransactionId)) return {status:200,body:{code:CP_CODES.NOT_ACCEPTED}};
         if (payment.status === 'succeeded') return { status: 200, body: { code: CP_CODES.NOT_ACCEPTED } };
         return { status: 200, body: { code: CP_CODES.OK }, result: { paymentId: payment.id, status: 'pending', providerPaymentId: String(b.TransactionId || '') } };
       }
+      if(payment.providerPaymentId && payment.providerPaymentId!==String(b.TransactionId)) return {status:200,body:{code:CP_CODES.NOT_ACCEPTED}};
       if (kind === 'pay') {
-        if (!amountOk) return { status: 200, body: { code: CP_CODES.OK }, result: { paymentId: payment.id, status: 'failed', note: 'amount-mismatch' } };
+        if (!amountOk) return { status: 200, body: { code: CP_CODES.OK } };
         const st = b.Status === 'Authorized' ? 'pending' : 'succeeded';
         return { status: 200, body: { code: CP_CODES.OK }, result: { paymentId: payment.id, status: st, providerPaymentId: String(b.TransactionId || ''), raw: b } };
       }
-      if (kind === 'fail') return { status: 200, body: { code: CP_CODES.OK }, result: { paymentId: payment.id, status: 'failed', raw: b } };
+      if(kind==='fail' && payment.attemptKeyHash && !amountOk) return {status:200,body:{code:CP_CODES.NOT_ACCEPTED}};
+      if (kind === 'fail') return { status: 200, body: { code: CP_CODES.OK }, result: { paymentId: payment.id, status: 'failed', providerPaymentId: String(b.TransactionId), raw: b } };
       return { status: 200, body: { code: CP_CODES.OK } };
     },
   };

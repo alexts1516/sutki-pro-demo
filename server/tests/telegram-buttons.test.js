@@ -1,7 +1,7 @@
 // Кнопка «Беру» в Telegram: grammY с подменённым API (без сети), то же атомарное «Беру», что и в приложении.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeApp, login, prisma, request, freeDates } from './helpers.js';
+import { makeApp, login, prisma, request, freeDates, guestBooking, guestTransfer } from './helpers.js';
 import { createTelegramBot } from '../src/telegram/bot.js';
 import { registerTransferButtons, handleTransferAccept } from '../src/telegram/transferButtons.js';
 import { telegramTransport } from '../src/notifications/transports.js';
@@ -33,10 +33,10 @@ async function offeredJob() {
   const dates = await freeDates(acc.id, apt.id, 2, start); start += 5;
   const b = await request(app).post('/api/public/astana-stay/bookings').send({ apartmentId: apt.id, ...dates, guests: 1, name: 'Ким Ён', phone: '+7 702 111 22 33', paymentMethod: 'card' });
   const t = await request(app).post('/api/public/astana-stay/transfers').send({ bookingToken: b.body.token, direction: 'in', place: 'airport', date: dates.checkIn, time: '09:10', flight: 'KC 920' });
-  const booking = await prisma.booking.findUnique({ where: { token: b.body.token } });
+  const booking = await guestBooking(b.body.token);
   await request(app).post(`/api/admin/bookings/${booking.id}/confirm`).set(owner.auth);
   await events.idle();
-  return prisma.transferJob.findUnique({ where: { transferId: t.body.id } });
+  return prisma.transferJob.findUnique({ where: { transferId: (await guestTransfer(t.body.ref)).id } });
 }
 const press = (tgId, jobId) => bot.handleUpdate({
   update_id: upd++,

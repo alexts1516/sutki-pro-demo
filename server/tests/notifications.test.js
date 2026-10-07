@@ -1,7 +1,7 @@
 // Заявка → уведомления; сервис уведомлений с подменным ботом; привязка Telegram; напоминания.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeApp, login, prisma, request, freeDates } from './helpers.js';
+import { makeApp, login, prisma, request, freeDates, guestBooking } from './helpers.js';
 import { telegramTransport } from '../src/notifications/transports.js';
 import { linkByStartPayload } from '../src/telegram/linking.js';
 import { createTelegramBot } from '../src/telegram/bot.js';
@@ -32,7 +32,7 @@ test('без бота: заявка с сайта создаётся, уведо
   assert.equal(r.status, 201, JSON.stringify(r.body));
   assert.equal(r.body.status, 'request'); assert.ok(r.body.token); assert.ok(r.body.amountShown > 0 && r.body.amountShown < r.body.totalKzt);
   await noBot.events.idle();
-  const b = await prisma.booking.findUnique({ where: { token: r.body.token } });
+  const b = await guestBooking(r.body.token);
   const logs = await prisma.notificationLog.findMany({ where: { accountId: acc.id, event: 'booking.requested', text: { contains: `№${b.number}` } } });
   assert.deepEqual(logs.map(l => l.recipientType).sort(), ['admin', 'owner']);
   assert.ok(logs.every(l => l.status === 'logged' && l.channel === 'console'));
@@ -60,7 +60,7 @@ test('с ботом: владелец с Telegram получает сообще�
   assert.equal(sent.length, 1); assert.equal(sent[0].chatId, '111');
   assert.match(sent[0].text, /Новая заявка №\d+/); assert.match(sent[0].text, /John Smith/);
   assert.equal(sent[0].opts.parse_mode, 'HTML');
-  const b = await prisma.booking.findUnique({ where: { token: r.body.token } });
+  const b = await guestBooking(r.body.token);
   const logs = await prisma.notificationLog.findMany({ where: { event: 'booking.requested', text: { contains: `№${b.number}` } } });
   assert.equal(logs.find(l => l.recipientType === 'owner').status, 'sent');
   assert.equal(logs.find(l => l.recipientType === 'admin').status, 'logged');
@@ -71,7 +71,7 @@ test('ошибка Telegram не ломает заявку (статус failed 
   const r = await request(withBot.app).post('/api/public/astana-stay/bookings').send(await bookingBody());
   assert.equal(r.status, 201);
   await withBot.events.idle();
-  const b = await prisma.booking.findUnique({ where: { token: r.body.token } });
+  const b = await guestBooking(r.body.token);
   const log = await prisma.notificationLog.findFirst({ where: { recipientType: 'owner', event: 'booking.requested', text: { contains: `№${b.number}` } } });
   assert.equal(log.status, 'failed'); assert.match(log.error, /blocked/);
   await prisma.user.update({ where: { id: owner.me.user.id }, data: { telegramId: '111' } });
@@ -81,7 +81,7 @@ test('гость привязывает Telegram по ссылке из брон
   const r = await request(withBot.app).post('/api/public/astana-stay/bookings').send(await bookingBody({ lang: 'en', name: 'Anna Lee' }));
   const link = await linkByStartPayload({ prisma, payload: 'b_' + r.body.token, chatId: 555, languageCode: 'en' });
   assert.ok(link.ok); assert.match(link.text, /linked to booking #\d+/);
-  const b = await prisma.booking.findUnique({ where: { token: r.body.token } });
+  const b = await guestBooking(r.body.token);
   sent.length = 0;
   const c = await request(withBot.app).post(`/api/admin/bookings/${b.id}/confirm`).set(admin.auth);
   assert.equal(c.status, 200); assert.equal(c.body.status, 'confirmed');
@@ -95,7 +95,7 @@ test('гость привязывает Telegram по ссылке из брон
 
 test('гость без Telegram — подтверждение помечается «пропущено»', async () => {
   const r = await request(noBot.app).post('/api/public/astana-stay/bookings').send(await bookingBody());
-  const b = await prisma.booking.findUnique({ where: { token: r.body.token } });
+  const b = await guestBooking(r.body.token);
   await request(noBot.app).post(`/api/admin/bookings/${b.id}/confirm`).set(owner.auth);
   await noBot.events.idle();
   const log = await prisma.notificationLog.findFirst({ where: { event: 'booking.confirmed', recipientId: b.guestId } });
@@ -119,7 +119,7 @@ test('grammY-бот (подменный API): /start b_<token> привязыв�
   bot.api.config.use(async (_prev, method, payload) => { calls.push({ method, payload }); return { ok: true, result: { message_id: 1, date: 0, chat: { id: payload.chat_id, type: 'private' } } }; });
   await bot.handleUpdate({ update_id: 1, message: { message_id: 1, date: 0, chat: { id: 4242, type: 'private' }, from: { id: 4242, is_bot: false, first_name: 'Б', language_code: 'ru' }, text: `/start b_${r.body.token}`, entities: [{ type: 'bot_command', offset: 0, length: 6 }] } });
   assert.equal(calls[0].method, 'sendMessage'); assert.match(calls[0].payload.text, /Чат привязан к брони №\d+/);
-  const g = await prisma.guest.findFirst({ where: { bookings: { some: { token: r.body.token } } } });
+  const g = (await guestBooking(r.body.token)).guestId ? await prisma.guest.findUnique({where:{id:(await guestBooking(r.body.token)).guestId}}) : null;
   assert.equal(g.telegramChatId, '4242');
 });
 

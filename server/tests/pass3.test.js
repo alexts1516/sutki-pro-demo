@@ -4,7 +4,7 @@
 // недочёты с подготовки; ранний заезд; заказ водителю — только по подтверждённой брони; оплата на сайте = подтверждение.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeApp, login, prisma, request, freeDates, pickupSoon } from './helpers.js';
+import { makeApp, login, prisma, request, freeDates, pickupSoon, guestBooking, guestTransfer } from './helpers.js';
 import { todayView, apartmentOps, cleaningDeadline } from '../src/services/ops.js';
 import { syncDefectsWithRepair } from '../src/services/defects.js';
 import { createTestPayments } from '../src/payments/test.js';
@@ -33,8 +33,8 @@ async function confirmedJob() {
   const b = await A().post('/api/public/astana-stay/bookings').send({ apartmentId: apt.id, ...dates, guests: 1, name: 'Гость Три', phone: '+7 701 333 44 55' });
   assert.equal(b.status, 201, JSON.stringify(b.body));
   const t = await A().post('/api/public/astana-stay/transfers').send({ bookingToken: b.body.token, direction: 'in', place: 'airport', date: dates.checkIn, time: '15:00', pax: 1, bags: 1 });
-  const booking = await prisma.booking.findUnique({ where: { token: b.body.token } });
-  return { booking, transferId: t.body.id };
+  const booking = await guestBooking(b.body.token);
+  return { booking, transferId: (await guestTransfer(t.body.ref)).id };
 }
 const step = (who, id, s, body = {}) => A().post(`/api/staff/transfers/${id}/${s}`).set(who.auth).send(body);
 const mkBooking = (o) => prisma.booking.create({ data: { accountId: acc.id, apartmentId: testApt.id, number: ++num, token: randomToken(12), source: 'site', status: 'confirmed', guestsCount: 2, nightlyKzt: 20000, totalKzt: 40000, paymentStatus: 'paid', paymentMethod: 'card', ...o } });
@@ -111,12 +111,12 @@ test('оплата на сайте = подтверждение: бронь по
   const t = await request(payApp).post('/api/public/astana-stay/transfers').send({ bookingToken: b.body.token, direction: 'in', place: 'airport', date: dates.checkIn, time: '09:00', pax: 1, bags: 1 });
   assert.equal(t.status, 201);
   const p = await request(payApp).post(`/api/public/astana-stay/bookings/${b.body.token}/pay`).send({});
-  assert.equal(p.status, 201); assert.equal(p.body.paid, true); assert.equal(p.body.status, 'confirmed');
-  const bk = await prisma.booking.findUnique({ where: { token: b.body.token } });
+  assert.equal(p.status, 201); assert.equal(p.body.paid, true); assert.equal(p.body.bookingStatus, 'confirmed');
+  const bk = await guestBooking(b.body.token);
   assert.equal(bk.status, 'confirmed'); assert.equal(bk.paymentStatus, 'paid');
   assert.equal(bk.earlyCheckIn, '10:00'); assert.equal(bk.earlyCheckInStatus, 'requested');
   assert.ok(await prisma.cleaningTask.findFirst({ where: { bookingId: bk.id } }));
-  assert.ok(await prisma.transferJob.findUnique({ where: { transferId: t.body.id } }), 'заказ водителям ушёл после оплаты');
+  assert.ok(await prisma.transferJob.findUnique({ where: { transferId: (await guestTransfer(t.body.ref)).id } }), 'заказ водителям ушёл после оплаты');
   assert.equal((await request(payApp).post(`/api/public/astana-stay/bookings/${b.body.token}/pay`).send({})).status, 409, 'повторно не оплатить');
 });
 

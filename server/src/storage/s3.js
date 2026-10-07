@@ -57,6 +57,7 @@ export function createS3Storage(opts, { fetchImpl = globalThis.fetch } = {}) {
   }
   return {
     driver: 's3',
+    async read(key){return Buffer.from(await (await send('GET',key,'')).arrayBuffer());},
     async save(key, buffer, mime = 'application/octet-stream') {
       await send('PUT', key, buffer, { 'content-type': mime, 'cache-control': 'public, max-age=604800' });
       return { key, url: urlFor(key) };

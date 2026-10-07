@@ -11,7 +11,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { notFound, badRequest, HttpError, parse } from '../lib/errors.js';
-import { apartmentPublic, bookingOut } from '../lib/serialize.js';
+import { apartmentPublic } from '../lib/serialize.js';
 import { parseDay, isoDay, addDays, todayIn, nights } from '../lib/dates.js';
 import { convertKzt } from '../lib/money.js';
 import { busyRanges, createBookingRequest, isAvailable, quote, withApartmentTx, extendHold, PUBLIC_HOLD_MIN } from '../services/bookings.js';
@@ -19,6 +19,10 @@ import { transferLegPrice } from '../services/transfers.js';
 import { loadBrand, loadTexts, loadCurrency } from '../site/config.js';
 import { deepLink } from '../telegram/linking.js';
 import { applyPaymentResult } from '../payments/index.js';
+
+import { apartmentGuest, bookingGuest, publicRef } from '../lib/publicDtos.js';
+import { checkout, operationKey, issueOperationKey, findGuestBooking, startAttempt } from '../services/publicCheckout.js';
+import { linkGuard, createLimiter, tooMany } from '../lib/rateLimit.js';
 
 const CARD_ONLY = 'Бронирование на сайте — только с оплатой картой; для особых условий напишите нам';
 const HOLD_EXPIRED = 'Время на оплату истекло — даты освобождены. Забронируйте заново';
@@ -38,9 +42,17 @@ const TransferSchema = z.object({
   name: z.string().trim().min(2).max(80).optional(), phone: z.string().trim().regex(phoneRe).optional(), lang: z.enum(['ru', 'en']).default('ru'),
 });
 
-export default function publicRouter({ events, payments, config, dispatch }) {
+export default function publicRouter({ events, payments, config, dispatch, storage }) {
   const r = Router({ mergeParams: true });
 
+  const limits = config.rateLimit || {};
+  r.use(linkGuard({ max: limits.publicMax ?? (config.isTest ? 5000 : 120), badMax: limits.publicBadMax ?? 20, windowMin: 15 }));
+  const writes = createLimiter({max: limits.publicWriteMax ?? (config.isTest ? 5000 : 30), windowMs: 15*60000});
+  r.use((req,res,next) => {
+    res.set({'Cache-Control':'no-store','Referrer-Policy':'no-referrer'});
+    if(req.method==='POST'){ const wait=writes.blockedFor(req.ip); if(wait) throw tooMany(res,wait,'Слишком много операций.'); writes.hit(req.ip); }
+    next();
+  });
   // аккаунт по slug (кешировать не будем — запрос дешёвый)
   r.use(async (req, _res, next) => {
     const acc = await prisma.account.findUnique({ where: { slug: req.params.slug } });
@@ -49,12 +61,30 @@ export default function publicRouter({ events, payments, config, dispatch }) {
     req.account = acc; req.accountId = acc.id; next();
   });
 
+  r.post('/operation-key',(req,res)=>res.status(201).json({operationKey:issueOperationKey(config,req.params.slug)}));
+
+  r.get('/photos/:ref',async(req,res)=>{
+    const photos=await prisma.apartmentPhoto.findMany({where:{accountId:req.accountId,apartment:{active:true}}});
+    const p=photos.find(p=>publicRef(config,req.accountId,'photo:'+p.id)===req.params.ref);
+    if(!p) throw notFound('Фото не найдено');
+    res.type(p.mimeType || 'image/jpeg').send(await storage.read(p.storageKey));
+  });
+
+  r.get('/logo',async(req,res)=>{
+    const brand=await prisma.brand.findUnique({where:{accountId:req.accountId}});
+    if(!brand?.logoKey) throw notFound('Логотип не найден');
+    const suffix=brand.logoKey.split('.').pop().toLowerCase();const mime={png:'image/png',jpg:'image/jpeg',jpeg:'image/jpeg',webp:'image/webp',gif:'image/gif',avif:'image/avif'}[suffix];
+    if(!mime) throw notFound('Логотип не найден');
+    res.type(mime).send(await storage.read(brand.logoKey));
+  });
+
   r.get('/site', async (req, res) => {
     const [brand, { texts }, currency] = await Promise.all([loadBrand(prisma, req.accountId), loadTexts(prisma, req.accountId), loadCurrency(prisma, req.accountId)]);
+    if(brand.logoUrl && !brand.logoUrl.startsWith('data:') && !brand.logoUrl.includes('/demo/assets/')) { const raw=await prisma.brand.findUnique({where:{accountId:req.accountId}}); if(raw?.logoKey) brand.logoUrl=`/api/public/${encodeURIComponent(req.params.slug)}/logo`; }
     res.json({
       account: { name: req.account.name, slug: req.account.slug }, brand, texts,
       currency: { base: 'KZT', shown: currency.shown, rates: currency.rates, roundStep: currency.roundStep },
-      payments: { online: !!payments, provider: payments?.name || null, offline: [], bookingMethod: 'card' },   // бронь на сайте — только с оплатой картой (особые условия — личная ссылка)
+      payments: { online: !!payments && payments.guestCheckoutReady !== false, provider: payments?.name || null, offline: [], bookingMethod: 'card' },   // бронь на сайте — только с оплатой картой (особые условия — личная ссылка)
       telegram: { bot: config.telegram.username || null },
     });
   });
@@ -68,29 +98,31 @@ export default function publicRouter({ events, payments, config, dispatch }) {
     for (const a of list) {
       const item = apartmentPublic(a, lang);
       if (ci && co && co > ci) { item.available = await isAvailable(req.accountId, a.id, ci, co); item.quote = quote(a, ci, co); }
-      out.push(item);
+      out.push(apartmentGuest(item,config,req.accountId,req.params.slug));
     }
     res.json(out);
   });
 
   const findApt = async (req) => {
-    const a = await prisma.apartment.findFirst({ where: { id: req.params.id, accountId: req.accountId, active: true }, include: { photos: true } });
+    const all = await prisma.apartment.findMany({ where: { accountId: req.accountId, active: true }, include: { photos: true } });
+    const a = all.find(a => a.id===req.params.id || publicRef(config,req.accountId,a.id) === req.params.id);
     if (!a) throw notFound('Квартира не найдена'); return a;
   };
   const ranges = async (req, a, from, to) => (await busyRanges(req.accountId, a.id, from, to)).map(b => ({ from: isoDay(b.from), to: isoDay(b.to) }));
 
   r.get('/apartments/:id', async (req, res) => {
     const a = await findApt(req); const today = todayIn(req.account.timezone);
-    res.json({ ...apartmentPublic(a, req.query.lang === 'en' ? 'en' : 'ru'), busy: await ranges(req, a, today, addDays(today, 183)) });
+    res.json({ ...apartmentGuest(apartmentPublic(a, req.query.lang === 'en' ? 'en' : 'ru'),config,req.accountId,req.params.slug), busy: await ranges(req, a, today, addDays(today, 183)) });
   });
   r.get('/apartments/:id/availability', async (req, res) => {
     const a = await findApt(req); const today = todayIn(req.account.timezone);
     const from = parseDay(req.query.from) || today, to = parseDay(req.query.to) || addDays(from, 92);
     if (to <= from || nights(from, to) > 400) throw badRequest('Неверный период');
-    res.json({ apartmentId: a.id, from: isoDay(from), to: isoDay(to), busy: await ranges(req, a, from, to) });
+    res.json({ ref: publicRef(config,req.accountId,a.id), from: isoDay(from), to: isoDay(to), busy: await ranges(req, a, from, to) });
   });
 
   r.post('/bookings', async (req, res) => {
+    const key = operationKey(req,config);
     const d = parse(BookingSchema, req.body);
     // проход 4, шаг 4: обычный гость бронирует на сайте только с оплатой картой; способ оплаты ставит сервер.
     // Любое другое значение — 400 (а не молчаливая замена: гость должен понять, что наличных на сайте нет).
@@ -100,64 +132,28 @@ export default function publicRouter({ events, payments, config, dispatch }) {
     if (!ci || !co || co <= ci) throw badRequest('Проверьте даты заезда и выезда');
     if (ci < today) throw badRequest('Дата заезда уже прошла');
     if (nights(ci, co) > 90) throw badRequest('Максимум 90 ночей');
-    const apt = await prisma.apartment.findFirst({ where: { id: d.apartmentId, accountId: req.accountId, active: true } });
+    const apts = await prisma.apartment.findMany({ where: { accountId: req.accountId, active: true } });
+    const apt = apts.find(a => a.id === d.apartmentId || publicRef(config,req.accountId,a.id) === d.apartmentId);
     if (!apt) throw notFound('Квартира не найдена');
     if (d.guests > apt.maxGuests) throw badRequest(`В этой квартире максимум ${apt.maxGuests} гостей`);
     if (d.pets && !apt.petsAllowed) throw badRequest('В этой квартире нельзя с животными');
     const cur = await loadCurrency(prisma, req.accountId);
     const q = quote(apt, ci, co, d.pets);
     const amountShown = convertKzt(q.totalKzt, d.currency, cur.rates, cur.roundStep);
-    const guest = await prisma.guest.create({ data: { accountId: req.accountId, name: d.name, phone: d.phone, email: d.email, locale: d.lang } });
-    const booking = await createBookingRequest({
-      accountId: req.accountId, apartment: apt, checkIn: ci, checkOut: co, guestsCount: d.guests, guest, pets: d.pets,
-      note: d.comment, paymentMethod: 'card', currencyShown: d.currency, amountShown,
-      holdUntil: new Date(Date.now() + PUBLIC_HOLD_MIN * 60000),   // неоплаченная заявка держит даты только 30 мин
-    });
-    if (d.earlyCheckIn && d.earlyCheckIn < booking.checkInTime) await prisma.booking.update({ where: { id: booking.id }, data: { earlyCheckIn: d.earlyCheckIn, earlyCheckInStatus: 'requested' } });
-    events.emit('booking.requested', { accountId: req.accountId, bookingId: booking.id });
-    res.status(201).json({
-      number: booking.number, token: booking.token, status: booking.status, checkIn: isoDay(ci), checkOut: isoDay(co),
-      nights: q.nights, totalKzt: q.totalKzt, currency: d.currency, amountShown,
-      telegramLink: deepLink(config.telegram.username, `b_${booking.token}`),
-      payOnline: !!payments, holdUntil: booking.holdUntil,
-    });
+    const result = await checkout({ accountId:req.accountId,apartment:apt,data:d,guestData:{name:d.name,phone:d.phone,email:d.email,locale:d.lang},key,config,
+      amountShown,holdUntil:new Date(Date.now()+PUBLIC_HOLD_MIN*60000) });
+    if(!result.replayed) events.emit('booking.requested',{accountId:req.accountId,bookingId:result.booking.id});
+    // Creation reply may be replayed only with the same high-entropy checkout proof.
+    res.status(201).json({...bookingGuest(result.booking),token:result.token,payOnline:!!payments && payments.guestCheckoutReady !== false,telegramLink:deepLink(config.telegram.username,`b_${result.token}`)});
   });
 
-  const byToken = async (req) => {
-    const b = await prisma.booking.findFirst({ where: { token: req.params.token, accountId: req.accountId }, include: { apartment: true, guest: true, transfers: true } });
-    if (!b) throw notFound('Бронь не найдена'); return b;
-  };
-  r.get('/bookings/:token', async (req, res) => {
-    const b = await byToken(req); const o = bookingOut(b);
-    delete o.note; delete o.cleanerName; delete o.guest;
-    res.json({ ...o, apartment: { title: b.apartment.title, address: b.status === 'confirmed' ? b.apartment.address : undefined }, telegramLinked: !!b.guest?.telegramChatId, telegramLink: deepLink(config.telegram.username, `b_${b.token}`) });
-  });
-  r.post('/bookings/:token/pay', async (req, res) => {
-    if (!payments) throw new HttpError(409, 'Онлайн-оплата пока не подключена');
-    const b0 = await byToken(req);
-    if (b0.paymentStatus === 'paid') throw new HttpError(409, 'Бронь уже оплачена');
-    // проход 4, шаг 4: в транзакции квартиры — истёкшее удержание снимается, живое продлевается до «сейчас + 20 мин»
-    // (более длинное не укорачивается); истёкшую или отменённую заявку оплата не оживляет — 409.
-    // Отказ возвращается из транзакции, а не бросается: снятие истёкшего удержания должно закоммититься.
-    const { b, payment, refuse } = await withApartmentTx(b0.apartmentId, async (tx) => {
-      const cur = await tx.booking.findUnique({ where: { id: b0.id } });
-      if (cur.paymentStatus === 'paid') return { refuse: 'Бронь уже оплачена' };
-      if (!['request', 'confirmed'].includes(cur.status)) return { refuse: cur.holdUntil && cur.holdUntil <= new Date() ? HOLD_EXPIRED : 'Бронь отменена — оплатить нельзя' };
-      const holdUntil = extendHold(cur);
-      if (holdUntil) await tx.booking.update({ where: { id: cur.id }, data: { holdUntil } });
-      const payment = await tx.payment.create({ data: { accountId: req.accountId, bookingId: cur.id, provider: payments.name, amountKzt: cur.totalKzt, currency: 'KZT', amount: cur.totalKzt, status: 'created' } });   // списываем в тенге; валюта гостя — только для показа
-      return { b: { ...b0, ...cur, ...(holdUntil ? { holdUntil } : {}) }, payment };
-    });
-    if (refuse) throw new HttpError(409, refuse);
-    const lang = b.guest?.locale || 'ru';
-    const description = lang === 'en' ? `Booking #${b.number}, ${b.apartment.titleEn || b.apartment.title}` : `Бронь №${b.number}, ${b.apartment.title}`;
-    const intent = await payments.createPayment({ payment, booking: b, guest: b.guest, description, lang, returnUrl: `${config.publicUrl}/api/public/${req.account.slug}/bookings/${b.token}` });
-    if (intent.type === 'instant') {   // тестовая оплата (демо): сразу успешна → бронь подтверждается
-      await applyPaymentResult({ prisma, events, dispatch, result: { paymentId: payment.id, status: 'succeeded' } });
-      const nb = await prisma.booking.findUnique({ where: { id: b.id } });
-      return res.status(201).json({ paymentId: payment.id, type: 'done', paid: true, status: nb.status });
-    }
-    res.status(201).json({ paymentId: payment.id, ...intent });
+  const byToken = req => findGuestBooking(req.accountId,req.params.token);
+  r.get('/bookings/:token',async(req,res)=>res.json(bookingGuest(await byToken(req))));
+  r.get('/payment-return',(_req,res)=>res.json({status:'processing',message:'Проверьте состояние своей брони'}));
+  r.post('/bookings/:token/pay',async(req,res)=>{
+    if(!payments || payments.guestCheckoutReady === false) throw new HttpError(409,'Онлайн-оплата пока не подключена');
+    const result=await startAttempt({booking:await byToken(req),key:operationKey(req,config),payments,config,slug:req.account.slug,events,dispatch});
+    res.status(result.code).json(result.body);
   });
 
   r.post('/transfers', async (req, res) => {
@@ -165,7 +161,7 @@ export default function publicRouter({ events, payments, config, dispatch }) {
     const date = parseDay(d.date); if (!date) throw badRequest('Дата в формате ГГГГ-ММ-ДД');
     let booking = null;
     if (d.bookingToken) {
-      booking = await prisma.booking.findFirst({ where: { token: d.bookingToken, accountId: req.accountId }, include: { guest: true } });
+      booking = await findGuestBooking(req.accountId,d.bookingToken);
       if (!booking) throw notFound('Бронь не найдена');
     } else if (!d.name || !d.phone) throw badRequest('Укажите имя и телефон');
     const t = await prisma.transfer.create({
@@ -180,7 +176,7 @@ export default function publicRouter({ events, payments, config, dispatch }) {
     // бронь уже подтверждена — заказ водителям создаётся сразу; иначе — при подтверждении брони
     let status = t.status;
     if (booking?.status === 'confirmed' && dispatch) { await dispatch.createForTransfer({ accountId: req.accountId, transferId: t.id }); status = 'planned'; }
-    res.status(201).json({ id: t.id, status, priceKzt: t.priceKzt, date: isoDay(t.date), time: t.time });
+    res.status(201).json({ ref: publicRef(config,req.accountId,t.id), status, priceKzt: t.priceKzt, date: isoDay(t.date), time: t.time });
   });
   return r;
 }

@@ -1,3 +1,4 @@
+import { publicRef } from '../src/lib/publicDtos.js';
 // Квартиры и много фото с подписями, порядком и обложкой.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -75,11 +76,13 @@ test('подпись, порядок, обложка, удаление', async (
 
 test('сайт гостей получает фото с подписями, но не коды доступа', async () => {
   const list = await request(app).get('/api/public/astana-stay/apartments');
-  const a = list.body.find(x => x.id === aptId);
-  assert.ok(a); assert.equal(a.photos.length, 8); assert.equal(a.cover.id, a.photos[0].id);
+  const apt = await prisma.apartment.findUnique({where:{id:aptId}});
+  const ref = publicRef(config,apt.accountId,aptId);
+  const a = list.body.find(x => x.ref === ref);
+  assert.ok(a); assert.equal(a.photos.length, 8); assert.equal(a.cover.url, a.photos[0].url);
   assert.ok(a.photos.some(p => p.caption === 'Кухня-столовая'));
   assert.doesNotMatch(JSON.stringify(list.body), /lockCode|wifiPassword|secret200|keyboxCode/);
-  const en = await request(app).get(`/api/public/astana-stay/apartments/${aptId}?lang=en`);
+  const en = await request(app).get(`/api/public/astana-stay/apartments/${ref}?lang=en`);
   assert.ok(en.body.photos.some(p => p.caption === 'Kitchen')); assert.ok(Array.isArray(en.body.busy));
 });
 

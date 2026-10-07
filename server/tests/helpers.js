@@ -1,5 +1,8 @@
-import { tzOffsetMin } from '../src/lib/dates.js';
 import './_env.js';
+import crypto from 'node:crypto';
+import { publicRef } from '../src/lib/publicDtos.js';
+import { issueOperationKey } from '../src/services/publicCheckout.js';
+import { tzOffsetMin } from '../src/lib/dates.js';
 import supertest from 'supertest';
 import http from 'node:http';
 import zlib from 'node:zlib';
@@ -21,7 +24,10 @@ export function request(app, options) {
     server.unref();
     testServers.set(app, server);
   }
-  return supertest(server, options);
+  const agent=supertest(server,options);
+  const post=agent.post.bind(agent);
+  agent.post=(url)=>{const req=post(url);if(url.startsWith('/api/public/')) req.set('Idempotency-Key',issueOperationKey(config,url.split('/')[3]));return req;};
+  return agent;
 }
 Object.assign(request, supertest); // agent/Test/cookies: прежний API Supertest сохранён
 export { prisma, config };
@@ -82,3 +88,11 @@ export async function pickupSoon(jobId, min = 60, tz = 'Asia/Almaty') {
   await prisma.transfer.update({ where: { id: job.transferId }, data: { date, time } });
   return job;
 }
+
+export async function guestBooking(token){const b=await prisma.booking.findFirst({where:{OR:[{guestAccessHash:crypto.createHash('sha256').update(String(token)).digest('hex')},{token}]}});return b?{...b,token}:null;} // fixture keeps the client-held access reference, not the unrelated Telegram binder
+
+export const guestPayment = ref => prisma.payment.findFirst({where:{OR:[{publicRef:ref},{id:ref}]},include:{booking:true}});
+
+export async function guestTransfer(ref){const items=await prisma.transfer.findMany();return items.find(t=>publicRef(config,t.accountId,t.id)===ref);}
+
+export async function grantGuestAccess(b){const token=crypto.randomBytes(32).toString('base64url');await prisma.booking.update({where:{id:b.id},data:{guestAccessHash:crypto.createHash('sha256').update(token).digest('hex')}});return {...b,token};}

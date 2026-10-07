@@ -2,7 +2,7 @@
 // везёт сам владелец или человек «от бизнеса» — выплаты нет, вся цена — маржа бизнеса.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeApp, login, prisma, request, freeDates, pickupSoon } from './helpers.js';
+import { makeApp, login, prisma, request, freeDates, pickupSoon, guestBooking, guestTransfer } from './helpers.js';
 import { computePayout } from '../src/services/payouts.js';
 
 const sent = [];
@@ -33,16 +33,16 @@ async function confirmedJob(priceKzt = 10000) {
   assert.equal(b.status, 201, JSON.stringify(b.body));
   const t = await request(app).post('/api/public/astana-stay/transfers').send({ bookingToken: b.body.token, direction: 'in', place: 'airport', date: dates.checkIn, time: '12:00', flight: 'KC 901', pax: 1, bags: 1 });
   assert.equal(t.status, 201, JSON.stringify(t.body));
-  await prisma.transfer.update({ where: { id: t.body.id }, data: { priceKzt } });
-  const booking = await prisma.booking.findUnique({ where: { token: b.body.token } });
+  await prisma.transfer.update({ where: { id: (await guestTransfer(t.body.ref)).id }, data: { priceKzt } });
+  const booking = await guestBooking(b.body.token);
   assert.equal((await request(app).post(`/api/admin/bookings/${booking.id}/confirm`).set(owner.auth)).status, 200);
   await events.idle();
-  const job = await prisma.transferJob.findUnique({ where: { transferId: t.body.id } });
+  const job = await prisma.transferJob.findUnique({ where: { transferId: (await guestTransfer(t.body.ref)).id } });
   // цену поменяли после создания заказа — пересчитать по правилам
   await request(app).patch(`/api/admin/transfer-jobs/${job.id}`).set(owner.auth).send({ payoutAuto: true });
   // шаги поездки открываются за ~2 ч до подачи — переносим подачу на «через час» (и месяц финансов — текущий)
   await pickupSoon(job.id);
-  const tr = await prisma.transfer.findUnique({ where: { id: t.body.id } });
+  const tr = await prisma.transfer.findUnique({ where: { id: (await guestTransfer(t.body.ref)).id } });
   return { job, month: tr.date.toISOString().slice(0, 7) };
 }
 const finish = async (id) => { for (const action of ['picked-up', 'done']) assert.equal((await request(app).post(`/api/admin/transfer-jobs/${id}/status`).set(owner.auth).send({ action })).status, 200); };

@@ -257,7 +257,7 @@ with sync_playwright() as p:
     # новая поездка после настройки: водителю 80%
     pv = ev("""async () => { const r = await fetch('/api/public/astana-stay/transfers', { method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ direction: 'in', place: 'airport', date: new Date(Date.now() + 2 * 864e5).toISOString().slice(0, 10), time: '11:00', name: 'Тест Гость', phone: '+77015550000' }) });
-      const t = await r.json(); const d = await fetch('/api/admin/transfers/' + t.id + '/dispatch', { method: 'POST' }); const j = await d.json(); return { price: t.priceKzt, payout: j.payoutKzt, commission: j.commissionKzt }; }""")
+      const t = await r.json(); const rows = await (await fetch('/api/admin/transfers')).json(); const own = rows.find(x => x.guestName === 'Тест Гость' && x.time === '11:00'); const d = await fetch('/api/admin/transfers/' + own.id + '/dispatch', { method: 'POST' }); const j = await d.json(); return { price: t.priceKzt, payout: j.payoutKzt, commission: j.commissionKzt }; }""")
     check(pv['payout'] == round(pv['price'] * 0.8 / 100) * 100 and pv['commission'] == pv['price'] - pv['payout'], f'новый заказ: водителю {pv["payout"]} из {pv["price"]} ₸ (комиссия 20%)')
     pg.goto(B + 'admin/#finance'); pg.wait_for_selector('h1:has-text("Финансы")'); pg.wait_for_timeout(500)
     fin = pg.inner_text('#view')

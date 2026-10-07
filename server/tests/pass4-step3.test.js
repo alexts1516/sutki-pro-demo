@@ -2,7 +2,7 @@
 // + сверка + единая отмена. Работает на SQLite, в памяти и на PostgreSQL; гонки двух процессов — в pass4.pg.test.js.
 import { test, before, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeApp, login, prisma, request } from './helpers.js';
+import { grantGuestAccess, makeApp, login, prisma, request } from './helpers.js';
 import { createBookingRequest, confirmBooking, cancelBooking, reconcileBookings, turnoverKey, confirmKeys } from '../src/services/bookings.js';
 import { enqueue, runOutbox, OUTBOX_MAX_ATTEMPTS } from '../src/services/outbox.js';
 import { runBookingMaintenance } from '../src/notifications/scheduler.js';
@@ -24,7 +24,7 @@ const d = (n) => addDays(today, n);
 
 async function newRequest({ transfer = true, len = 2 } = {}) {
   const f = start; start += len + 2;
-  const b = await createBookingRequest({ accountId: acc.id, apartment: apt, checkIn: d(f), checkOut: d(f + len), guestsCount: 1, guest: null, paymentMethod: 'card' });
+  const b = await grantGuestAccess(await createBookingRequest({ accountId: acc.id, apartment: apt, checkIn: d(f), checkOut: d(f + len), guestsCount: 1, guest: null, paymentMethod: 'card' }));
   if (transfer) {
     const r = await request(A.app).post('/api/public/astana-stay/transfers').send({ bookingToken: b.token, direction: 'in', place: 'airport', date: isoDay(d(f)), time: '15:00', pax: 1, bags: 1, name: 'Гость', phone: '+7 701 000 00 00' });
     assert.equal(r.status, 201);
@@ -204,7 +204,7 @@ test('шаг 3: ошибка строки журнала → повтор поз
 
 test('шаг 3: сверка — создаёт недостающую подготовку и заказ водителям; повтор ничего не дублирует', async () => {
   const f = start; start += 4;
-  const b = await prisma.booking.create({ data: { accountId: acc.id, apartmentId: apt.id, number: ++num, token: randomToken(12), source: 'site', status: 'confirmed', confirmedAt: new Date(), checkIn: d(f), checkOut: d(f + 2), guestsCount: 1, nightlyKzt: 20000, totalKzt: 40000 } });
+  const b = await grantGuestAccess(await prisma.booking.create({ data: { accountId: acc.id, apartmentId: apt.id, number: ++num, token: randomToken(12), source: 'site', status: 'confirmed', confirmedAt: new Date(), checkIn: d(f), checkOut: d(f + 2), guestsCount: 1, nightlyKzt: 20000, totalKzt: 40000 } }));
   const tr = await request(A.app).post('/api/public/astana-stay/transfers').send({ bookingToken: b.token, direction: 'in', place: 'airport', date: isoDay(d(f)), time: '15:00', pax: 1, bags: 1, name: 'Гость', phone: '+7 701 000 00 00' });
   assert.equal(tr.status, 201);
   await prisma.transferJob.deleteMany({ where: { bookingId: b.id } });   // «потерянный» заказ (как после сбоя в старом коде)

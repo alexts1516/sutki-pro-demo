@@ -2,14 +2,13 @@
 // страницы приложения команды и одной задачи по ссылке.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeApp, login, prisma, request, config, PASS, png, freeDates } from './helpers.js';
-import { extDriver } from './helpers.js';
+import { makeApp, login, prisma, request, config, PASS, png, freeDates, guestBooking, guestTransfer, extDriver } from './helpers.js';
 import { signV4, createS3Storage } from '../src/storage/s3.js';
 import { createFlightTracker } from '../src/flights/index.js';
 import { createAeroDataBox, parseArrival } from '../src/flights/aerodatabox.js';
 
 after(() => prisma.$disconnect());
-const limited = (rl) => makeApp({ config: { ...config, rateLimit: { loginMax: 3, loginWindowMin: 15, ipMax: 5, linkMax: 1000, linkBadMax: 4, linkWindowMin: 15, ...rl } } }).app;
+const limited = (rl) => makeApp({ config: { ...config, trustProxy: 1, rateLimit: { loginMax: 3, loginWindowMin: 15, ipMax: 5, linkMax: 1000, linkBadMax: 4, linkWindowMin: 15, ...rl } } }).app;
 
 test('вход: после 3 неверных паролей — 429 с Retry-After, даже с верным паролем; другие логины — до лимита на IP', async () => {
   const app = limited();
@@ -102,8 +101,8 @@ test('рейсы: без ключа слежения нет; AeroDataBox раз�
   const dates = await freeDates(acc.id, apt.id, 2, 700);
   const b = await request(app).post('/api/public/astana-stay/bookings').send({ apartmentId: apt.id, ...dates, guests: 1, name: 'Тест Рейс', phone: '+7 700 000 00 01', paymentMethod: 'card' });
   const t = await request(app).post('/api/public/astana-stay/transfers').send({ bookingToken: b.body.token, direction: 'in', place: 'airport', date: dates.checkIn, time: '10:00', flight: 'KC 852' });
-  await request(app).post(`/api/admin/bookings/${(await prisma.booking.findUnique({ where: { token: b.body.token } })).id}/confirm`).set(owner.auth);
-  let job = await prisma.transferJob.findUnique({ where: { transferId: t.body.id } });
+  await request(app).post(`/api/admin/bookings/${(await guestBooking(b.body.token)).id}/confirm`).set(owner.auth);
+  let job = await prisma.transferJob.findUnique({ where: { transferId: (await guestTransfer(t.body.ref)).id } });
   const ruslan = await prisma.user.findFirst({ where: { email: 'ruslan@astanastay.example' } });
   await app.locals.dispatch.assign({ job: await prisma.transferJob.findUnique({ where: { id: job.id }, include: { transfer: true } }), actor: { type: 'owner', name: 'Тест' }, driverUserId: ruslan.id });
   job = await prisma.transferJob.findUnique({ where: { id: job.id } });

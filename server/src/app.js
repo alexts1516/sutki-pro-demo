@@ -45,7 +45,7 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
   const dispatch = createTransferDispatch({ events, config });
   dispatch.setFlightTracker(flights);   // слежение за рейсами — только если задан ключ AeroDataBox
   app.disable('x-powered-by');
-  app.set('trust proxy', 1);
+  app.set('trust proxy', config.trustProxy ?? false);
 
   // базовые заголовки безопасности
   app.use((req, res, next) => {
@@ -76,7 +76,7 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
   });
 
   app.use('/api/auth', authRouter({ config }));
-  app.use('/api/public/:slug', publicRouter({ events, payments, config, dispatch }));
+  app.use('/api/public/:slug', publicRouter({ events, payments, config, dispatch, storage }));
   const admin = express.Router();
   admin.use(authenticate, requireRole(...MANAGERS));
   admin.use(apartmentsRouter({ storage, config }));
@@ -122,6 +122,7 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
     else if (err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE') { status = 400; message = 'Слишком много файлов или неверное поле формы'; }
     else if (err.type === 'entity.parse.failed') { status = 400; message = 'Неверный JSON'; }
     else if (isOverlapError(err) || isDeadlockError(err)) { const c = toConflict(err); status = c.status; message = c.message; }   // конфликт занятости из базы — не «ошибка сервера»
+    if(req.path.startsWith('/api/public/')) { if(status>=500) logger.error('[public error]',req.method,status); return res.status(status).json({error:status>=500 ? 'Операция временно недоступна' : (err instanceof HttpError ? message : 'Проверьте запрос')}); }
     if (status >= 500) { logger.error('[error]', req.method, req.originalUrl.replace(/^(\/api\/(?:special-link|link)\/)[^/?]+/, '$1***'), err); message = 'Ошибка сервера'; }   // токен личной ссылки в журнал не пишется
     res.status(status).json({ error: message, ...(err.details ? { details: err.details } : {}) });
   });

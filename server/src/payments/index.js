@@ -27,8 +27,10 @@ export const orphanKey = (paymentId) => `event:payment.orphaned:${paymentId}`;
 export async function applyPaymentResult({ prisma, events, result, dispatch = null }) {
   if (!result?.paymentId) return;
   const payment = await prisma.payment.findUnique({ where: { id: result.paymentId } });
-  if (!payment || payment.status === 'succeeded') return payment;   // повторное уведомление — ничего не делаем
-  const data = { status: result.status, providerPaymentId: result.providerPaymentId || payment.providerPaymentId, raw: result.raw ?? payment.raw ?? undefined };
+  if(!payment) return;
+  if(result.providerPaymentId){ const bind=await prisma.payment.updateMany({where:{id:payment.id,OR:[{providerPaymentId:null},{providerPaymentId:result.providerPaymentId}]},data:{providerPaymentId:result.providerPaymentId}}); if(!bind.count) return {rejectedOperation:true}; }
+  if(payment.status==='succeeded') return payment;   // повторное уведомление — ничего не делаем
+  const data = { ...(payment.attemptKeyHash ? {initState:'ready'} : {}), status: result.status, providerPaymentId: result.providerPaymentId || payment.providerPaymentId, raw: result.raw ?? payment.raw ?? undefined };
   if (result.status !== 'succeeded') {   // pending / failed — условная запись: уже успешный платёж не откатываем
     await prisma.payment.updateMany({ where: { id: payment.id, status: { not: 'succeeded' } }, data });
     return prisma.payment.findUnique({ where: { id: payment.id } });
