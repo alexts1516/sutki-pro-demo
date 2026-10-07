@@ -5,7 +5,6 @@ import { safeEqual } from '../lib/tokens.js';
 import { randomToken } from '../lib/tokens.js';
 import { digest, scopedDigest, accessSecret, fingerprint, paymentGuest, safeIntent } from '../lib/publicDtos.js';
 import { createBookingRequest, withApartmentTx, extendHold } from './bookings.js';
-import { applyPaymentResult } from '../payments/index.js';
 export const validSecret = s => typeof s === 'string' && /^[A-Za-z0-9_-]{43}$/.test(s);
 const proofSignature = (config,slug,nonce) => crypto.createHmac('sha256',config.publicAccessSecret || config.jwtSecret).update(JSON.stringify(['public-operation',slug,nonce])).digest('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 export function issueOperationKey(config,slug){ const nonce=randomToken(32); return nonce+'.'+proofSignature(config,slug,nonce); }
@@ -42,7 +41,7 @@ export async function checkout({ accountId, apartment, data, guestData, key, con
     return { booking, token, replayed: false };
   } catch (e) { const b = await replay(); if (b) return { booking: b, token, replayed: true }; throw e; }
 }
-export async function startAttempt({ booking, key, payments, config, slug, events, dispatch }) {
+export async function startAttempt({ booking, key, payments, config, slug }) {
   const attemptKeyHash = scopedDigest(booking.accountId, JSON.stringify([booking.id,key]));
   const claim = await withApartmentTx(booking.apartmentId, async tx => {
     const existing = await tx.payment.findUnique({ where: { attemptKeyHash } });
@@ -64,7 +63,6 @@ export async function startAttempt({ booking, key, payments, config, slug, event
     const intent=await payments.createPayment({ payment:{...p,id:p.publicRef},booking,guest:{...booking.guest,id:undefined},description:`Бронь №${booking.number}`,lang:booking.guest?.locale||'ru',
       returnUrl:`${config.publicUrl}/api/public/${slug}/payment-return` });
     const stored=await prisma.payment.update({where:{id:p.id},data:{intent:safeIntent(intent,p.publicRef),initState:'ready'}});
-    if(intent.type==='instant') await applyPaymentResult({prisma,events,dispatch,result:{paymentId:p.id,status:'succeeded'}});
     return {code:201,body:{...paymentGuest(await prisma.payment.findUnique({where:{id:stored.id}})),bookingStatus:(await txlessBooking(stored.bookingId)).status}};
   } catch {
     // Unknown external result is deliberately not retried: no second provider call/charge.

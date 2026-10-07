@@ -4,10 +4,11 @@
 // недочёты с подготовки; ранний заезд; заказ водителю — только по подтверждённой брони; оплата на сайте = подтверждение.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { makeApp, login, prisma, request, freeDates, pickupSoon, guestBooking, guestTransfer } from './helpers.js';
+import { makeApp, login, prisma, request, freeDates, pickupSoon, guestBooking, guestPayment, guestTransfer } from './helpers.js';
 import { todayView, apartmentOps, cleaningDeadline } from '../src/services/ops.js';
 import { syncDefectsWithRepair } from '../src/services/defects.js';
 import { createTestPayments } from '../src/payments/test.js';
+import crypto from 'node:crypto';
 import { todayIn, addDays, atLocal, isoDay } from '../src/lib/dates.js';
 import { randomToken } from '../src/lib/tokens.js';
 
@@ -104,14 +105,18 @@ test('заказ водителю — только по подтверждённ
 });
 
 test('оплата на сайте = подтверждение: бронь подтверждается сама, появляется подготовка и заказ водителям', async () => {
-  const { app: payApp } = makeApp({ payments: createTestPayments() });
+  const callbackSecret='pass3-payment-callback';
+  const { app: payApp } = makeApp({ payments: createTestPayments({callbackSecret}) });
   const dates = await freeDates(acc.id, apt.id, 2, start); start += 5;
   const b = await request(payApp).post('/api/public/astana-stay/bookings').send({ apartmentId: apt.id, ...dates, guests: 1, name: 'Гость Оплата', phone: '+7 701 333 44 66', paymentMethod: 'card', earlyCheckIn: '10:00' });
   assert.equal(b.status, 201); assert.equal(b.body.payOnline, true);
   const t = await request(payApp).post('/api/public/astana-stay/transfers').send({ bookingToken: b.body.token, direction: 'in', place: 'airport', date: dates.checkIn, time: '09:00', pax: 1, bags: 1 });
   assert.equal(t.status, 201);
   const p = await request(payApp).post(`/api/public/astana-stay/bookings/${b.body.token}/pay`).send({});
-  assert.equal(p.status, 201); assert.equal(p.body.paid, true); assert.equal(p.body.bookingStatus, 'confirmed');
+  assert.equal(p.status, 201); assert.equal(p.body.status, 'created'); assert.equal(p.body.bookingStatus, 'request');
+  const payment=await guestPayment(p.body.paymentRef);const raw=JSON.stringify({paymentRef:p.body.paymentRef,operationId:'pass3-provider-operation',amount:payment.amount,currency:payment.currency,status:'succeeded'});
+  const callback=await request(payApp).post('/api/payments/test/callback').set('Content-Type','application/json').set('X-Test-Signature',crypto.createHmac('sha256',callbackSecret).update(raw).digest('hex')).send(raw);
+  assert.equal(callback.status,200);
   const bk = await guestBooking(b.body.token);
   assert.equal(bk.status, 'confirmed'); assert.equal(bk.paymentStatus, 'paid');
   assert.equal(bk.earlyCheckIn, '10:00'); assert.equal(bk.earlyCheckInStatus, 'requested');

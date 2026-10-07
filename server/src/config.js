@@ -68,6 +68,7 @@ export const config = {
   },
   payments: {
     provider: (env.PAYMENTS_PROVIDER || '').toLowerCase(),
+    test: { callbackSecret: env.TEST_PAYMENT_CALLBACK_SECRET || publicAccessSecret },
     cloudpayments: { publicId: env.CLOUDPAYMENTS_PUBLIC_ID || '', apiSecret: env.CLOUDPAYMENTS_API_SECRET || '' },
     paylink: {
       shopId: env.PAYLINK_SHOP_ID || '', secretKey: env.PAYLINK_SECRET_KEY || '',

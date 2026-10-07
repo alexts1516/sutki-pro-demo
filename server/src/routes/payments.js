@@ -1,6 +1,7 @@
 // Вебхуки платёжных систем. Тело читаем «как есть» (raw) — это нужно для проверки подписи.
 //   POST /api/payments/cloudpayments/check | pay | fail
 //   POST /api/payments/paylink/notify
+//   POST /api/payments/test/callback (только non-production test provider)
 import express, { Router } from 'express';
 import { prisma } from '../db.js';
 import { applyPaymentResult } from '../payments/index.js';
@@ -18,5 +19,6 @@ export default function paymentsRouter({ payments, events, dispatch = null, logg
   };
   for (const kind of ['check', 'pay', 'fail']) r.post(`/cloudpayments/${kind}`, handle('cloudpayments', kind));
   r.post('/paylink/notify', handle('paylink', 'notify'));
+  r.post('/test/callback', handle('test', 'callback'));
   return r;
 }

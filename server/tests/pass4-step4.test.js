@@ -11,6 +11,7 @@ import { runBookingMaintenance } from '../src/notifications/scheduler.js';
 import { todayView } from '../src/services/ops.js';
 import { testHooks } from '../src/lib/testHooks.js';
 import { todayIn, addDays, isoDay } from '../src/lib/dates.js';
+import crypto from 'node:crypto';
 
 const MIN = 60000;
 // провайдер «с переходом на страницу банка»: платёж создаётся, результат приходит позже (вебхук = applyPaymentResult)
@@ -165,11 +166,14 @@ test('шаг 4: успешная оплата до истечения → одн
   assert.equal((await blockingIn(x.dt)).length, 1);
 });
 
-test('шаг 4: демо-оплата (мгновенный тестовый провайдер) — тот же путь: бронь подтверждена сразу', async () => {
-  const T = boot(createTestPayments());
+test('шаг 4: подписанный callback тестового провайдера — тот же путь подтверждения', async () => {
+  const callbackSecret='pass4-payment-callback',T = boot(createTestPayments({callbackSecret}));
   const r = await book(dates(), {}, T);
   const p = await startPay(r.body.token, T);
-  assert.equal(p.status, 201); assert.equal(p.body.paid, true); assert.equal(p.body.bookingStatus, 'confirmed');
+  assert.equal(p.status, 201); assert.equal(p.body.status,'created');assert.equal(p.body.bookingStatus,'request');
+  const payment=await guestPayment(p.body.paymentRef);const raw=JSON.stringify({paymentRef:p.body.paymentRef,operationId:'pass4-provider-operation',amount:payment.amount,currency:payment.currency,status:'succeeded'});
+  const callback=await request(T.app).post('/api/payments/test/callback').set('Content-Type','application/json').set('X-Test-Signature',crypto.createHmac('sha256',callbackSecret).update(raw).digest('hex')).send(raw);
+  assert.equal(callback.status,200);assert.equal((await byToken(r.body.token)).status,'confirmed');
   assert.equal((await startPay(r.body.token, T)).status, 409, 'повторно не оплатить');
 });
 

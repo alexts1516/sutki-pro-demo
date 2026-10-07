@@ -24,7 +24,6 @@ export function paymentGuest(p) {
   return { paymentRef: p.publicRef, status: p.status, ...intent, ...(p.status === 'succeeded' ? { paid: true } : {}) };
 }
 export function safeIntent(intent, ref) {
-  if (intent.type === 'instant') return { type: 'done' };
   if (intent.type === 'redirect') return { type: 'redirect', url: intent.url };
   if (intent.type !== 'widget') throw new Error('Unsupported payment intent');
   const p = intent.params || {};

@@ -10,7 +10,7 @@ export function createPaymentProvider(cfg, { publicUrl, fetchImpl } = {}) {
   const p = cfg.provider;
   if (p === 'cloudpayments' && cfg.cloudpayments.publicId && cfg.cloudpayments.apiSecret) return createCloudPayments(cfg.cloudpayments);
   if (p === 'paylink' && cfg.paylink.shopId && cfg.paylink.secretKey) return createPaylink({ ...cfg.paylink, publicUrl, fetchImpl });
-  if (p === 'test' && process.env.NODE_ENV !== 'production') return createTestPayments();
+  if (p === 'test' && process.env.NODE_ENV !== 'production') return createTestPayments({ ...cfg.test, publicUrl });
   if (p) console.warn(`[payments] PAYMENTS_PROVIDER=${p}, но ключи не заданы — онлайн-оплата выключена`);
   return null;
 }

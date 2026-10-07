@@ -15,13 +15,11 @@ import { notFound, badRequest, HttpError, parse } from '../lib/errors.js';
 import { apartmentPublic } from '../lib/serialize.js';
 import { parseDay, isoDay, addDays, todayIn, nights } from '../lib/dates.js';
 import { convertKzt } from '../lib/money.js';
-import { busyRanges, createBookingRequest, isAvailable, quote, withApartmentTx, extendHold, PUBLIC_HOLD_MIN } from '../services/bookings.js';
+import { busyRanges, isAvailable, quote, PUBLIC_HOLD_MIN } from '../services/bookings.js';
 import { transferLegPrice } from '../services/transfers.js';
 import { loadBrand, loadTexts, loadCurrency } from '../site/config.js';
 import { deepLink } from '../telegram/linking.js';
-import { applyPaymentResult } from '../payments/index.js';
-
-import { apartmentGuest, bookingGuest, publicRef } from '../lib/publicDtos.js';
+import { apartmentGuest, bookingGuest, paymentGuest, publicRef } from '../lib/publicDtos.js';
 import { checkout, operationKey, issueOperationKey, findGuestBooking, startAttempt } from '../services/publicCheckout.js';
 import { linkGuard, createLimiter, tooMany } from '../lib/rateLimit.js';
 
@@ -161,10 +159,18 @@ export default function publicRouter({ events, payments, config, dispatch, stora
 
   const byToken = req => findGuestBooking(req.accountId,req.params.token);
   r.get('/bookings/:token',async(req,res)=>res.json(bookingGuest(await byToken(req))));
-  r.get('/payment-return',(_req,res)=>res.json({status:'processing',message:'Проверьте состояние своей брони'}));
+  r.get('/bookings/:token/payment',async(req,res)=>{
+    const booking=await byToken(req);
+    const payment=await prisma.payment.findFirst({where:{bookingId:booking.id},orderBy:{createdAt:'desc'}});
+    res.json({bookingStatus:booking.status,payment:payment?paymentGuest(payment):null});
+  });
+  r.get('/payment-return',(req,res)=>{
+    const ref=typeof req.query.paymentRef==='string' && /^[A-Za-z0-9_-]{20,100}$/.test(req.query.paymentRef) ? `&paymentRef=${encodeURIComponent(req.query.paymentRef)}` : '';
+    res.redirect(303,`/?payment=processing${ref}`);
+  });
   r.post('/bookings/:token/pay',async(req,res)=>{
     if(!payments || payments.guestCheckoutReady === false) throw new HttpError(409,'Онлайн-оплата пока не подключена');
-    const result=await startAttempt({booking:await byToken(req),key:operationKey(req,config),payments,config,slug:req.account.slug,events,dispatch});
+    const result=await startAttempt({booking:await byToken(req),key:operationKey(req,config),payments,config,slug:req.account.slug});
     res.status(result.code).json(result.body);
   });
 
