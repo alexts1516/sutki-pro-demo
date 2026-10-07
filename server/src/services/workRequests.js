@@ -245,13 +245,13 @@ export function createWorkflow({ events, payouts = null }) {
     },
 
     /** «Оплачено мастеру»: только выполненная заявка без нерешённых доп. расходов */
-    async markPaid(task, actor) {
+    async markPaid(task, actor, { method = 'cash' } = {}) {
       need(task, ['DONE'], 'Оплатить можно только выполненную заявку');
       if (pendingExtras(task).length) throw conflict('Сначала одобрите или отклоните доп. расходы — потом отмечайте оплату');
       if (task.paid) throw conflict('Уже отмечено как оплаченное');
       const now = new Date();
       await prisma.repairTask.update({ where: { id: task.id }, data: { paid: true, paidAt: now } });
-      await prisma.payout.updateMany({ where: { repairTaskId: task.id, status: 'PENDING' }, data: { status: 'PAID', method: 'cash', paidAt: now, paidById: actor.id || null, paidByName: actor.name || null } });
+      await prisma.payout.updateMany({ where: { repairTaskId: task.id, status: 'PENDING' }, data: { status: 'PAID', method, paidAt: now, paidById: actor.id || null, paidByName: actor.name || null } });
       await log(task, actor, 'paid', null, { amountKzt: payable(task) });
     },
 

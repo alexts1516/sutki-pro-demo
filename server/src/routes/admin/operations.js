@@ -121,9 +121,9 @@ export default function operationsRouter({ events, dispatch, cleaning }) {
 
   // полный отчёт о подготовке: кто, начало/окончание, чек-лист, фото, проблемы, комментарии (+ выплата — владельцу)
   r.get('/cleaning-tasks/:id', async (req, res) => {
-    const t = await prisma.cleaningTask.findFirst({ where: { id: req.params.id, accountId: req.accountId }, include: { apartment: true, photos: true, assignee: { select: { id: true, name: true } }, payout: true, defects: { orderBy: { createdAt: 'asc' } } } });
+    const t = await prisma.cleaningTask.findFirst({ where: { id: req.params.id, accountId: req.accountId }, include: { apartment: true, photos: true, assignee: { select: { id: true, name: true, phone: true } }, payout: true, defects: { orderBy: { createdAt: 'asc' } } } });
     if (!t) throw notFound('Подготовка не найдена');
-    res.json(cleaningReport(t, { payout: req.role === 'owner' ? t.payout : null }));
+    res.json(cleaningReport(t, { payout: t.payout }));
   });
   // проблема с подготовки → заявка мастеру одним нажатием (без исполнителя — владелец выберет мастера)
   r.post('/cleaning-tasks/:id/problems/:pid/repair', async (req, res) => {

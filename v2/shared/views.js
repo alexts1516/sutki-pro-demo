@@ -156,7 +156,7 @@ export const wrBadge = (s) => `<span class="chip ${(WR_ST[s] || [''])[0]}">${(WR
 const METHOD = { REMOTE: 'без выезда', PHOTOS: 'по фото', VISIT: 'после осмотра' };
 const EST_ST = { pending: ['amber', 'ждёт решения'], approved: ['green', 'одобрена'], rejected: ['red', 'отклонена'] };
 const X_ST = { PENDING: ['amber', 'ждёт решения'], APPROVED: ['green', 'одобрен'], REJECTED: ['red', 'отклонён'] };
-const EV = { created: 'Заявка создана', occupancy_changed: 'Изменено «кто будет в квартире»', visit_requested: 'Запрошен выезд', arrived: 'Мастер приехал', inspected: 'Осмотр',
+const EV = { rescheduled: 'Ремонт перенесён', created: 'Заявка создана', occupancy_changed: 'Изменено «кто будет в квартире»', visit_requested: 'Запрошен выезд', arrived: 'Мастер приехал', inspected: 'Осмотр',
   estimate_submitted: 'Смета отправлена', approved: 'Смета одобрена', rejected: 'Смета отклонена', started: 'Работа начата', extra_submitted: 'Доп. расход', extra_approved: 'Доп. расход одобрен',
   extra_rejected: 'Доп. расход отклонён', completed: 'Работа завершена', cancelled: 'Отменена', paid: 'Оплачено мастеру', unpaid: 'Оплата отменена', declined: 'Мастер отказался', assigned: 'Назначен мастер' };
 

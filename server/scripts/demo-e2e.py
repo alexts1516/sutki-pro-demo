@@ -94,7 +94,7 @@ with sync_playwright() as p:
     first = pg.locator('#view .op-sec').first
     check('red' in (first.get_attribute('class') or '') and 'Критично' in first.inner_text(), '«Сегодня» начинается с «Критично»: ' + first.locator('.op-p').first.inner_text()[:80])
     td = pg.inner_text('#view')
-    check('недочёт' in td.lower() and ('не готова' in td or 'Решить недочёт' in td), '«Сегодня»: срочный недочёт с подготовки и «квартира не готова» — наверху')
+    check('недочёт' in td.lower() and ('не готова' in td.lower() or 'Решить недочёт' in td), '«Сегодня»: срочный недочёт с подготовки и «квартира не готова» — наверху')
     check('ранний заезд' in td, '«Сегодня»: просьба гостя о раннем заезде → «Согласовать или отказать»')
     shot('pass3-today.png'); shot('pass3-today-full.png', True)
     crit = pg.locator('#view .op[data-open^="apt:"]', has_text='Срочный недочёт').first
@@ -309,8 +309,8 @@ with sync_playwright() as p:
     check('Перегорела лампа' in pg.inner_text('#view'), '«Сегодня»: недочёт с подготовки виден сразу')
     pg.goto(B + 'admin/#calendar'); pg.wait_for_selector(f'[data-open="cl:{cl["id"]}"]', timeout=15000)
     pg.locator(f'[data-open="cl:{cl["id"]}"]').first.click(); pg.wait_for_selector('text=Чек-лист')
-    pg.click('[data-df^="repair:"]'); pg.wait_for_function("location.hash.startsWith('#repairs/')", timeout=10000); pg.wait_for_timeout(600)
-    check('Перегорела лампа' in pg.inner_text('#view'), 'недочёт → «Заявка мастеру» одним нажатием (заявка без мастера, можно выбрать)')
+    pg.click('[data-df^="repair:"]'); pg.wait_for_selector('#drawer #wrAssign', timeout=10000)
+    check('Перегорела лампа' in pg.inner_text('#drawer'), 'недочёт → «Заявка мастеру» одним нажатием (заявка без мастера, можно выбрать)')
     df = db(f"const d = await p.defect.findFirst({{ where: {{ cleaningTaskId: '{cl['id']}', text: {{ contains: 'Перегорела лампа' }} }} }}); return {{ id: d.id, repair: d.repairTaskId, status: d.status }};")
     neg = ev("""async (id) => { const post = (u) => fetch(u, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' }).then(async r => ({ s: r.status, b: await r.json() }));
       const [a, b] = await Promise.all([post('/api/admin/defects/' + id + '/repair'), post('/api/admin/defects/' + id + '/repair')]);

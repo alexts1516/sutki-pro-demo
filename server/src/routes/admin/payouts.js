@@ -1,4 +1,4 @@
-// Выплаты исполнителям (только владелец): кто сколько должен получить, «Оплатить» по одной или всё человеку.
+// Выплаты: владелец и администратор читают; отмечает только владелец: кто сколько должен получить, «Оплатить» по одной или всё человеку.
 //   GET  /api/admin/payouts?status=PENDING|PAID   — список + итог по людям (просроченные — overdue: true)
 //   POST /api/admin/payouts/:id/pay               — { method: cash|transfer, paid: true|false }
 //   POST /api/admin/payouts/pay-all               — { userId | contractorId | name, method } всё «к оплате» одному человеку
@@ -15,7 +15,7 @@ export default function payoutsRouter({ payouts }) {
   const actorOf = (req) => ({ type: req.role, id: req.user.id, name: req.user.name });
   const personKey = (p) => p.userId || p.contractorId || p.name || '—';
 
-  r.get('/payouts', requireRole('owner'), async (req, res) => {
+  r.get('/payouts', requireRole('owner', 'admin'), async (req, res) => {
     const { payoutReminderHours: hours } = await getSettings(req.accountId);
     const where = { accountId: req.accountId };
     if (['PENDING', 'PAID'].includes(String(req.query.status))) where.status = String(req.query.status);

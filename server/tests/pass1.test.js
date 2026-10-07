@@ -132,7 +132,7 @@ test('подготовка: чек-лист из шаблона + пункт к�
   // экран «Выплаты» владельца: всё человеку одной кнопкой
   const list = (await A().get('/api/admin/payouts').set(owner.auth)).body;
   assert.ok(list.people.some(p => p.userId === gulnara.me.user.id && p.pendingKzt >= 6500));
-  assert.equal((await A().get('/api/admin/payouts').set(admin.auth)).status, 403);
+  assert.equal((await A().get('/api/admin/payouts').set(admin.auth)).status, 200);
   const all = await A().post('/api/admin/payouts/pay-all').set(owner.auth).send({ userId: gulnara.me.user.id, method: 'cash' });
   assert.ok(all.body.paid >= 1);
   assert.equal((await prisma.payout.findUnique({ where: { cleaningTaskId: t.id } })).status, 'PAID');

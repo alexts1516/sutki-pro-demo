@@ -1,3 +1,5 @@
+import { withApartmentTx } from '../../services/bookings.js';
+import { requireRole } from '../../auth/middleware.js';
 // Заявки мастерам и подрядчикам — сторона владельца и администратора.
 //   GET    /api/admin/repairs?status=&apartmentId=   — список (статусы по-русски, флаги «ждёт решения»)
 //   POST   /api/admin/repairs                        — создать { apartmentId, title, description, type, priority, assigneeId | contractorId, date, quickJob, occupancy, accessInstructions }
@@ -14,8 +16,8 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db.js';
-import { notFound, badRequest, forbidden, parse } from '../../lib/errors.js';
-import { parseDay, todayIn } from '../../lib/dates.js';
+import { notFound, badRequest, forbidden, HttpError, parse } from '../../lib/errors.js';
+import { parseDay, addDays, todayIn } from '../../lib/dates.js';
 import { randomToken } from '../../lib/tokens.js';
 import { imageUpload } from '../../lib/upload.js';
 import { makeKey, looksLikeImage } from '../../storage/index.js';
@@ -62,6 +64,22 @@ export default function workRequestsRouter({ workflow, storage, config }) {
 
   r.get('/repairs/:id', async (req, res) => { const t = await find(req); await out(res, t.id); });
 
+  // Перенос существующей заявки сохраняет её идентичность и приоритет Booking.
+  r.patch('/repairs/:id/date', async (req, res) => {
+    const { date } = parse(z.object({ date: z.string() }), req.body);
+    const day = parseDay(date);
+    if (!day || day.toISOString().slice(0, 10) !== date || day < todayIn(req.account.timezone)) throw badRequest('Выберите сегодняшнюю или будущую дату');
+    const t = await find(req);
+    if (['IN_PROGRESS', 'DONE', 'CANCELLED'].includes(t.status)) throw new HttpError(409, 'Начатую или закрытую работу переносить нельзя — свяжитесь с мастером');
+    await withApartmentTx(t.apartmentId, async (tx) => {
+      const occupied = await tx.booking.findFirst({ where: { accountId: req.accountId, apartmentId: t.apartmentId, status: { in: ['request', 'confirmed'] }, checkIn: { lt: addDays(day, Math.max(1, t.blockDays)) }, checkOut: { gte: day } } });
+      if (occupied && t.blockDays > 0) throw new HttpError(409, 'На выбранную дату есть бронь — выберите свободный день');
+      const changed = await tx.repairTask.updateMany({ where: { id: t.id, accountId: req.accountId, status: t.status, date: t.date }, data: { date: day } });
+      if (!changed.count) throw new HttpError(409, 'Заявку уже изменили — обновите карточку');
+      await tx.repairEvent.create({ data: { accountId: req.accountId, repairTaskId: t.id, type: 'rescheduled', actorType: req.role, actorId: req.user.id, actorName: req.user.name, note: `${t.date.toISOString().slice(0, 10)} → ${date}` } });
+    });
+    await out(res, t.id);
+  });
   r.patch('/repairs/:id/occupancy', async (req, res) => {
     const d = parse(z.object({ occupancy: z.enum(OCCUPANCY).optional(), accessInstructions: z.string().max(2000).optional().nullable() }), req.body);
     if (d.occupancy === undefined && d.accessInstructions === undefined) throw badRequest('Укажите occupancy и/или accessInstructions');
@@ -89,7 +107,7 @@ export default function workRequestsRouter({ workflow, storage, config }) {
     await workflow.cancel(t, actorOf(req), parse(z.object({ reason: z.string().max(500).optional() }), req.body || {}).reason);
     await out(res, t.id);
   });
-  r.post('/repairs/:id/paid', async (req, res) => { const t = await find(req); await workflow.markPaid(t, actorOf(req)); await out(res, t.id); });
+  r.post('/repairs/:id/paid', requireRole('owner'), async (req, res) => { const { method } = parse(z.object({ method: z.enum(['cash', 'transfer']).default('cash') }), req.body || {}); const t = await find(req); await workflow.markPaid(t, actorOf(req), { method }); await out(res, t.id); });
   r.post('/repairs/:id/link', async (req, res) => {
     const t = await find(req);
     await prisma.repairTask.update({ where: { id: t.id }, data: { linkToken: randomToken(18) } });

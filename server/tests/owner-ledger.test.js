@@ -92,9 +92,10 @@ test('наёмный водитель: выплата по комиссии 20%,
   let f = await finance(month);
   assert.equal(f.transfersUnpaidKzt - before.transfersUnpaidKzt, 8000);
   assert.equal(f.transfersMarginKzt - before.transfersMarginKzt, 2000);
-  const p = await request(app).post(`/api/admin/transfer-jobs/${job.id}/paid`).set(admin.auth).send({ paid: true });
+  assert.equal((await request(app).post(`/api/admin/transfer-jobs/${job.id}/paid`).set(admin.auth).send({ paid: true })).status, 403);
+  const p = await request(app).post(`/api/admin/transfer-jobs/${job.id}/paid`).set(owner.auth).send({ paid: true });
   assert.equal(p.status, 200);
-  assert.equal(p.body.payoutRecord.status, 'PAID'); assert.equal(p.body.payoutRecord.byName, users.alina.name); assert.ok(p.body.payoutRecord.paidAt);
+  assert.equal(p.body.payoutRecord.status, 'PAID'); assert.equal(p.body.payoutRecord.byName, owner.me.user.name); assert.ok(p.body.payoutRecord.paidAt);
   f = await finance(month);
   assert.equal(f.transfersUnpaidKzt - before.transfersUnpaidKzt, 0);
   assert.equal(f.transfersPaidOutKzt - before.transfersPaidOutKzt, 8000);

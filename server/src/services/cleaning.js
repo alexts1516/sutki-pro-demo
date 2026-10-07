@@ -129,7 +129,7 @@ export function cleaningReport(t, { payout = null } = {}) {
     id: t.id, date: t.date, fromTime: t.fromTime, toTime: t.toTime, status: t.status, statusLabel: STATUS_RU[t.status] || t.status,
     title: `Подготовка ${aptShort(t.apartment)}${t.assignee ? ` — ${t.assignee.name}` : ''}`,
     apartment: t.apartment ? { id: t.apartment.id, title: t.apartment.title, code: t.apartment.code } : null,
-    assignee: t.assignee ? { id: t.assignee.id, name: t.assignee.name } : null, bookingId: t.bookingId,
+    assignee: t.assignee ? { id: t.assignee.id, name: t.assignee.name, phone: t.assignee.phone || null } : null, bookingId: t.bookingId,
     startedAt: t.startedAt, doneAt: t.doneAt, report: t.report, finishNote: t.finishNote,
     checklist: (t.checklist || []).map((x, i) => ({ ...x, photos: photos.filter(p => p.itemIndex === i).map(photoOut) })),
     photos: photos.filter(p => p.itemIndex == null && p.kind !== 'problem').map(photoOut),

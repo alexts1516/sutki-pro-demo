@@ -1,3 +1,4 @@
+import { requireRole } from '../../auth/middleware.js';
 // Трансферы и заказы водителям (владелец и администратор).
 //   GET  /api/admin/transfers                     — заявки гостей на трансфер (с заказом водителю, если есть)
 //   POST /api/admin/transfers/:id/dispatch        — отправить водителям трансфер без брони / по неподтверждённой брони
@@ -89,9 +90,9 @@ export default function transfersRouter({ dispatch, config }) {
     const { reason } = parse(z.object({ reason: z.string().max(500).optional() }), req.body || {});
     res.json(out(await dispatch.cancel({ job: await job(req), actor: actorOf(req), reason })));
   });
-  r.post('/transfer-jobs/:id/paid', async (req, res) => {
-    const { paid } = parse(z.object({ paid: z.boolean().default(true) }), req.body || {});
-    res.json(out(await dispatch.markPaid({ job: await job(req), actor: actorOf(req), paid })));
+  r.post('/transfer-jobs/:id/paid', requireRole('owner'), async (req, res) => {
+    const { paid, method } = parse(z.object({ paid: z.boolean().default(true), method: z.enum(['cash', 'transfer']).default('cash') }), req.body || {});
+    res.json(out(await dispatch.markPaid({ job: await job(req), actor: actorOf(req), paid, method })));
   });
   r.post('/transfer-jobs/:id/guest-payment', async (req, res) => {
     const d = parse(z.object({ status: z.enum(['PAID', 'UNPAID']), method: z.enum(GUEST_PAY_METHODS).optional() }), req.body || {});
