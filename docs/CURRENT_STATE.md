@@ -1,10 +1,16 @@
 # Текущее состояние (для передачи работы)
 
-Обновлено: 7 октября 2026 (Systemic UX Correction Package опубликован и принят на live; приёмка Pass 4 сохранена). Короткая выжимка; подробности — в `docs/ПЛАН.md` и спецификации.
+Обновлено: 7 октября 2026 (архитектура Pass 5 зафиксирована; реализация не начата). Короткая выжимка; подробности — в `docs/ПЛАН.md` и спецификации.
 
-## CURRENT STOP — LIVE UX CORRECTION ACCEPTED
+## CURRENT STOP — PASS 5 ARCHITECTURE FROZEN
 
 **СЛЕДУЮЩИЙ ПРОДУКТОВЫЙ PASS НЕ НАЧИНАТЬ АВТОМАТИЧЕСКИ.**
+
+**Architecture/Product Gate «Guest Site → Real Server» — PASS.** Определён **PASS 5 — PRODUCTION GUEST SITE**, архитектура зафиксирована в [PASS5_PRODUCTION_GUEST_SITE_SPEC.md](PASS5_PRODUCTION_GUEST_SITE_SPEC.md). Реализация ещё не начата, production launch не готов и не заявляется. Отсутствие реальных банковских credentials не препятствует будущей проверке реализации через существующий тестовый adapter/stub; боевой запуск принимается отдельно.
+
+Следующий единственный этап — **PASS 5 STEP 1 — PUBLIC CONTRACTS / SECURITY / IDEMPOTENCY FOUNDATION**, по отдельному заданию. В текущей документационной фиксации Step 1 не запускался: код, UI, schema/migrations, тесты и Vercel не менялись.
+
+## Зафиксированная live acceptance UX correction
 
 Pass 4 технически завершён и принят; live demo теперь показывает принятый Systemic UX Correction Package из `19badc5`. Automated Role UX Gate выявил два P1 и системные P2. Один Systemic UX Correction Package устранил подтверждённые причины, без новых модулей, schema и миграций.
 
@@ -23,7 +29,7 @@ Pass 4 технически завершён и принят; live demo тепе
 
 Свидетельства live (временные, вне checkout): `/private/tmp/sutki-ux-live-deploy.log`, `sutki-ux-live-assets.json`, `sutki-ux-live-systemic.log`, `sutki-ux-live-dependent.log`, `sutki-ux-live-invalid/results.json`; снимки — `/private/tmp/sutki-ux-live-systemic-shots/` и `/private/tmp/sutki-ux-live-dependent-shots/`.
 
-**Один следующий логический этап — Architecture Preflight for next product stage по отдельному заданию.** В рамках публикации он не запускался; следующий Pass автоматически не начинается.
+После live acceptance следующий Architecture/Product Gate выполнен и принят; утверждённая граница Pass 5 и текущий STOP указаны выше. История live-проверок сохранена.
 
 ## Зафиксированное состояние и история Pass 4
 
@@ -66,4 +72,4 @@ Pass 4 технически завершён и принят; live demo тепе
   - оплата после истечения срока при занятых датах — редкий ручной возврат (пункт «Сегодня» `payment_orphaned`);
   - прежний дефицит ~260 подготовок в seed устранён: обязательные подготовки создаются сразу; сверка даёт `preps=0`.
 - **Не пересматривать:** проход 3; решения по паспорту и билету, по оплате только картой на сайте, по индивидуальной цене; выбор «одна система Booking для обычных и особых броней». Не добавлять: загрузку документов, Telegram-напоминания, `minPrepMinutes`, Airbnb/iCal — это не проход 4.
-- **Остановка:** приёмка Pass 4 сохранена. Systemic UX Correction Package опубликован и принят на live. Следующий отдельный этап — Architecture Preflight for next product stage по отдельному заданию; следующий продуктовый Pass не начинать автоматически.
+- **Остановка:** приёмка Pass 4 и live UX correction сохранены. Архитектура Pass 5 зафиксирована; реализация не начата. Единственный следующий этап — Step 1, указанный в текущем STOP; без отдельного задания не запускать.
