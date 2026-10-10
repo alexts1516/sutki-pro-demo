@@ -48,6 +48,15 @@ export async function applyPaymentResult({ prisma, events, result, dispatch = nu
     await enqueue(tx, { accountId: payment.accountId, kind: 'event', payload: { name: 'payment.succeeded', data: { accountId: payment.accountId, paymentId: payment.id } }, dedupeKey: keys[0] });
     const b = await tx.booking.findUnique({ where: { id: payment.bookingId } });
     const actor = { type: 'system', name: 'Оплата на сайте' };
+    if(payment.transferId){
+      const t=await tx.transfer.findFirst({where:{id:payment.transferId,bookingId:b.id,accountId:payment.accountId}});
+      if(!t || b.status!=='confirmed' || ['cancelled','done'].includes(t.status)){
+        await enqueue(tx,{accountId:payment.accountId,kind:'event',dedupeKey:orphanKey(payment.id),payload:{name:'payment.orphaned',data:{accountId:payment.accountId,paymentId:payment.id,bookingId:b.id,amountKzt:payment.amountKzt,reason:'transfer_closed'}}});keys.push(orphanKey(payment.id));return 'orphaned';
+      }
+      await tx.transfer.update({where:{id:t.id},data:{paid:true,guestPaymentStatus:'PAID',guestPaymentMethod:'online',guestPaidAt:new Date()}});
+      const dispatchKey=`transfer.payment.dispatch:${t.id}`;
+      await enqueue(tx,{accountId:payment.accountId,kind:'transfers.dispatch',dedupeKey:dispatchKey,payload:{bookingId:b.id,actor}});keys.push(dispatchKey);return 'transfer_paid';
+    }
     if (b.status === 'request') {   // удержание живо (истёкшее уже снято выше) или без срока
       await tx.booking.update({ where: { id: b.id }, data: { paymentStatus: 'paid' } });
       await confirmRequestInTx(tx, b, { actor });

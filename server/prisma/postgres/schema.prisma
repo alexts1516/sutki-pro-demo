@@ -283,6 +283,8 @@ model Booking {
 }
 
 model Transfer {
+  checkoutKeyHash String? @unique
+  checkoutRequestHash String?
   id                 String    @id @default(cuid())
   accountId          String
   bookingId          String?
@@ -724,6 +726,8 @@ model NotificationLog {
 }
 
 model Payment {
+  transferId String?
+  @@index([transferId])
   id                String   @id @default(cuid())
   accountId         String
   bookingId         String?

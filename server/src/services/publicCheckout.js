@@ -41,27 +41,30 @@ export async function checkout({ accountId, apartment, data, guestData, key, con
     return { booking, token, replayed: false };
   } catch (e) { const b = await replay(); if (b) return { booking: b, token, replayed: true }; throw e; }
 }
-export async function startAttempt({ booking, key, payments, config, slug }) {
-  const attemptKeyHash = scopedDigest(booking.accountId, JSON.stringify([booking.id,key]));
+export async function startAttempt({ booking, key, payments, config, slug, transfer = null }) {
+  const attemptKeyHash = scopedDigest(booking.accountId, JSON.stringify(transfer?[booking.id,transfer.id,key]:[booking.id,key]));
   const claim = await withApartmentTx(booking.apartmentId, async tx => {
     const existing = await tx.payment.findUnique({ where: { attemptKeyHash } });
     if (existing) return { payment: existing, owner: false };
     const b = await tx.booking.findUnique({ where: { id: booking.id } });
-    if (b.paymentStatus === 'paid') return { refuse: 'Бронь уже оплачена' };
+    const t = transfer ? await tx.transfer.findFirst({where:{id:transfer.id,bookingId:b.id,accountId:b.accountId}}) : null;
+    if(transfer && (!t || b.status!=='confirmed' || !t.checkoutKeyHash || ['cancelled','done'].includes(t.status))) return {refuse:'Трансфер недоступен для оплаты'};
+    if(t?.guestPaymentStatus==='PAID') return {refuse:'Трансфер уже оплачен'};
+    if (!transfer && b.paymentStatus === 'paid') return { refuse: 'Бронь уже оплачена' };
     if (!['request','confirmed'].includes(b.status)) return { refuse: 'Время оплаты истекло или бронь отменена' };
-    const active = await tx.payment.findFirst({ where: { bookingId: b.id, OR: [{ status: { in: ['created','pending'] } }, { initState: { in: ['starting','uncertain'] } }] } });
+    const active = await tx.payment.findFirst({ where: { bookingId: b.id, transferId:transfer?.id||null, OR: [{ status: { in: ['created','pending'] } }, { initState: { in: ['starting','uncertain'] } }] } });
     if (active) return { refuse: 'Предыдущая попытка ещё обрабатывается' };
-    const holdUntil = extendHold(b);
+    const holdUntil = transfer ? null : extendHold(b);
     if (holdUntil) await tx.booking.update({ where: { id:b.id }, data:{holdUntil} });
-    return { owner: true, payment: await tx.payment.create({ data: { accountId: b.accountId, bookingId: b.id, provider: payments.name, publicRef: randomToken(32), attemptKeyHash,
-      initState: 'starting', status: 'created', amountKzt: b.totalKzt, currency:'KZT', amount:b.totalKzt } }) };
+    return { owner: true, payment: await tx.payment.create({ data: { accountId: b.accountId, bookingId: b.id, transferId:transfer?.id||null, provider: payments.name, publicRef: randomToken(32), attemptKeyHash,
+      initState: 'starting', status: 'created', amountKzt: t?.priceKzt??b.totalKzt, currency:'KZT', amount:t?.priceKzt??b.totalKzt } }) };
   });
   if (claim.refuse) throw new HttpError(409, claim.refuse);
   if (!claim.owner) return (claim.payment.intent || ['succeeded','failed'].includes(claim.payment.status)) ? { code:201, body:{...paymentGuest(claim.payment),bookingStatus:(await txlessBooking(claim.payment.bookingId)).status} } : { code:202, body:{paymentRef:claim.payment.publicRef,status:'processing'} };
   const p=claim.payment;
   try {
-    const intent=await payments.createPayment({ payment:{...p,id:p.publicRef},booking,guest:{...booking.guest,id:undefined},description:`Бронь №${booking.number}`,lang:booking.guest?.locale||'ru',
-      returnUrl:`${config.publicUrl}/api/public/${slug}/payment-return` });
+    const intent=await payments.createPayment({ payment:{...p,id:p.publicRef},booking,guest:{...booking.guest,id:undefined},description:transfer?`Трансфер к брони №${booking.number}`:`Бронь №${booking.number}`,lang:booking.guest?.locale||'ru',
+      returnUrl:transfer?`${config.publicUrl}/booking/${encodeURIComponent(booking.accessToken)}`:`${config.publicUrl}/api/public/${slug}/payment-return` });
     const stored=await prisma.payment.update({where:{id:p.id},data:{intent:safeIntent(intent,p.publicRef),initState:'ready'}});
     return {code:201,body:{...paymentGuest(await prisma.payment.findUnique({where:{id:stored.id}})),bookingStatus:(await txlessBooking(stored.bookingId)).status}};
   } catch {

@@ -15,10 +15,11 @@ import { notFound, badRequest, HttpError, parse } from '../lib/errors.js';
 import { apartmentPublic } from '../lib/serialize.js';
 import { parseDay, isoDay, addDays, todayIn, nights } from '../lib/dates.js';
 import { convertKzt } from '../lib/money.js';
-import { busyRanges, isAvailable, quote, PUBLIC_HOLD_MIN } from '../services/bookings.js';
+import { busyRanges, withApartmentTx, isAvailable, quote, PUBLIC_HOLD_MIN } from '../services/bookings.js';
 import { transferLegPrice } from '../services/transfers.js';
 import { loadBrand, loadTexts, loadCurrency } from '../site/config.js';
 import { deepLink } from '../telegram/linking.js';
+import { scopedDigest, fingerprint } from '../lib/publicDtos.js';
 import { apartmentGuest, bookingGuest, bookingPageGuest, paymentGuest, publicRef } from '../lib/publicDtos.js';
 import { checkout, operationKey, issueOperationKey, findGuestBooking, startAttempt } from '../services/publicCheckout.js';
 import { linkGuard, createLimiter, tooMany } from '../lib/rateLimit.js';
@@ -162,15 +163,21 @@ export default function publicRouter({ events, payments, config, dispatch, stora
   r.get('/bookings/:token/page',async(req,res)=>{
     let booking;try{booking=await byToken(req);}catch(error){if(error instanceof HttpError&&error.status===404)return res.json({state:'invalid'});throw error;}
     const [payment,brand]=await Promise.all([
-      prisma.payment.findFirst({where:{bookingId:booking.id},orderBy:{createdAt:'desc'}}),
+      prisma.payment.findFirst({where:{bookingId:booking.id,transferId:null},orderBy:{createdAt:'desc'}}),
       loadBrand(prisma,req.accountId),
     ]);
     const orphaned=payment ? !!(await prisma.outboxEvent.findUnique({where:{dedupeKey:`event:payment.orphaned:${payment.id}`},select:{id:true}})) : false;
-    res.json(bookingPageGuest({booking,brand,payment,orphaned}));
+    const dto=bookingPageGuest({booking,brand,payment,orphaned});
+    for(let i=0;i<booking.transfers.length;i++){
+      const t=booking.transfers[i],p=await prisma.payment.findFirst({where:{transferId:t.id},orderBy:{createdAt:'desc'}});
+      const needsReview=p?.status==='succeeded'&&t.guestPaymentStatus!=='PAID';
+      Object.assign(dto.transfers[i],{ref:publicRef(config,req.accountId,t.id),priceKzt:t.priceKzt,paymentStatus:t.guestPaymentStatus==='PAID'?'paid':needsReview?'review':p?.status||'unpaid',online:!!t.checkoutKeyHash});
+    }
+    res.json(dto);
   });
   r.get('/bookings/:token/payment',async(req,res)=>{
     const booking=await byToken(req);
-    const payment=await prisma.payment.findFirst({where:{bookingId:booking.id},orderBy:{createdAt:'desc'}});
+    const payment=await prisma.payment.findFirst({where:{bookingId:booking.id,transferId:null},orderBy:{createdAt:'desc'}});
     res.json({bookingStatus:booking.status,payment:payment?paymentGuest(payment):null});
   });
   r.get('/payment-return',(req,res)=>{
@@ -183,6 +190,37 @@ export default function publicRouter({ events, payments, config, dispatch, stora
     res.status(result.code).json(result.body);
   });
 
+  const transferFor = async (req,booking) => {
+    const t=booking.transfers.find(t=>publicRef(config,req.accountId,t.id)===req.params.ref);
+    if(!t || !t.checkoutKeyHash) throw notFound('Трансфер не найден');return t;
+  };
+  r.post('/bookings/:token/transfers/quote',async(req,res)=>{
+    const booking=await byToken(req);if(booking.status!=='confirmed') throw badRequest('Сначала подтвердите проживание');
+    const d=parse(TransferSchema,{...req.body,bookingToken:req.params.token});
+    const day=parseDay(d.date);if(!day || d.date<isoDay(booking.checkIn) || d.date>isoDay(booking.checkOut)) throw badRequest('Дата трансфера должна быть в периоде проживания');
+    res.json({priceKzt:transferLegPrice(d),currency:'KZT'});
+  });
+  r.post('/bookings/:token/transfers',async(req,res)=>{
+    const booking=await byToken(req),key=operationKey(req,config);
+    const d=parse(TransferSchema,{...req.body,bookingToken:req.params.token});
+    const day=parseDay(d.date);if(!day || d.date<isoDay(booking.checkIn) || d.date>isoDay(booking.checkOut)) throw badRequest('Дата трансфера должна быть в периоде проживания');
+    const checkoutKeyHash=scopedDigest(req.accountId,JSON.stringify(['transfer',booking.id,key])),checkoutRequestHash=fingerprint(d);
+    const t=await withApartmentTx(booking.apartmentId,async tx=>{
+      const old=await tx.transfer.findUnique({where:{checkoutKeyHash}});
+      if(old){if(old.checkoutRequestHash!==checkoutRequestHash) throw new HttpError(409,'Операция уже использована с другими условиями');return old;}
+      const current=await tx.booking.findUnique({where:{id:booking.id}});if(current.status!=='confirmed') throw new HttpError(409,'Сначала подтвердите проживание');
+      return tx.transfer.create({data:{accountId:req.accountId,bookingId:booking.id,guestId:booking.guestId,apartmentId:booking.apartmentId,checkoutKeyHash,checkoutRequestHash,
+        direction:d.direction,place:d.place,date:day,time:d.time,flight:d.flight,pax:d.pax,bags:d.bags,childSeats:d.childSeats,carClass:d.carClass,
+        priceKzt:transferLegPrice(d),status:'requested',guestPaymentMethod:'online',guestName:booking.guest?.name,guestPhone:booking.guest?.phone}});
+    });
+    res.status(201).json({ref:publicRef(config,req.accountId,t.id),priceKzt:t.priceKzt,status:t.status});
+  });
+  r.post('/bookings/:token/transfers/:ref/pay',async(req,res)=>{
+    if(!payments || payments.guestCheckoutReady===false) throw new HttpError(409,'Онлайн-оплата пока не подключена');
+    const booking=await byToken(req),transfer=await transferFor(req,booking);
+    const out=await startAttempt({booking:{...booking,accessToken:req.params.token},transfer,key:operationKey(req,config),payments,config,slug:req.account.slug});
+    res.status(out.code).json(out.body);
+  });
   r.post('/transfers', async (req, res) => {
     const d = parse(TransferSchema, req.body);
     const date = parseDay(d.date); if (!date) throw badRequest('Дата в формате ГГГГ-ММ-ДД');

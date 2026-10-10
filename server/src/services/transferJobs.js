@@ -248,6 +248,7 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
     if (existing) return existing;
     const t = await prisma.transfer.findFirst({ where: { id: transferId, accountId } });
     if (!t) throw notFound('Трансфер не найден');
+    if(t.checkoutKeyHash && t.guestPaymentStatus!=='PAID') throw conflict('Трансфер ожидает оплату');
     if (['cancelled', 'done'].includes(t.status)) throw conflict('Трансфер уже закрыт');
     let job;
     try {
@@ -268,7 +269,7 @@ export function createTransferDispatch({ events, config = defaultConfig } = {}) 
   async function createForBooking({ accountId, bookingId, actor = null }) {
     const list = await prisma.transfer.findMany({ where: { accountId, bookingId, status: { notIn: ['cancelled', 'done'] }, job: null } });
     const out = [];
-    for (const t of list) out.push(await createForTransfer({ accountId, transferId: t.id, actor }));
+    for (const t of list.filter(t=>!t.checkoutKeyHash || t.guestPaymentStatus==='PAID')) out.push(await createForTransfer({ accountId, transferId: t.id, actor }));
     return out;
   }
 
