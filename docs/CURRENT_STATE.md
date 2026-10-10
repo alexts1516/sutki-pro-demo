@@ -1,14 +1,14 @@
 # Текущее состояние (для передачи работы)
 
-Обновлено: 8 октября 2026 (Pass 5 Step 4 завершён; Step 5 не начат). Короткая выжимка; подробности — в `docs/ПЛАН.md` и спецификации.
+Обновлено: 10 октября 2026 (Pass 5 Step 5 завершён локально). Короткая выжимка; подробности — в `docs/ПЛАН.md` и спецификации.
 
-## CURRENT STOP — PASS 5 STEP 4 COMPLETE
+## CURRENT STOP — PASS 5 STEP 5 COMPLETE LOCALLY
 
 **СЛЕДУЮЩИЙ ПРОДУКТОВЫЙ PASS НЕ НАЧИНАТЬ АВТОМАТИЧЕСКИ.**
 
-**Architecture/Product Gate «Guest Site → Real Server» — PASS.** Определён **PASS 5 — PRODUCTION GUEST SITE**, архитектура зафиксирована в [PASS5_PRODUCTION_GUEST_SITE_SPEC.md](PASS5_PRODUCTION_GUEST_SITE_SPEC.md). Steps 1–4 реализованы; production launch не готов и не заявляется. Отсутствие реальных банковских credentials не препятствует проверке реализации через существующий подписанный test adapter/stub; боевой запуск принимается отдельно.
+**Architecture/Product Gate «Guest Site → Real Server» — PASS.** Определён **PASS 5 — PRODUCTION GUEST SITE**, архитектура зафиксирована в [PASS5_PRODUCTION_GUEST_SITE_SPEC.md](PASS5_PRODUCTION_GUEST_SITE_SPEC.md). Steps 1–5 реализованы локально; production launch не готов и не заявляется. Отсутствие реальных банковских credentials не препятствует проверке реализации через существующий подписанный test adapter/stub; боевой запуск принимается отдельно.
 
-Следующий единственный этап — **PASS 5 STEP 5 — ONLINE TRANSFER PAYMENT**, по отдельному handoff с Resource Budget. Step 5 не начат.
+**PASS 5 STEP 5 — ONLINE TRANSFER PAYMENT — завершён локально**, commit `2060c00` (`feat: add online transfer payment`). Онлайн-оплата трансфера реализована через существующую систему платежей и подписанный тестовый провайдер. Production deployment не выполнялся; реальные банковские платежи и production acceptance не выполнялись. Следующие этапы автоматически не начинать.
 
 ### Pass 5 Step 4 — завершён
 
@@ -118,4 +118,4 @@ Pass 4 технически завершён и принят; live demo тепе
   - оплата после истечения срока при занятых датах — редкий ручной возврат (пункт «Сегодня» `payment_orphaned`);
   - прежний дефицит ~260 подготовок в seed устранён: обязательные подготовки создаются сразу; сверка даёт `preps=0`.
 - **Не пересматривать:** проход 3; решения по паспорту и билету, по оплате только картой на сайте, по индивидуальной цене; выбор «одна система Booking для обычных и особых броней». Не добавлять: загрузку документов, Telegram-напоминания, `minPrepMinutes`, Airbnb/iCal — это не проход 4.
-- **Остановка:** приёмка Pass 4 и live UX correction сохранены. Архитектура Pass 5 зафиксирована, Steps 1–4 завершены. Единственный следующий этап — Step 5, указанный в текущем STOP; без отдельного handoff не запускать.
+- **Остановка:** приёмка Pass 4 и live UX correction сохранены. Архитектура Pass 5 зафиксирована, Steps 1–5 завершены локально; Step 5 — commit `2060c00`, тестовый провайдер, без production deployment. Следующие этапы без отдельного handoff не запускать.
