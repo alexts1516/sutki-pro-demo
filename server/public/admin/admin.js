@@ -631,11 +631,59 @@ async function renderTeam() {
 }
 
 // ---------------- настройки ----------------
+function transferOfferSummary(o){
+  return `${o.passengers??"—"} пасс. · ${o.bags??"—"} багажа · ${o.priceKzt==null?"—":money(o.priceKzt)}`;
+}
+function transferOfferEditor(o={}, readOnly=false){
+  const ro=readOnly?'disabled':'';
+  return `<details class="transfer-offer" data-offer-id="${esc(o.id||'')}" ${o.id?'':'open'}>
+    <summary><div class="transfer-offer-heading"><b data-offer-title>${esc(o.name||'Новый вариант')}</b><small data-offer-summary>${esc(transferOfferSummary(o))}</small></div><span class="chip ${o.enabled===false?'':'green'}" data-offer-status>${o.enabled===false?'выключен':'включён'}</span></summary>
+    <div class="stack transfer-offer-fields"><label>Название транспорта<input data-offer-field="name" value="${esc(o.name||'')}" maxlength="80" required ${ro}></label>
+    <div class="grid transfer-offer-numbers"><label>Пассажиров<input data-offer-field="passengers" type="number" min="1" max="60" step="1" value="${o.passengers??''}" required ${ro}></label><label>Мест для багажа<input data-offer-field="bags" type="number" min="0" max="60" step="1" value="${o.bags??''}" required ${ro}></label>
+    <label>Стоимость, ₸<input data-offer-field="priceKzt" type="number" min="0" max="10000000" step="1" value="${o.priceKzt??''}" required ${ro}></label></div>
+    <label class="chk"><input data-offer-field="enabled" type="checkbox" ${o.enabled===false?'':'checked'} ${ro}>Вариант включён</label>
+    <div class="transfer-offer-actions">${readOnly?'':'<button type="button" class="btn primary sm" data-offer-save>Сохранить</button><button type="button" class="btn danger sm" data-offer-delete>Удалить</button>'}</div><p data-offer-message role="status" aria-live="polite"></p></div>
+  </details>`;
+}
+function setupTransferOffers(st){
+  const form=$('#transferOffersForm');if(!st.canEdit)return;
+  const rows=$('#transferOfferRows'),status=$('#transferOffersStatus');
+  $('#addTransferOffer').onclick=()=>{rows.insertAdjacentHTML('beforeend',transferOfferEditor());$('#transferOffersEmpty')?.remove();rows.lastElementChild.querySelector('input').focus();status.textContent='Есть несохранённые изменения.';};
+  form.oninput=e=>{const row=e.target.closest('[data-offer-id]');if(!row)return;
+    row.querySelector('[data-offer-title]').textContent=row.querySelector('[data-offer-field="name"]').value.trim()||'Новый вариант';
+    row.querySelector('[data-offer-summary]').textContent=transferOfferSummary(Object.fromEntries(['passengers','bags','priceKzt'].map(k=>{const v=row.querySelector(`[data-offer-field="${k}"]`).value;return [k,v===''?null:Number(v)];})));
+    const enabled=row.querySelector('[data-offer-field="enabled"]').checked,badge=row.querySelector('[data-offer-status]');badge.textContent=enabled?'включён':'выключен';badge.className='chip'+(enabled?' green':'');row.querySelector('[data-offer-message]').textContent='Есть несохранённые изменения.';};
+  form.onsubmit=e=>e.preventDefault();
+  rows.onclick=async e=>{const button=e.target.closest('[data-offer-delete],[data-offer-save]');if(!button)return;
+    const row=button.closest('[data-offer-id]'),message=row.querySelector('[data-offer-message]'),id=row.dataset.offerId;
+    const deleting=button.hasAttribute('data-offer-delete'),field=k=>row.querySelector(`[data-offer-field="${k}"]`);
+    if(deleting){if(!confirm(`Удалить вариант «${field('name').value.trim()||'Новый вариант'}»? История бронирований сохранится.`))return;}
+    else{for(const input of row.querySelectorAll('input'))if(!input.reportValidity())return;}
+    const controls=Array.from(form.querySelectorAll('input,button'));controls.forEach(el=>el.disabled=true);
+    message.textContent=deleting?'Удаляем…':'Сохраняем…';
+    try{
+      const transferOffers=(S.settings.transferOffers||[]).filter(o=>o.id!==id);
+      if(!deleting)transferOffers.push({...id?{id}:{},name:field('name').value.trim(),passengers:Number(field('passengers').value),bags:Number(field('bags').value),priceKzt:Number(field('priceKzt').value),enabled:field('enabled').checked});
+      if(id||!deleting)S.settings=await api('/api/admin/settings',{method:'PUT',body:{transferOffers}});
+      if(deleting){row.remove();status.textContent='Вариант удалён. История бронирований сохранена.';
+        if(!rows.querySelector('[data-offer-id]'))rows.innerHTML='<p class="muted" id="transferOffersEmpty">Варианты пока не добавлены.</p>';
+      }else{row.dataset.offerId=S.settings.transferOffers.at(-1).id;message.textContent='Изменения сохранены.';status.textContent='';}
+      toast(deleting?'Вариант удалён.':'Изменения сохранены.');
+    }catch(error){message.textContent='Не удалось сохранить: '+error.message;toast(message.textContent,true);}
+    finally{controls.forEach(el=>el.disabled=false);}
+  };
+}
+
 async function renderSettings() {
   const st = S.settings = await api('/api/admin/settings');
   const ro = st.canEdit ? '' : 'disabled';
   const radio = (name, val, label, hint) => `<label class="opt"><input type="radio" name="${name}" value="${val}" ${st[name] === val ? 'checked' : ''} ${ro}><span><b>${label}</b>${hint ? `<small>${hint}</small>` : ''}</span></label>`;
   view(`<div class="page-head"><div><h1>Настройки</h1><p class="sub">${st.canEdit ? 'Меняет только владелец.' : 'Только просмотр — эти настройки меняет владелец.'}</p></div></div>
+    <form id="transferOffersForm" class="card"><div class="card-h"><h2>Трансфер</h2>${st.canEdit?'<button type="button" class="btn sm" id="addTransferOffer">+ Добавить транспорт</button>':''}</div><div class="card-b stack">
+      <p class="muted small">Предлагаемые варианты транспорта. Настраиваются отдельно от автомобилей сотрудников в «Команде».</p>
+      <div id="transferOfferRows" class="stack">${(st.transferOffers||[]).map(o=>transferOfferEditor(o,!st.canEdit)).join('')||'<p class="muted" id="transferOffersEmpty">Варианты пока не добавлены.</p>'}</div>
+      <p id="transferOffersStatus" role="status" aria-live="polite"></p>
+    </div></form>
     <form id="houseRulesForm" class="card" novalidate><div class="card-h"><h2>Правила проживания</h2></div><div class="card-b">${rulesEditor(st.houseRules||{},{},false,ro)}${st.canEdit?'<button class="btn primary" type="submit">Сохранить правила проживания</button>':''}<p id="houseRulesStatus" role="status" aria-live="polite"></p></div></form>
     <form id="stForm" class="stack" novalidate>
     <div class="card"><div class="card-h"><h2>🚗 Комиссия с трансферов</h2><span class="chip ${st.commissionConfigured ? 'green' : 'amber'}">${st.commissionConfigured ? 'настроено' : 'не настроено'}</span></div><div class="card-b">
@@ -668,6 +716,7 @@ async function renderSettings() {
       <dt>Фото</dt><dd>${st.server.storage === 's3' ? 'S3-хранилище' : 'папка uploads/ на сервере'}</dd>
       <dt>Приложение команды</dt><dd><a href="/app/" target="_blank" rel="noopener">${location.origin}/app/</a> <span class="muted small">— водители, мастера, специалисты по подготовке</span></dd></dl></div></div>
     ${st.canEdit ? '<div class="row"><button class="btn primary">Сохранить настройки</button></div>' : ''}</form>`);
+  setupTransferOffers(st);
   const rulesForm=$('#houseRulesForm');
   if(st.canEdit) rulesForm.onsubmit=async e=>{
     e.preventDefault();const button=rulesForm.querySelector('button[type="submit"]'),status=$('#houseRulesStatus');button.disabled=true;status.textContent='Сохраняем правила…';

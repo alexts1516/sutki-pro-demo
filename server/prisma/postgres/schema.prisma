@@ -65,6 +65,7 @@ model Account {
 
 /// Настройки владельца: комиссия с трансферов, кому слать уведомления менеджерам, кто одобряет сметы.
 model AccountSettings {
+  transferOffers         Json? /// Owner-managed transport offers, independent of employee vehicles.
   houseRules             Json? /// Shared guest house rules; apartments store sparse exceptions.
   id                     String    @id @default(cuid())
   accountId              String    @unique

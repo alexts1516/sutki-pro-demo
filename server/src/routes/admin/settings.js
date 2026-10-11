@@ -8,6 +8,7 @@
 //                               payoutReminderHours — через сколько часов напомнить о невыплаченном (0 — не напоминать),
 //                               driverStartWindowMin — за сколько минут до подачи водителю открывается «Выехал» }
 import { ruleValuesSchema } from '../../lib/houseRulesSchema.js';
+import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
 import { z } from 'zod';
 import { requireRole } from '../../auth/middleware.js';
@@ -25,7 +26,7 @@ export default function settingsRouter({ config, storage, flights = null }) {
       commissionConfigured: !!s.commissionConfiguredAt, commissionLabel: accountRuleLabel(s),
       managerNotify: s.managerNotify, approvalBy: s.approvalBy, flightTracking: s.flightTracking, ownerDrivesKeepsAll: s.ownerDrivesKeepsAll,
       cleaningChecklist: templateOf(s), cleaningRateKzt: s.cleaningRateKzt, cleaningRates: s.cleaningRates || {}, payoutReminderHours: s.payoutReminderHours, driverStartWindowMin: s.driverStartWindowMin,
-      houseRules: s.houseRules || {},
+      houseRules: s.houseRules || {}, transferOffers: s.transferOffers || [],
       canEdit: req.role === 'owner',
       server: {
         telegram: !!config.telegram.token, telegramBot: config.telegram.username || null,
@@ -37,6 +38,11 @@ export default function settingsRouter({ config, storage, flights = null }) {
   r.put('/settings', requireRole('owner'), async (req, res) => {
     const d = parse(z.object({
       houseRules: ruleValuesSchema.optional(),
+      transferOffers: z.array(z.object({
+        id: z.string().uuid().optional(), name:z.string().trim().min(1,'Укажите название транспорта').max(80),
+        passengers:z.number().int().min(1).max(60), bags:z.number().int().min(0).max(60),
+        priceKzt:z.number().int().min(0).max(10_000_000), enabled:z.boolean().default(true),
+      })).max(100).optional(),
       transferPayoutMode: z.enum(PAYOUT_MODES).optional(),
       ownerCommissionPercent: z.number().min(0, 'Комиссия от 0 до 100%').max(100, 'Комиссия от 0 до 100%').nullable().optional(),
       driverFixedKzt: z.number().int().min(0).max(10_000_000).nullable().optional(),
@@ -47,6 +53,11 @@ export default function settingsRouter({ config, storage, flights = null }) {
       payoutReminderHours: z.number().int().min(0).max(168).optional(),
       driverStartWindowMin: z.number().int().min(15, 'Не меньше 15 минут').max(720, 'Не больше 12 часов').optional(),
     }), req.body);
+    if(d.transferOffers){
+      const ids=d.transferOffers.map(o=>o.id).filter(Boolean);
+      if(new Set(ids).size!==ids.length)throw badRequest('Варианты транспорта должны иметь разные идентификаторы');
+      d.transferOffers=d.transferOffers.map(o=>({...o,id:o.id||randomUUID()}));
+    }
     const cur = await getSettings(req.accountId);
     const mode = d.transferPayoutMode || cur.transferPayoutMode;
     const fixed = d.driverFixedKzt !== undefined ? d.driverFixedKzt : cur.driverFixedKzt;

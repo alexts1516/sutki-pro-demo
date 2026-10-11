@@ -245,3 +245,14 @@ button.cal-apt{text-align:left;cursor:pointer}button.cal-apt:hover{background:#f
 .apt-save-bar{position:fixed;left:232px;right:0;bottom:0;z-index:30;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 28px calc(14px + env(safe-area-inset-bottom));background:var(--card,#fff);border-top:1px solid var(--border2);box-shadow:0 -4px 18px #00000008}.apt-save-bar p{margin:0;color:var(--muted);font-size:13px}.apt-save-bar button{flex-shrink:0}.apt-save-bar button:disabled{opacity:.5;cursor:default}
 @media(max-width:860px){.apt-save-bar{left:0;padding-left:14px;padding-right:14px}}
 @media(max-width:600px){.apt-save-bar{flex-direction:column;align-items:stretch;gap:8px;padding-top:10px;padding-bottom:calc(10px + env(safe-area-inset-bottom))}.apt-save-bar p{font-size:12px}.apt-save-bar button{width:100%}.apt-editor{padding-bottom:160px}#aptForm .grid{grid-template-columns:1fr}.apt-section>summary{padding:14px}.apt-section .card-b{padding:14px}}
+
+/* Compact transport editor uses existing owner controls. */
+#transferOffersForm .card-b{padding:14px 20px;gap:10px}#transferOffersForm .card-b>p{margin:0}#transferOffersStatus:empty{display:none}
+.transfer-offer{border:1px solid var(--border);border-radius:12px;background:#fff;min-width:0;width:100%;max-width:600px}
+.transfer-offer>summary{display:flex;align-items:center;gap:10px;padding:11px 14px;cursor:pointer;list-style:none;white-space:nowrap}
+.transfer-offer>summary::-webkit-details-marker{display:none}
+.transfer-offer>summary::after{content:'›';font-size:20px;line-height:1;color:var(--muted)}
+.transfer-offer[open]>summary::after{transform:rotate(90deg)}
+.transfer-offer-heading{flex:1;min-width:0;display:flex;align-items:center;gap:14px}.transfer-offer-heading b{min-width:0;overflow:hidden;text-overflow:ellipsis}.transfer-offer-heading small{color:var(--muted);font-size:12px;flex-shrink:0}
+.transfer-offer-fields{max-width:540px;padding:0 14px 12px;gap:8px!important}.transfer-offer-fields label{font-size:12px}.transfer-offer-fields input:not([type=checkbox]){padding:8px 10px}.transfer-offer-numbers{grid-template-columns:100px 120px 150px;gap:10px}.transfer-offer-actions{display:flex;align-items:center;gap:8px}.transfer-offer-fields [data-offer-message]{margin:0;font-size:12px;color:var(--muted)}.transfer-offer-fields [data-offer-message]:empty{display:none}
+@media(max-width:600px){#transferOffersForm .card-h{padding:12px 14px;gap:8px;flex-wrap:wrap}#transferOffersForm .card-b{padding:12px}.transfer-offer>summary{gap:5px;padding:10px 8px}.transfer-offer-heading{gap:6px}.transfer-offer-heading b{font-size:12px;flex:1}.transfer-offer-heading small{font-size:10px}.transfer-offer>summary .chip{font-size:9px;padding:3px 5px}.transfer-offer-fields{padding:0 10px 10px}.transfer-offer-numbers{grid-template-columns:1fr 1fr 1.2fr;gap:6px}.transfer-offer-fields label{font-size:11px}}
