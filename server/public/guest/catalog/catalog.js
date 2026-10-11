@@ -401,11 +401,19 @@ function showApt(id){
 function closeModal(){ $('modal').classList.remove('open'); document.body.classList.remove('dp-lock'); }
 function aptDatesChanged(){
   M.ci=PK.apt.ci; M.co=PK.apt.co;
+  updateQuote();
   if(TR.bk.autoDates){ TR.bk.arrDate=M.ci; TR.bk.depDate=M.co; }
   if(M.step==='details') refreshDetailsBits(); else if(M.step==='form'){ if(TR.bk.on) rerenderTr('bk'); refreshFormBits(); }
 }
 function totals(){const q=M.serverQuote;const n=M.ci!=null&&M.co!=null?M.co-M.ci:0;const total=q?.totalKzt||0,pet=q?.petFeeKzt||0;return {n,total,pet,cStay:conv(total-pet),cPet:conv(pet),cTotal:conv(total),cTr:0};}
-function sumHTML(){if(M.ci==null||M.co==null)return `<div class="sum muted">${tx('Выберите даты заезда и выезда в календаре')}</div>`;if(!M.serverQuote)return `<div class="sum muted">${tx('Проверяем цену и доступность…')}</div>`;return `<div class="sum"><div class="ln"><span>${gmN(M.apt)} × ${nightsWord(totals().n)}</span><span>${gm(M.serverQuote.totalKzt-M.serverQuote.petFeeKzt)}</span></div>${M.serverQuote.petFeeKzt?`<div class="ln"><span>${tx('Проживание с животным')}</span><span>${gm(M.serverQuote.petFeeKzt)}</span></div>`:''}<div class="ln tot"><span>${tx('Итого')}</span><span>${gm(M.serverQuote.totalKzt)}</span></div></div>`;}
+function sumHTML(){if(M.quoteState==='error')return `<div class="sum muted">${tx('Не удалось проверить доступность. Повторите проверку.')}</div>`;if(M.serverQuote?.available===false)return `<div class="sum muted">${tx('Эти даты уже заняты — выберите другие в календаре')}</div>`;if(M.ci==null||M.co==null)return `<div class="sum muted">${tx('Выберите даты заезда и выезда в календаре')}</div>`;if(!M.serverQuote)return `<div class="sum muted">${tx('Проверяем цену и доступность…')}</div>`;return `<div class="sum"><div class="ln"><span>${gmN(M.apt)} × ${nightsWord(totals().n)}</span><span>${gm(M.serverQuote.totalKzt-M.serverQuote.petFeeKzt)}</span></div>${M.serverQuote.petFeeKzt?`<div class="ln"><span>${tx('Проживание с животным')}</span><span>${gm(M.serverQuote.petFeeKzt)}</span></div>`:''}<div class="ln tot"><span>${tx('Итого')}</span><span>${gm(M.serverQuote.totalKzt)}</span></div></div>`;}
+function quoteButtonLabel(){
+  if(!totals().n)return tx('Выбрать даты');
+  if(M.quoteState==='error')return tx('Повторить проверку');
+  if(!M.serverQuote)return tx('Проверяем цену и доступность…');
+  return tx('Забронировать');
+}
+function quoteButtonDisabled(){return totals().n>0&&(M.quoteState==='pending'||M.serverQuote?.available===false);}
 function selText(){ const t=totals(); return M.ci!=null?(M.co!=null?`${fDL(M.ci)} → ${fDL(M.co)} · ${nightsWord(t.n)}`:`${tx("Заезд")} ${fDL(M.ci)} ${tx("— выберите дату выезда")}`):''; }
 const CAPS=[tx('Гостиная'),tx('Спальня'),tx('Кухня')];
 const capOf = v => M.apt.photos?.[v]?.caption || tx('Фото');
@@ -472,11 +480,11 @@ function renderModal(){
       ${dateFieldsHTML('data-dp-apt')}
       <div id="selInfo" class="selinfo">${selText()}</div>
       <div id="sumBox">${sumHTML()}</div>
-      <button type="button" class="btn brand block" style="margin-top:12px;height:50px" data-to-form id="toFormBtn">${t.n?tx('Забронировать'):tx('Выбрать даты')}</button>
+      <button type="button" class="btn brand block" style="margin-top:12px;height:50px" data-to-form id="toFormBtn" ${quoteButtonDisabled()?'disabled':''}>${quoteButtonLabel()}</button>
       <div class="muted" style="font-size:12.5px;text-align:center;margin-top:8px">${tx("Оплата картой")}</div></aside></div>
     <div class="avail" id="availBox"><div class="avail-h"><div><h3>${tx("Свободные даты")}</h3><p class="muted">${tx("Зачёркнутые дни заняты. Нажмите на день заезда, затем на день выезда — ночи и сумма посчитаются сразу.")}</p></div></div>
       <div class="dpc inline" data-pk="apt" data-view="inline"></div></div>
-    <div class="mbar"><div><b>${gmN(a)}</b> <span class="muted">${tx("/ ночь")}</span><div class="muted" style="font-size:12px" id="mbarInfo">${t.n?`${nightsWord(t.n)} · ${fc(t.cTotal)}`:tx('выберите даты')}</div></div><button type="button" class="btn brand" data-to-form>${t.n?tx('Забронировать'):tx('Выбрать даты')}</button></div>`;
+    <div class="mbar"><div><b>${gmN(a)}</b> <span class="muted">${tx("/ ночь")}</span><div class="muted" style="font-size:12px" id="mbarInfo">${t.n?(M.serverQuote?`${nightsWord(t.n)} · ${fc(t.cTotal)}`:tx(M.quoteState==='error'?'Не удалось проверить доступность. Повторите проверку.':'Проверяем цену и доступность…')):tx('выберите даты')}</div></div><button type="button" class="btn brand" data-to-form ${quoteButtonDisabled()?'disabled':''}>${quoteButtonLabel()}</button></div>`;
     renderPK('apt');
   }
   else if(M.step==='form'){
@@ -551,8 +559,8 @@ function chatText(){ const a=M.apt, t=totals(); const T=TR.bk;
 function refreshDetailsBits(){ const t=totals();
   renderPK('apt'); $('sumBox').innerHTML = sumHTML(); $('selInfo').textContent = selText();
   document.querySelector('.bookbox .dfs').outerHTML = dateFieldsHTML('data-dp-apt');
-  document.querySelectorAll('[data-to-form]').forEach(b=>b.textContent = t.n?tx('Забронировать'):tx('Выбрать даты'));
-  const mi=$('mbarInfo'); if(mi) mi.textContent = t.n?`${nightsWord(t.n)} · ${fc(t.cTotal)}`:tx('выберите даты'); }
+  document.querySelectorAll('[data-to-form]').forEach(b=>{b.textContent=quoteButtonLabel();b.disabled=quoteButtonDisabled();});
+  const mi=$('mbarInfo'); if(mi) mi.textContent = t.n?(M.serverQuote?`${nightsWord(t.n)} · ${fc(t.cTotal)}`:tx(M.quoteState==='error'?'Не удалось проверить доступность. Повторите проверку.':'Проверяем цену и доступность…')):tx('выберите даты'); }
 function refreshFormBits(){ const t=totals();
   $('fSum').innerHTML = sumHTML(); $('fDates').textContent = t.n?`${fD(M.ci)} – ${fD(M.co)}`:'—';
   $('formDates').innerHTML = dateFieldsHTML('data-dp-apt');
@@ -692,7 +700,7 @@ document.addEventListener('click', e=>{
   if(t.closest('[data-reset]')){ Object.assign(G,{ci:null,co:null,guests:1,district:'',maxPrice:0,rooms:'',pets:false}); syncSearch(); renderGrid(); return; }
   const ph=t.closest('[data-photo]'); if(ph){ M.photo=+ph.dataset.photo; document.querySelector('.mgal').outerHTML = galleryHTML(M.apt); return; }
   /* бронь */
-  if(t.closest('[data-to-form]')){if(!totals().n){openDP('apt','ci',M.apt.title);return;}if(!M.serverQuote?.available){toast(tx('Эти даты уже заняты — выберите другие в календаре'));return;}location.assign('/guest-assets/checkout.html?'+new URLSearchParams({apartment:M.apt.ref,checkIn:isoOf(M.ci),checkOut:isoOf(M.co),guests:M.guests,pets:M.pet?'1':'0',lang:IS_EN?'en':'ru',currency:CUR})+'#checkout');return;}
+  if(t.closest('[data-to-form]')){if(!totals().n){openDP('apt','ci',M.apt.title);return;}if(M.quoteState==='pending'){return;}if(M.serverQuote?.available===false){toast(tx('Эти даты уже заняты — выберите другие в календаре'));return;}if(M.serverQuote?.available!==true){quoteKey='';updateQuote();refreshDetailsBits();return;}location.assign('/guest-assets/checkout.html?'+new URLSearchParams({apartment:M.apt.ref,checkIn:isoOf(M.ci),checkOut:isoOf(M.co),guests:M.guests,pets:M.pet?'1':'0',lang:IS_EN?'en':'ru',currency:CUR})+'#checkout');return;}
   const back=t.closest('[data-back]'); if(back){ if(M.step==='form') readForm(); if(M.step==='trcard') {} M.step=back.dataset.back; renderModal(); return; }
   const pay=t.closest('[data-pay]'); if(pay){ M.pay=pay.dataset.pay; refreshFormBits(); return; }
   if(t.closest('#chatSend')){ saveRequest(); return; }
@@ -771,7 +779,16 @@ window.addEventListener('storage', e=>{
 let gridSeq=0,quoteSeq=0,quoteKey='';
 async function renderGrid(){const seq=++gridSeq;try{const params=new URLSearchParams({lang:IS_EN?'en':'ru',guests:G.guests,pets:G.pets?'1':'0'});if(G.ci!=null&&G.co!=null){params.set('checkIn',isoOf(G.ci));params.set('checkOut',isoOf(G.co));}const list=await SERVER_HOME.api('/apartments?'+params);if(seq!==gridSeq)return;for(const a of guestApts){const v=list.find(v=>v.ref===a.ref);a.available=v?.available===true;}drawGrid();}catch{$('grid').innerHTML=`<div class="empty">${tx('Не удалось загрузить каталог')}</div>`;}}
 async function openApt(id){const a=gById(id);if(!a)return;try{const d=await SERVER_HOME.api('/apartments/'+encodeURIComponent(a.ref)+'?lang='+(IS_EN?'en':'ru'));Object.assign(a,{busy:d.busy,photos:d.photos,description:d.description,amenities:d.amenities,houseRules:d.houseRules});quoteKey='';showApt(id);}catch{toast(tx('Не удалось загрузить квартиру'));}}
-function updateQuote(){if(M.step!=='details')return;const k=JSON.stringify([M.apt.ref,M.ci,M.co,M.guests,M.pet]);if(k===quoteKey)return;quoteKey=k;const seq=++quoteSeq;M.serverQuote=null;if(M.ci==null||M.co==null)return;SERVER_HOME.api('/apartments/'+encodeURIComponent(M.apt.ref)+'/quote?'+new URLSearchParams({checkIn:isoOf(M.ci),checkOut:isoOf(M.co),guests:M.guests,pets:M.pet?'1':'0'})).then(q=>{if(seq!==quoteSeq||M.step!=='details')return;M.serverQuote=q;renderModal();}).catch(e=>{if(seq===quoteSeq&&M.step==='details')toast(e.message);});}
+function updateQuote(){
+  if(M.step!=='details')return;
+  const k=JSON.stringify([M.apt.ref,M.ci,M.co,M.guests,M.pet]);if(k===quoteKey)return;
+  quoteKey=k;const seq=++quoteSeq;M.serverQuote=null;M.quoteState='idle';
+  if(M.ci==null||M.co==null)return;
+  M.quoteState='pending';
+  SERVER_HOME.api('/apartments/'+encodeURIComponent(M.apt.ref)+'/quote?'+new URLSearchParams({checkIn:isoOf(M.ci),checkOut:isoOf(M.co),guests:M.guests,pets:M.pet?'1':'0'}))
+    .then(q=>{if(seq!==quoteSeq||M.step!=='details')return;M.serverQuote=q;M.quoteState='ready';renderModal();})
+    .catch(()=>{if(seq!==quoteSeq||M.step!=='details')return;M.quoteState='error';refreshDetailsBits();});
+}
 
 /* ---------- старт ---------- */
 syncSearch(); renderGrid();
