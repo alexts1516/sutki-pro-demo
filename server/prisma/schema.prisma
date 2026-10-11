@@ -63,6 +63,7 @@ model Account {
 
 /// Настройки владельца: комиссия с трансферов, кому слать уведомления менеджерам, кто одобряет сметы.
 model AccountSettings {
+  houseRules             Json? /// Shared guest house rules; apartments store sparse exceptions.
   id                     String    @id @default(cuid())
   accountId              String    @unique
   transferPayoutMode     String    @default("PERCENT") /// PERCENT (бизнес оставляет ownerCommissionPercent от цены) | FIXED (водителю фиксированно driverFixedKzt)
@@ -176,6 +177,8 @@ model Apartment {
   basePriceKzt       Int
   description        String?
   descriptionEn      String?
+  amenities          Json? /// selected amenity identifiers
+  houseRules         Json? /// guest-facing rules; existing bookings are unchanged
   petsAllowed        Boolean  @default(false)
   petFeeKzt          Int      @default(0)
   petNote            String?

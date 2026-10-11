@@ -391,7 +391,7 @@ const SUBMIT_LBL = {card:tx('Перейти к оплате'),cash:tx('Забр�
 function showModal(){ $('modal').classList.add('open'); document.body.classList.add('dp-lock'); $('modal').scrollTop=0; }
 function showApt(id){
   const a=gById(id); if(!a) return;
-  Object.assign(M, {flow:'booking', apt:a, step:'details', photo:0, saved:null, guests:Math.min(G.guests,a.maxGuests), pet:G.pets && a.pets.allowed, pay:'card'});
+  Object.assign(M, {flow:'booking', apt:a, step:'details', photo:0, saved:null, amenitiesExpanded:false, guests:Math.min(G.guests,a.maxGuests), pet:G.pets && a.pets.allowed, pay:'card'});
   M.ci = G.ci; M.co = G.co;
   if(M.ci!=null && (M.co==null || !rangeFree(a.id,M.ci,M.co))){ M.ci=null; M.co=null; }
   TR.bk = newTr({pax:M.guests, bags:Math.min(M.guests,3), autoDates:true});
@@ -417,6 +417,38 @@ function miniApt(a,key,sub){ return `<div class="mini-apt"><div class="th">${pho
 function dateFieldsHTML(attr){
   return `<div class="dfs"><button type="button" class="dfb" ${attr}="ci" id="dfCi"><small>${tx("Заезд")}</small><b>${M.ci!=null?fDW(M.ci):tx('<span class="ph">Выбрать</span>')}</b></button><button type="button" class="dfb" ${attr}="co" id="dfCo"><small>${tx("Выезд")}</small><b>${M.co!=null?fDW(M.co):tx('<span class="ph">Выбрать</span>')}</b></button></div>`;
 }
+function amenitiesHTML(a){
+  const selected=new Set(a.amenities||[]),groups=window.AMENITY_GROUPS.map(g=>({...g,items:g.items.filter(i=>selected.has(i.id))})).filter(g=>g.items.length);
+  const items=groups.flatMap(g=>g.items.map(i=>({...i,icon:g.icon})));
+  const text=i=>IS_EN?i.en:i.ru;
+  if(!items.length)return `<div class="amen">${tx('Удобства уточняются')}</div>`;
+  return `<div class="amen">${items.slice(0,6).map(i=>`<span>${ic(i.icon,18)} ${esc(text(i))}</span>`).join('')}<button type="button" class="amen-l amenities-toggle" data-amenities-expand aria-expanded="${!!M.amenitiesExpanded}" aria-controls="allAmenities">${IS_EN?'Show all amenities':'Показать все удобства'} (${items.length})</button></div>
+  <div class="all-amenities" id="allAmenities" ${M.amenitiesExpanded?'':'hidden'}>${groups.map(g=>`<section><h4>${esc(text(g))}</h4><ul>${g.items.map(i=>`<li>${esc(text(i))}</li>`).join('')}</ul></section>`).join('')}</div>`;
+}
+function houseRulesHTML(a){
+  const r=a.houseRules||{}, v=(ru,en)=>IS_EN?en:ru;
+  const rule=(key,icon,fallbackTitle,fallbackNote='',style='')=>{
+    const d=r.details?.[key]||{};
+    const labels={stay:v('Заезд и выезд','Check-in and check-out'),arrival:v('Способ заселения','Check-in method'),pets:v('Животные','Pets'),smoking:v('Курение','Smoking'),parties:v('Вечеринки','Parties'),quiet:v('Тишина','Quiet hours'),additional:v('Дополнительные условия','Additional conditions')};
+    const title=fallbackTitle||labels[key];
+    const translated=d.explanationEnSource===undefined||d.explanationEnSource===d.explanation;
+    const note=(IS_EN&&translated&&d.explanationEn)||d.explanation||fallbackNote;
+    if(!fallbackTitle&&!note)return '';
+    return `<div class="rule ${style}"><span class="ri">${ic(icon,17)}</span><div><b>${esc(title)}</b>${note?`<span>${esc(note)}</span>`:''}</div></div>`;
+  };
+  let html=rule('stay','clock',[r.checkIn?v('Заезд с ','Check-in from ')+r.checkIn:'',r.checkOut?v('выезд до ','check-out by ')+r.checkOut:''].filter(Boolean).join(', '));
+  const methods={code:v('Самостоятельное заселение','Self check-in'),personal:v('Встреча при заселении','In-person check-in'),other:v('Способ заселения','Check-in method')};
+  html+=rule('arrival','home',methods[r.checkInMethod]||'');
+  html+=rule('pets','paw',a.pets.allowed?v('Можно с животными','Pets allowed'):v('Без животных','No pets'),a.pets.note||'',a.pets.allowed?'ok':'no');
+  html+=rule('smoking','shield',typeof r.smokingAllowed==='boolean'?(r.smokingAllowed?v('Курение разрешено','Smoking allowed'):v('Курение запрещено','No smoking')):'');
+  html+=rule('parties','users',typeof r.partiesAllowed==='boolean'?(r.partiesAllowed?v('Вечеринки разрешены','Parties allowed'):v('Вечеринки запрещены','No parties')):'');
+  html+=rule('quiet','clock',[r.quietFrom?v('Тишина с ','Quiet hours from ')+r.quietFrom:'',r.quietTo?v('до ','to ')+r.quietTo:''].filter(Boolean).join(' '));
+  const additional=r.details?.additional;
+  const additionalTranslated=!additional||additional.explanationEnSource===undefined||additional.explanationEnSource===additional.explanation;
+  const extra=additional?.explanation||((IS_EN&&additionalTranslated&&r.additionalEn)||r.additional);
+  html+=rule('additional','home',extra?v('Дополнительные условия','Additional conditions'):'',extra||'');
+  return `<div class="rules">${html}</div>`;
+}
 function petRuleHTML(a){ const p=a.pets;
   return `<div class="rule ${p.allowed?'ok':'no'}" id="petRule"><span class="ri">${ic('paw',17)}</span><div><b>${p.allowed?tx('Можно с животными'):tx('Без животных')}</b><span>${p.allowed?`${p.count===1?tx('Один питомец'):tx('До двух питомцев')} ${p.weight}. ${p.fee?`${tx("Доплата")} ${gm(p.fee)} ${tx("за всё проживание.")}`:tx('Без доплаты.')} ${tx("Не оставляйте питомца одного надолго, лоток и миски — ваши.")}`:tx('В этой квартире нельзя с питомцами. Ищете жильё с животным — включите фильтр «Можно с животными».')}</span></div></div>`;
 }
@@ -432,12 +464,9 @@ function renderModal(){
       <h2 style="margin:6px 0 8px">${esc(a.title)}</h2>
       <div class="feat" style="font-size:14px"><span class="rt">${ic('star',15)} ${aptRating(a)} <small>· ${a.reviews??'—'} ${tx("отзывов")}</small></span><span>${ic('bed',15)} ${tx(a.rooms)}</span><span>${ic('users',15)} ${tx("до")} ${guestsWord(a.maxGuests)}</span><span>${ic('home',15)} ${a.area} ${tx("м²")}</span>${a.pets.allowed?`<span class="pawt">${ic('paw',15)} ${tx("можно с животными")}</span>`:''}</div>
       <p style="color:var(--ink2);margin:14px 0 0">${esc(a.description||tx("Описание уточняется"))}</p>
-      <div class="amen">${tx("Удобства уточняются")}</div>
+      ${amenitiesHTML(a)}
       <h3 class="rh">${tx("Правила проживания")}</h3>
-      <div class="rules"><div class="rule"><span class="ri">${ic('clock',17)}</span><div><b>${tx("Заезд с 14:00, выезд до 12:00")}</b><span>${tx("Самостоятельное заселение по коду, ранний заезд — по запросу.")}</span></div></div>
-        ${petRuleHTML(a)}
-        <div class="rule"><span class="ri">${ic('shield',17)}</span><div><b>${tx("Без вечеринок и курения")}</b><span>${tx("Тишина с 23:00 до 08:00, залог не берём.")}</span></div></div></div>
-      
+      ${houseRulesHTML(a)}
     </div>
     <aside class="bookbox"><div style="display:flex;align-items:baseline;justify-content:space-between"><div><b style="font-size:22px">${gmN(a)}</b> <span class="muted">${tx("/ ночь")}</span></div><span class="rt">${ic('star',14)} ${aptRating(a)}</span></div>
       ${dateFieldsHTML('data-dp-apt')}
@@ -638,6 +667,7 @@ function saveTransfer(){
 function trCtx(el){ const w=el.closest('[data-tr]'); return w ? w.dataset.tr : null; }
 document.addEventListener('click', e=>{
   const t=e.target;
+  const amenitiesButton=t.closest('[data-amenities-expand]');if(amenitiesButton){M.amenitiesExpanded=!M.amenitiesExpanded;$('allAmenities').hidden=!M.amenitiesExpanded;amenitiesButton.setAttribute('aria-expanded',String(M.amenitiesExpanded));return;}
   /* календарь */
   if(t.closest('[data-dpclose]') || t.id==='dp'){ closeDP(); return; }
   if(t.closest('[data-dpreset]')){ const s=PK.dp; s.ci=s.co=null; s.d=null; renderPK('dp'); return; }
@@ -740,7 +770,7 @@ window.addEventListener('storage', e=>{
 
 let gridSeq=0,quoteSeq=0,quoteKey='';
 async function renderGrid(){const seq=++gridSeq;try{const params=new URLSearchParams({lang:IS_EN?'en':'ru',guests:G.guests,pets:G.pets?'1':'0'});if(G.ci!=null&&G.co!=null){params.set('checkIn',isoOf(G.ci));params.set('checkOut',isoOf(G.co));}const list=await SERVER_HOME.api('/apartments?'+params);if(seq!==gridSeq)return;for(const a of guestApts){const v=list.find(v=>v.ref===a.ref);a.available=v?.available===true;}drawGrid();}catch{$('grid').innerHTML=`<div class="empty">${tx('Не удалось загрузить каталог')}</div>`;}}
-async function openApt(id){const a=gById(id);if(!a)return;try{const d=await SERVER_HOME.api('/apartments/'+encodeURIComponent(a.ref)+'?lang='+(IS_EN?'en':'ru'));Object.assign(a,{busy:d.busy,photos:d.photos,description:d.description});quoteKey='';showApt(id);}catch{toast(tx('Не удалось загрузить квартиру'));}}
+async function openApt(id){const a=gById(id);if(!a)return;try{const d=await SERVER_HOME.api('/apartments/'+encodeURIComponent(a.ref)+'?lang='+(IS_EN?'en':'ru'));Object.assign(a,{busy:d.busy,photos:d.photos,description:d.description,amenities:d.amenities,houseRules:d.houseRules});quoteKey='';showApt(id);}catch{toast(tx('Не удалось загрузить квартиру'));}}
 function updateQuote(){if(M.step!=='details')return;const k=JSON.stringify([M.apt.ref,M.ci,M.co,M.guests,M.pet]);if(k===quoteKey)return;quoteKey=k;const seq=++quoteSeq;M.serverQuote=null;if(M.ci==null||M.co==null)return;SERVER_HOME.api('/apartments/'+encodeURIComponent(M.apt.ref)+'/quote?'+new URLSearchParams({checkIn:isoOf(M.ci),checkOut:isoOf(M.co),guests:M.guests,pets:M.pet?'1':'0'})).then(q=>{if(seq!==quoteSeq||M.step!=='details')return;M.serverQuote=q;renderModal();}).catch(e=>{if(seq===quoteSeq&&M.step==='details')toast(e.message);});}
 
 /* ---------- старт ---------- */

@@ -10,6 +10,7 @@ export function apartmentPublic(a, lang = 'ru') {
     id: a.id, code: a.code, title: (lang === 'en' && a.titleEn) || a.title, complex: a.complex, address: a.address.replace(/,\s*кв\.\s*\d+$/, ''),
     district: a.district, rooms: a.rooms, maxGuests: a.maxGuests, areaM2: a.areaM2, basePriceKzt: a.basePriceKzt,
     description: (lang === 'en' && a.descriptionEn) || a.description,
+    amenities: a.amenities || [], houseRules: a.houseRules || null,
     pets: { allowed: a.petsAllowed, feeKzt: a.petFeeKzt, note: a.petNote },
     cover: photos[0] || null, photos,
   };

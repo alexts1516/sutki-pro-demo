@@ -1,3 +1,4 @@
+import { apartmentRulesSchema } from '../../lib/houseRulesSchema.js';
 // Квартиры и фото (владелец и администратор).
 //   GET    /api/admin/apartments                  — список
 //   POST   /api/admin/apartments                  — создать
@@ -9,6 +10,7 @@
 //   PATCH  /api/admin/photos/:photoId             — подпись { caption, captionEn }
 //   POST   /api/admin/photos/:photoId/cover       — сделать обложкой
 //   DELETE /api/admin/photos/:photoId             — удалить фото
+import { AMENITY_IDS } from '../../../public/shared/apartment-features.js';
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../../db.js';
@@ -26,6 +28,8 @@ const ApartmentSchema = z.object({
   maxGuests: z.coerce.number().int().min(1).max(30), areaM2: opt(z.coerce.number().int().min(5).max(1000)),
   basePriceKzt: z.coerce.number().int().min(0).max(10_000_000),
   description: opt(z.string().max(5000)), descriptionEn: opt(z.string().max(5000)),
+  amenities: z.array(z.enum(AMENITY_IDS)).max(AMENITY_IDS.length).transform(v=>[...new Set(v)]).optional(),
+  houseRules: apartmentRulesSchema.optional(),
   petsAllowed: bool.optional(), petFeeKzt: z.coerce.number().int().min(0).optional(), petNote: opt(z.string().max(200)),
   lockCode: opt(z.string().max(40)), keyboxCode: opt(z.string().max(40)), intercom: opt(z.string().max(40)), entrance: opt(z.string().max(20)),
   floor: opt(z.coerce.number().int().min(-5).max(200)), wifiName: opt(z.string().max(60)), wifiPassword: opt(z.string().max(60)), accessNote: opt(z.string().max(1000)),

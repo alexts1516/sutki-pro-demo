@@ -1,3 +1,5 @@
+import { getSettings } from '../services/settings.js';
+import { resolveRules } from '../../public/shared/house-rules.js';
 // API для сайта гостей (без входа). Аккаунт определяется по slug в адресе:
 //   GET  /api/public/:slug/site                         — бренд, тексты, валюты, способы оплаты
 //   GET  /api/public/:slug/apartments?checkIn&checkOut&guests&lang — квартиры с фото и подписями
@@ -95,9 +97,11 @@ export default function publicRouter({ events, payments, config, dispatch, stora
     const guests = Number(req.query.guests) || 0;
     const pets = req.query.pets === '1' || req.query.pets === 'true';
     const list = await prisma.apartment.findMany({ where: { accountId: req.accountId, active: true, ...(guests ? { maxGuests: { gte: guests } } : {}) }, include: { photos: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }] });
+    const template = (await getSettings(req.accountId)).houseRules || {};
     const out = [];
     for (const a of list) {
       const item = apartmentPublic(a, lang);
+      item.houseRules = resolveRules(template,a.houseRules || {});
       if (ci && co && co > ci) { item.available = await isAvailable(req.accountId, a.id, ci, co); item.quote = quote(a, ci, co, pets); }
       out.push(apartmentGuest(item,config,req.accountId,req.params.slug));
     }
@@ -113,7 +117,9 @@ export default function publicRouter({ events, payments, config, dispatch, stora
 
   r.get('/apartments/:id', async (req, res) => {
     const a = await findApt(req); const today = todayIn(req.account.timezone);
-    res.json({ ...apartmentGuest(apartmentPublic(a, req.query.lang === 'en' ? 'en' : 'ru'),config,req.accountId,req.params.slug), busy: await ranges(req, a, today, addDays(today, 183)) });
+    const item = apartmentPublic(a, req.query.lang === 'en' ? 'en' : 'ru');
+    item.houseRules = resolveRules((await getSettings(req.accountId)).houseRules || {},a.houseRules || {});
+    res.json({ ...apartmentGuest(item,config,req.accountId,req.params.slug), busy: await ranges(req, a, today, addDays(today, 183)) });
   });
   r.get('/apartments/:id/availability', async (req, res) => {
     const a = await findApt(req); const today = todayIn(req.account.timezone);

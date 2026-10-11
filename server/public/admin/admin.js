@@ -1,3 +1,5 @@
+import { RULE_GROUPS, TEXT_FIELDS, ruleOverrides, resolveRules } from '/shared/house-rules.js';
+import { AMENITY_GROUPS } from '/shared/apartment-features.js';
 // Админка владельца: календарь (брони, подготовка квартир, заявки мастерам, трансферы), брони, трансферы «как в Uber», заявки мастерам, квартиры и фото, тексты, бренд, команда, уведомления.
 // Обычный JavaScript без сборки. Все данные — через REST API сервера (/api/admin/...).
 const $ = (s, el = document) => el.querySelector(s);
@@ -86,13 +88,56 @@ const FIELDS = [
   ['Основное', [['title', 'Название (как видят гости)', 'text', 'ЖК Хайвил, кв. 45'], ['titleEn', 'Название по-английски', 'text', 'Highvill residence, apt 45'], ['code', 'Номер квартиры (видит мастер)', 'text', '45'], ['complex', 'Жилой комплекс', 'text'],
     ['address', 'Адрес (видит мастер)', 'text', 'пр. Кошкарбаева, 10/1, блок G-1, кв. 45'], ['district', 'Район', 'select', ['Сарайшык', 'Есиль', 'Алматинский', 'Сарыарка', 'Байконур', 'Нура']], ['rooms', 'Комнат', 'select', ['Студия', '1-комн.', '2-комн.', '3-комн.']],
     ['maxGuests', 'Максимум гостей', 'number'], ['areaM2', 'Площадь, м²', 'number'], ['description', 'Описание', 'textarea'], ['descriptionEn', 'Описание по-английски', 'textarea']]],
-  ['Цена и правила', [['basePriceKzt', 'Цена за ночь, ₸', 'number'], ['petsAllowed', 'Можно с животными', 'checkbox'], ['petFeeKzt', 'Доплата за животное, ₸', 'number'], ['petNote', 'Условия для животных', 'text', 'до 10 кг, не больше 2'], ['active', 'Показывать на сайте', 'checkbox']]],
+  ['Цена и условия для животных', [['basePriceKzt', 'Цена за ночь, ₸', 'number'], ['petsAllowed', 'Можно с животными', 'checkbox'], ['petFeeKzt', 'Доплата за животное, ₸', 'number'], ['petNote', 'Условия для животных', 'text', 'до 10 кг, не больше 2'], ['active', 'Показывать на сайте', 'checkbox']]],
   ['Доступ в квартиру (гости видят только в день заезда; мастерам не показывается)', [['entrance', 'Подъезд', 'text'], ['floor', 'Этаж', 'number'], ['intercom', 'Домофон', 'text'], ['lockCode', 'Код замка', 'text'], ['keyboxCode', 'Код ключницы', 'text'], ['wifiName', 'Wi‑Fi сеть', 'text'], ['wifiPassword', 'Wi‑Fi пароль', 'text'], ['accessNote', 'Как пройти, заметки', 'textarea']]],
   ['Подготовка квартиры', [['cleaningRateKzt', 'Оплата специалисту за подготовку, ₸ (пусто — как в настройках)', 'number'], ['cleaningExtraItems', 'Доп. пункты чек-листа этой квартиры — каждый с новой строки; «[фото]» в конце — фото обязательно', 'textarea', 'Балкон: закрыть окна [фото]']]],
 ];
 // чек-лист: [{label, photo}] ⇄ строки «пункт» / «пункт [фото]»
 const itemsToText = (list) => (list || []).map(x => x.label + (x.photo ? ' [фото]' : '')).join('\n');
 const textToItems = (t) => String(t || '').split('\n').map(l => l.trim()).filter(Boolean).map(l => ({ label: l.replace(/\s*\[фото\]\s*$/i, '').trim(), photo: /\[фото\]\s*$/i.test(l) })).filter(x => x.label);
+const RULE_FIELDS = {
+  checkIn:['Заезд с','time'],checkOut:['Выезд до','time'],quietFrom:['Тишина с','time'],quietTo:['Тишина до','time'],
+  checkInMethod:['Способ заселения','method'],smokingAllowed:['Курение','boolean'],partiesAllowed:['Вечеринки','boolean'],
+  additional:['Дополнительные условия','textarea'],additionalEn:['Дополнительные условия (EN)','textarea'],
+};
+function rulesEditor(stored,template={},exceptions=false,ro='') {
+  const own=ruleOverrides(stored), values=exceptions?resolveRules(template,stored):stored;
+  return `<p class="muted small">${exceptions?'По умолчанию действуют общие правила. Отметьте только условие, которое отличается для этой квартиры. Снимите галочку, чтобы снова получать обновления шаблона.':'Общий шаблон для всех квартир без индивидуальных исключений.'} Разрешение животных и доплата сохраняются в настройках квартиры. Заголовки формируются автоматически из настроек.</p>`+
+    RULE_GROUPS.map(([key,label,fields])=>{
+      const selected=fields.some(f=>Object.hasOwn(own,f))||Object.keys(own.details?.[key]||{}).length>0;
+      const d=values.details?.[key]||{};
+      return `<details class="wide"><summary>${esc(label)}${exceptions?` · ${selected?'своё условие':'общий шаблон'}`:''}</summary>
+        ${exceptions?`<label class="chk"><input type="checkbox" name="override_${key}" ${selected?'checked':''} ${ro}> Изменить только для этой квартиры</label>`:''}
+        <fieldset data-rule-group="${key}" class="grid g2" ${ro||exceptions&&!selected?'disabled':''} style="border:0;padding:10px 0;margin:0">
+        ${fields.filter(f=>!['additional','additionalEn'].includes(f)).map(f=>{const [label,type]=RULE_FIELDS[f],value=values[f];
+          if(type==='boolean'||type==='method'){const choices=type==='boolean'?[['','Не указано'],['false','Запрещено'],['true','Разрешено']]:[['','Не указано'],['code','Самостоятельно по коду'],['personal','Встреча при заселении'],['other','Другой способ']];return `<label>${label}<select name="rule_${f}">${choices.map(([v,t])=>`<option value="${v}" ${String(value??'')===v?'selected':''}>${t}</option>`).join('')}</select></label>`;}
+          return `<label>${label}${type==='textarea'?`<textarea name="rule_${f}" rows="3" maxlength="2000">${esc(value||'')}</textarea>`:`<input name="rule_${f}" type="time" value="${esc(value||'')}">`}</label>`;}).join('')}
+        <label class="wide">${key==='additional'?'Дополнительные условия':'Пояснение (необязательно)'}<textarea name="rule_${key}_explanation" rows="2" maxlength="2000">${esc(d.explanation||(key==='additional'?values.additional:'')||'')}</textarea></label></fieldset></details>`;
+    }).join('');
+}
+function readRules(f,exceptions=false) {
+  const previous=exceptions?ruleOverrides(S.apt.houseRules||{}):(S.settings.houseRules||{});
+  const result={details:{}};
+  for(const [key,,fields] of RULE_GROUPS){
+    if(exceptions&&!f.elements['override_'+key].checked)continue;
+    for(const field of fields.filter(f=>!['additional','additionalEn'].includes(f))){const val=f.elements['rule_'+field].value;result[field]=RULE_FIELDS[field][1]==='boolean'?(val===''?null:val==='true'):RULE_FIELDS[field][1]==='textarea'?val.trim():val||null;}
+    const old=previous.details?.[key]||{}, explanation=f.elements['rule_'+key+'_explanation'].value.trim();
+    result.details[key]={...old,...(key==='additional'&&!old.explanationEn?{explanationEn:previous.additionalEn||''}:{}),explanation,explanationEnSource:old.explanationEnSource??(old.explanation||(key==='additional'?previous.additional:'')||'')};
+    if(key==='additional') { result.additional=explanation;result.additionalEn=previous.additionalEn||''; }
+
+  }
+  return exceptions?{overrides:result}:result;
+}
+function bindRuleOverrides(f){
+  f.addEventListener('change',e=>{if(!e.target.name.startsWith('override_'))return;const key=e.target.name.slice(9);f.querySelector(`[data-rule-group="${key}"]`).disabled=!e.target.checked;});
+}
+function apartmentFeaturesHtml(a) {
+  const selected=new Set(a.amenities||[]), rules=a.houseRules||{};
+  const choice=(name,label,value)=>`<label>${label}<select name="rule_${name}"><option value="" ${value==null?'selected':''}>Не указано</option><option value="false" ${value===false?'selected':''}>Запрещено</option><option value="true" ${value===true?'selected':''}>Разрешено</option></select></label>`;
+  return `<details class="card apt-section"><summary class="card-h">Удобства</summary><div class="card-b amenity-editor">${AMENITY_GROUPS.map(g=>`<details class="amenity-category"><summary><span>${g.ru}</span><span class="amenity-count">${g.items.filter(i=>selected.has(i.id)).length} выбрано</span></summary><div class="amenity-options">${g.items.map(i=>`<label class="chk"><input type="checkbox" name="amenity" value="${i.id}" ${selected.has(i.id)?'checked':''}>${i.ru}</label>`).join('')}</div></details>`).join('')}</div>
+  </details><details class="card apt-section"><summary class="card-h">Правила проживания · исключения квартиры</summary><div class="card-b">${rulesEditor(rules,S.settings?.houseRules||{},true)}</div></details>`;
+}
+
 function fieldHtml([k, label, type, extra], a) {
   const v = k === 'cleaningExtraItems' ? itemsToText(a[k]) : a[k] ?? '';
   if (type === 'checkbox') return `<label class="chk"><input type="checkbox" name="${k}" ${v ? 'checked' : ''}> ${label}</label>`;
@@ -104,19 +149,44 @@ async function openApartment(id) {
   const isNew = id === 'new';
   const a = isNew ? { title: '', address: '', district: 'Сарайшык', rooms: '1-комн.', maxGuests: 2, basePriceKzt: 20000, active: true, photos: [] } : await api('/api/admin/apartments/' + id);
   S.apt = a;
+  S.settings = await api('/api/admin/settings');
   view(`<div class="page-head"><div><button class="btn sm" id="back">← Все квартиры</button><h1 style="margin-top:10px">${isNew ? 'Новая квартира' : esc(a.title)}</h1>
       <p class="sub">${isNew ? 'Сначала сохраните основные данные — потом можно добавить фото' : esc(a.address)}</p></div>
-      <div class="row">${!isNew && S.me.role === 'owner' ? '<button class="btn danger" id="aptDel">Удалить</button>' : ''}<button class="btn primary" id="aptSave">${isNew ? 'Создать квартиру' : 'Сохранить'}</button></div></div>
-    <div class="stack">
-      ${isNew ? '' : `<div class="card" id="photosCard"><div class="card-h"><div><h2>Фотографии <span class="muted" id="phCount"></span></h2><div class="muted small">Перетаскивайте карточки или используйте стрелки. ★ — обложка в каталоге. Подпись видна гостю под фото.</div></div>
-        <label class="btn primary" style="flex-direction:row;cursor:pointer">+ Загрузить фото<input type="file" id="phFile" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" multiple hidden></label></div>
-        <div class="card-b"><div class="dropzone" id="drop"><b>Перетащите фото сюда</b> или нажмите «Загрузить фото» · JPG, PNG, WebP · можно сразу много</div><div class="photos" id="photos"></div></div></div>`}
-      <form class="card" id="aptForm" novalidate>${FIELDS.map(([g, fs]) => `<div class="card-h"><h2>${g}</h2></div><div class="card-b grid g3">${fs.map(f => fieldHtml(f, a)).join('')}</div>`).join('')}</form>
-    </div>`);
+      <div class="row">${!isNew && S.me.role === 'owner' ? '<button class="btn danger" id="aptDel">Удалить</button>' : ''}</div></div>
+    <div class="stack apt-editor">
+      ${isNew ? '' : `<details class="card apt-section" id="photosCard"><summary class="card-h">Фотографии <span class="muted" id="phCount"></span></summary><div class="card-b"><p class="muted small">Фотографии, порядок и подписи сохраняются сразу. ★ — обложка в каталоге.</p>
+        <label class="btn primary" style="flex-direction:row;cursor:pointer">+ Загрузить фото<input type="file" id="phFile" accept="image/jpeg,image/png,image/webp,image/gif,image/avif" multiple hidden></label>
+        <div class="dropzone" id="drop"><b>Перетащите фото сюда</b> или нажмите «Загрузить фото» · JPG, PNG, WebP · можно сразу много</div><div class="photos" id="photos"></div></div></details>`}
+      <form class="stack" id="aptForm" novalidate>${FIELDS.map(([g, fs]) => `<details class="card apt-section"><summary class="card-h">${g}</summary><div class="card-b grid g3">${fs.map(f => fieldHtml(f, a)).join('')}</div></details>`).join('')}${apartmentFeaturesHtml(a)}</form>
+    </div><div class="apt-save-bar"><p id="aptSaveStatus" role="status" aria-live="polite">${isNew?'Заполните данные новой квартиры':'Все изменения сохранены'}</p><button type="button" class="btn primary" id="aptSave" ${isNew?'':'disabled'}>${isNew?'Создать квартиру':'Сохранить изменения'}</button></div>`);
   $('#back').onclick = () => go('apartments');
+  S.aptSaving=false; S.aptPhotoPending=new Set(); S.aptSavedState=apartmentFormState();
   $('#aptSave').onclick = guard(saveApartment);
+  $('#aptForm').addEventListener('input',syncApartmentSave);
+  $('#aptForm').addEventListener('change',syncApartmentSave);
+  $('#aptForm').onsubmit=e=>{e.preventDefault();if(!$('#aptSave').disabled)guard(saveApartment)();};
+  bindRuleOverrides($('#aptForm'));
+  $('#aptForm').addEventListener('change',e=>{if(e.target.name!=='amenity')return;const category=e.target.closest('.amenity-category');category.querySelector('.amenity-count').textContent=category.querySelectorAll('[name="amenity"]:checked').length+' выбрано';});
   if ($('#aptDel')) $('#aptDel').onclick = guard(async () => { if (!confirm('Удалить квартиру вместе с фото?')) return; await api('/api/admin/apartments/' + a.id, { method: 'DELETE' }); toast('Квартира удалена'); go('apartments'); });
   if (!isNew) { renderPhotos(); bindPhotos(); }
+}
+function apartmentFormState() {
+  return JSON.stringify([...$('#aptForm').elements].filter(el=>el.name).map(el=>[el.name,el.type==='checkbox'?el.checked:el.value]));
+}
+function apartmentPhotosDirty() {
+  return [...document.querySelectorAll('#photos [data-cap],#photos [data-cap-en]')].some(el=>{
+    const p=S.apt.photos.find(p=>p.id===(el.dataset.cap||el.dataset.capEn));return p&&el.value.trim()!==((el.dataset.cap?p.caption:p.captionEn)||'');
+  });
+}
+function syncApartmentSave() {
+  if(!$('#aptSave'))return;
+  const dirty=!S.apt.id||apartmentFormState()!==S.aptSavedState||apartmentPhotosDirty();
+  $('#aptSave').disabled=S.aptSaving||!dirty;
+  if(!S.aptSaving)$('#aptSaveStatus').textContent=dirty?'Есть несохранённые изменения':S.aptPhotoPending?.size?'Сохраняем фотографии…':'Все изменения сохранены';
+}
+async function apartmentPhotoApi(path,opts) {
+  const pending=api(path,opts);S.aptPhotoPending.add(pending);
+  try{return await pending;}finally{S.aptPhotoPending.delete(pending);}
 }
 async function saveApartment() {
   const f = $('#aptForm'); const data = {};
@@ -126,13 +196,29 @@ async function saveApartment() {
     else if (type === 'number') data[k] = el.value === '' ? null : Number(el.value);
     else data[k] = el.value.trim() || null;
   }
+  data.amenities=[...f.querySelectorAll('[name="amenity"]:checked')].map(el=>el.value);
+  data.houseRules=readRules(f,true);
   data.cleaningExtraItems = textToItems(f.elements.cleaningExtraItems?.value);
   for (const k of ['maxGuests', 'basePriceKzt']) if (data[k] == null) data[k] = 0;
   if (data.petFeeKzt == null) data.petFeeKzt = 0;
   const isNew = !S.apt.id;
-  const a = await api('/api/admin/apartments' + (isNew ? '' : '/' + S.apt.id), { method: isNew ? 'POST' : 'PATCH', body: data });
-  toast(isNew ? 'Квартира создана — добавьте фото' : 'Сохранено');
-  if (isNew) go('apartments', a.id); else { S.apt = a; $('h1').textContent = a.title; }
+  const button = $('#aptSave'), status = $('#aptSaveStatus'), savedState=apartmentFormState();
+  S.aptSaving=true;button.disabled = true; status.textContent = 'Сохраняем изменения…';
+  try {
+    await Promise.all([...S.aptPhotoPending]);
+    for(const el of document.querySelectorAll('#photos [data-cap],#photos [data-cap-en]')){
+      const id=el.dataset.cap||el.dataset.capEn,p=S.apt.photos.find(p=>p.id===id),field=el.dataset.cap?'caption':'captionEn';
+      if(p&&el.value.trim()!==(p[field]||'')){const saved=await apartmentPhotoApi('/api/admin/photos/'+id,{method:'PATCH',body:{[field]:el.value.trim()}});Object.assign(p,saved);}
+    }
+    const a = await api('/api/admin/apartments' + (isNew ? '' : '/' + S.apt.id), { method: isNew ? 'POST' : 'PATCH', body: data });
+    const message = `Изменения квартиры «${a.title}» сохранены.`;
+    S.aptSavedState=savedState;status.textContent = message;
+    toast(isNew ? 'Квартира создана — добавьте фото' : message);
+    if (isNew) go('apartments', a.id); else { S.apt = a; $('h1').textContent = a.title; }
+  } catch (e) {
+    status.textContent = `Не удалось сохранить изменения: ${e.message}. Проверьте поля и повторите сохранение.`;
+    throw e;
+  } finally { S.aptSaving=false;button.disabled=!!S.apt.id&&apartmentFormState()===S.aptSavedState&&!apartmentPhotosDirty(); }
 }
 
 const CAP_SUGGEST = ['Вид', 'Гостиная', 'Спальня', 'Кухня', 'Ванная', 'Прихожая', 'Балкон', 'Двор'];
@@ -151,11 +237,11 @@ async function uploadFiles(files) {
   const fd = new FormData(); const start = S.apt.photos.length;
   files.forEach((f, i) => { fd.append('photos', f); fd.append('captions', S.apt.photos.length || i ? '' : 'Вид'); });
   toast(`Загружаем ${files.length} фото…`);
-  const added = await api(`/api/admin/apartments/${S.apt.id}/photos`, { method: 'POST', body: fd });
+  const added = await apartmentPhotoApi(`/api/admin/apartments/${S.apt.id}/photos`, { method: 'POST', body: fd });
   S.apt.photos.push(...added); renderPhotos(); toast(`Добавлено фото: ${added.length}. Подпишите их — гостям так понятнее`);
   const first = document.querySelector(`[data-cap="${S.apt.photos[start]?.id}"]`); first?.focus();
 }
-async function saveOrder(ids) { S.apt.photos = await api(`/api/admin/apartments/${S.apt.id}/photos/order`, { method: 'PUT', body: { ids } }); renderPhotos(); }
+async function saveOrder(ids) { S.apt.photos = await apartmentPhotoApi(`/api/admin/apartments/${S.apt.id}/photos/order`, { method: 'PUT', body: { ids } }); renderPhotos(); }
 function bindPhotos() {
   $('#phFile').onchange = guard(async (e) => { await uploadFiles(e.target.files); e.target.value = ''; });
   const dz = $('#drop');
@@ -163,16 +249,17 @@ function bindPhotos() {
   ['dragleave', 'drop'].forEach(ev => dz.addEventListener(ev, () => dz.classList.remove('over')));
   dz.addEventListener('drop', (e) => { if (S.drag) return; e.preventDefault(); guard(uploadFiles)(e.dataTransfer.files); });
   const box = $('#photos');
+  box.addEventListener('input',syncApartmentSave);
   box.addEventListener('click', guard(async (e) => {
     const b = e.target.closest('button'); if (!b) return;
     if (b.dataset.mv) { const ids = S.apt.photos.map(p => p.id); const i = ids.indexOf(b.dataset.id), j = i + Number(b.dataset.mv); [ids[i], ids[j]] = [ids[j], ids[i]]; await saveOrder(ids); }
-    else if (b.dataset.cover) { S.apt.photos = await api(`/api/admin/photos/${b.dataset.cover}/cover`, { method: 'POST' }); renderPhotos(); toast('Обложка обновлена'); }
-    else if (b.dataset.del) { if (!confirm('Удалить это фото?')) return; await api(`/api/admin/photos/${b.dataset.del}`, { method: 'DELETE' }); S.apt = await api('/api/admin/apartments/' + S.apt.id); renderPhotos(); toast('Фото удалено'); }
+    else if (b.dataset.cover) { S.apt.photos = await apartmentPhotoApi(`/api/admin/photos/${b.dataset.cover}/cover`, { method: 'POST' }); renderPhotos(); toast('Обложка обновлена'); }
+    else if (b.dataset.del) { if (!confirm('Удалить это фото?')) return; await apartmentPhotoApi(`/api/admin/photos/${b.dataset.del}`, { method: 'DELETE' }); S.apt = await apartmentPhotoApi('/api/admin/apartments/' + S.apt.id); renderPhotos(); toast('Фото удалено'); }
   }));
   box.addEventListener('change', guard(async (e) => {
     const id = e.target.dataset.cap || e.target.dataset.capEn; if (!id) return;
     const body = e.target.dataset.cap ? { caption: e.target.value.trim() } : { captionEn: e.target.value.trim() };
-    const p = await api(`/api/admin/photos/${id}`, { method: 'PATCH', body }); Object.assign(S.apt.photos.find(x => x.id === id), p); toast('Подпись сохранена');
+    const p = await apartmentPhotoApi(`/api/admin/photos/${id}`, { method: 'PATCH', body }); Object.assign(S.apt.photos.find(x => x.id === id), p); syncApartmentSave(); toast('Подпись сохранена');
   }));
   // перетаскивание карточек
   box.addEventListener('dragstart', (e) => { const c = e.target.closest('.photo'); if (!c) return; S.drag = c.dataset.id; c.classList.add('dragging'); e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', c.dataset.id); });
@@ -549,6 +636,7 @@ async function renderSettings() {
   const ro = st.canEdit ? '' : 'disabled';
   const radio = (name, val, label, hint) => `<label class="opt"><input type="radio" name="${name}" value="${val}" ${st[name] === val ? 'checked' : ''} ${ro}><span><b>${label}</b>${hint ? `<small>${hint}</small>` : ''}</span></label>`;
   view(`<div class="page-head"><div><h1>Настройки</h1><p class="sub">${st.canEdit ? 'Меняет только владелец.' : 'Только просмотр — эти настройки меняет владелец.'}</p></div></div>
+    <form id="houseRulesForm" class="card" novalidate><div class="card-h"><h2>Правила проживания</h2></div><div class="card-b">${rulesEditor(st.houseRules||{},{},false,ro)}${st.canEdit?'<button class="btn primary" type="submit">Сохранить правила проживания</button>':''}<p id="houseRulesStatus" role="status" aria-live="polite"></p></div></form>
     <form id="stForm" class="stack" novalidate>
     <div class="card"><div class="card-h"><h2>🚗 Комиссия с трансферов</h2><span class="chip ${st.commissionConfigured ? 'green' : 'amber'}">${st.commissionConfigured ? 'настроено' : 'не настроено'}</span></div><div class="card-b">
       ${st.commissionConfigured ? '' : '<div class="alert amber">Комиссия ещё не настроена — водители получают <b>100%</b> цены трансфера. Укажите, сколько оставляет бизнес.</div>'}
@@ -580,6 +668,12 @@ async function renderSettings() {
       <dt>Фото</dt><dd>${st.server.storage === 's3' ? 'S3-хранилище' : 'папка uploads/ на сервере'}</dd>
       <dt>Приложение команды</dt><dd><a href="/app/" target="_blank" rel="noopener">${location.origin}/app/</a> <span class="muted small">— водители, мастера, специалисты по подготовке</span></dd></dl></div></div>
     ${st.canEdit ? '<div class="row"><button class="btn primary">Сохранить настройки</button></div>' : ''}</form>`);
+  const rulesForm=$('#houseRulesForm');
+  if(st.canEdit) rulesForm.onsubmit=async e=>{
+    e.preventDefault();const button=rulesForm.querySelector('button[type="submit"]'),status=$('#houseRulesStatus');button.disabled=true;status.textContent='Сохраняем правила…';
+    try{S.settings=await api('/api/admin/settings',{method:'PUT',body:{houseRules:readRules(rulesForm)}});status.textContent='Общие правила сохранены. Квартиры без исключений получат изменения после обновления карточки.';toast(status.textContent);}
+    catch(err){status.textContent='Не удалось сохранить правила: '+err.message;toast(status.textContent,true);}finally{button.disabled=false;}
+  };
   const f = $('#stForm');
   const preview = () => {
     const price = 10000, mode = f.querySelector('[name=transferPayoutMode]:checked')?.value;

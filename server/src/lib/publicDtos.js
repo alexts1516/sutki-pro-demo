@@ -9,7 +9,8 @@ export const fingerprint = data => digest(JSON.stringify(Object.keys(data).sort(
 const photo = (p,config,accountId,slug) => p ? { url: (p.url.startsWith('data:') || p.url.includes('/demo/assets/')) ? p.url : `/api/public/${encodeURIComponent(slug)}/photos/${publicRef(config,accountId,'photo:'+p.id)}`, caption:p.caption,isCover:!!p.isCover } : null;
 export function apartmentGuest(a, config, accountId, slug) {
   return { ref: publicRef(config, accountId, a.id), title: [a.rooms, a.complex || a.district].filter(Boolean).join(' · '), district: a.district, rooms: a.rooms,
-    maxGuests: a.maxGuests, areaM2: a.areaM2, basePriceKzt: a.basePriceKzt, description: a.description,
+    maxGuests: a.maxGuests, areaM2: a.areaM2, basePriceKzt: a.basePriceKzt, description: a.description, amenities: a.amenities || [], houseRules: a.houseRules ? { checkInMethod:a.houseRules.checkInMethod,quietFrom:a.houseRules.quietFrom,quietTo:a.houseRules.quietTo,checkIn:a.houseRules.checkIn,checkOut:a.houseRules.checkOut,smokingAllowed:a.houseRules.smokingAllowed,partiesAllowed:a.houseRules.partiesAllowed,additional:a.houseRules.additional,additionalEn:a.houseRules.additionalEn,
+      details:a.houseRules.details ? Object.fromEntries(['stay','arrival','pets','smoking','parties','quiet','additional'].filter(key=>a.houseRules.details[key]).map(key=>{const d=a.houseRules.details[key];return [key,{title:d.title,titleEn:d.titleEn,explanation:d.explanation,explanationEn:d.explanationEn,explanationEnSource:d.explanationEnSource}];})) : undefined } : null,
     pets: { allowed: !!a.pets?.allowed, feeKzt: a.pets?.feeKzt || 0, note: a.pets?.note || null },
     cover: photo(a.cover,config,accountId,slug), photos: (a.photos || []).map(p=>photo(p,config,accountId,slug)), ...(a.available === undefined ? {} : { available: a.available }), ...(a.quote ? { quote: a.quote } : {}) };
 }
