@@ -1,69 +1,116 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#17191d">
-  <meta name="referrer" content="no-referrer">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2317191d'/%3E%3Ctext x='16' y='22' text-anchor='middle' fill='white' font-size='18' font-family='Arial'%3EA%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="/guest-assets/guest.css">
-  <title>The Address · Apart Hotel</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="icon" type="image/png" sizes="32x32" href="/brand-assets/brand/favicon-32.png">
+<link rel="apple-touch-icon" href="/brand-assets/brand/apple-touch-icon.png">
+<meta name="theme-color" content="#17191d">
+<title>The Address · Apart Hotel — апартаменты посуточно в Астане</title>
+<meta name="description" content="The Address · Apart Hotel — апартаменты посуточно в самой высокой башне ЖК Highvill (Хайвил), ближайшей к посольству США. Астана, пр. Кошкарбаева, 10/1. ">
+<meta property="og:title" content="The Address · Apart Hotel — апартаменты в Астане">
+<meta property="og:description" content="Самая высокая башня ЖК Highvill — ближайшая к посольству США. Заселение 24/7, трансфер из аэропорта.">
+<meta property="og:image" content="/brand-assets/photos/highvill-g1-800.jpg">
+<link rel="preload" as="image" href="/brand-assets/photos/highvill-g1-1200.jpg" media="(min-width: 641px)">
+<link rel="stylesheet" href="/guest-assets/catalog/catalog.css">
 </head>
-<body data-production-guest data-account="astana-stay">
-  <header class="topbar">
-    <a class="brand" href="#top" aria-label="На главную">
-      <span class="brand-mark" id="brandMark">TA</span>
-      <span><strong id="brandName">The Address</strong><small id="brandTagline">Apart Hotel</small></span>
-    </a>
-    <a class="contact-link" id="contactLink" href="#checkout">Забронировать</a>
-  </header>
+<body>
 
-  <main id="top">
-    <section class="hero">
-      <div class="hero-copy">
-        <p class="eyebrow">Астана · Highvill</p>
-        <h1 id="heroTitle">Апартаменты в самой высокой башне ЖК Хайвил</h1>
-        <p id="heroSubtitle">Комфортное самостоятельное заселение и поддержка 24/7.</p>
-      </div>
-      <div class="search-panel" aria-label="Поиск свободных квартир">
-        <label>Заезд<input id="checkIn" type="date" required></label>
-        <label>Выезд<input id="checkOut" type="date" required></label>
-        <label>Гостей<select id="guests"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></label>
-        <label class="pet-toggle"><input id="pets" type="checkbox"> С питомцем</label>
-        <button class="primary" id="search" type="button">Найти квартиру</button>
-      </div>
-    </section>
+<header class="site">
+  <div class="wrap hdr">
+    <a class="logo" href="./"><span class="logo-mk" id="logoMk" data-brand="logo"></span><span><b data-brand="name">The Address</b><small data-brand="tagline">Apart Hotel</small></span></a>
+    <nav class="hnav"><a href="#catalog">Квартиры</a><a href="#map">Карта</a><a href="#transfer">Трансфер</a><a href="#how">Как забронировать</a><a href="#contacts">Контакты</a></nav>
+    <button type="button" class="sbar" id="sbar" hidden aria-label="Изменить поиск"></button>
+    <div class="hright"><div class="lsw" id="lsw"></div><a class="btn brand sm hbook" href="#catalog">Забронировать</a><button type="button" class="burger" id="burger" aria-label="Меню" aria-expanded="false" aria-controls="mnav"><svg class="ic" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button></div>
+  </div>
+  <nav class="mnav" id="mnav" hidden aria-label="Меню"><div class="wrap"><a href="#catalog">Квартиры</a><a href="#map">Карта</a><a href="#transfer">Трансфер</a><a href="#how">Как забронировать</a><a href="#contacts">Контакты</a><a class="btn brand block" href="#catalog">Забронировать</a></div></nav>
+</header>
 
-    <section class="catalog-section" aria-labelledby="catalogTitle">
-      <div class="section-heading"><div><p class="eyebrow">Серверная доступность</p><h2 id="catalogTitle">Наши квартиры</h2></div><p id="catalogStatus" class="status" aria-live="polite">Загружаем каталог…</p></div>
-      <div id="catalog" class="catalog" data-testid="catalog"></div>
-    </section>
+<section class="hero photo" role="img" aria-label="Башня ЖК Хайвил, блок G-1 — дом The Address">
+  <div class="hero-sky" id="sky"></div>
+  <div class="wrap hero-in">
+    <span class="kicker" id="kicker"></span>
+    <h1>Апартаменты в&nbsp;самой высокой башне ЖК&nbsp;Хайвил</h1>
+    <p>Самая высокая башня ЖК Highvill — большого нового жилого квартала. Стоит отдельно и ближе всех к посольству США. Заселение 24/7 через кодовый замок, можно с питомцами, трансфер из аэропорта с табличкой.</p>
+    <div class="hero-loc"><svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.5"/></svg><span data-brand="address">пр. Кошкарбаева, 10/1, блок G-1 · Астана, р-н Сарайшык</span></div>
+  </div>
+</section>
 
-    <section class="checkout-section" id="checkout" aria-labelledby="checkoutTitle">
-      <div class="checkout-summary">
-        <p class="eyebrow">Выбранная квартира</p>
-        <h2 id="checkoutTitle">Проверьте даты и цену</h2>
-        <div id="selection" class="selection muted">Выберите свободную квартиру из каталога.</div>
-        <div id="quote" class="quote" data-testid="server-quote" hidden></div>
-        <p class="server-note">Доступность и итоговая сумма проверяются сервером. Бронь удерживает даты ограниченное время.</p>
-      </div>
+<div class="wrap search">
+  <form class="search-card" id="searchForm" novalidate></form>
+  <div class="perks" id="perks"></div>
+</div>
 
-      <form id="checkoutForm" class="checkout-form" novalidate>
-        <div class="field-grid">
-          <label>Имя и фамилия<input id="guestName" name="name" autocomplete="name" minlength="2" maxlength="80" required></label>
-          <label>Телефон<input id="guestPhone" name="phone" type="tel" autocomplete="tel" placeholder="+7 700 000 00 00" required></label>
-        </div>
-        <label>Email <span class="muted">необязательно</span><input id="guestEmail" name="email" type="email" autocomplete="email"></label>
-        <label>Комментарий <span class="muted">необязательно</span><textarea id="guestComment" name="comment" maxlength="1000" rows="3"></textarea></label>
-        <label class="agreement"><input id="agreement" type="checkbox" required> Подтверждаю выбранные даты и данные гостя</label>
-        <button class="primary checkout-button" id="checkoutButton" type="submit" disabled>Перейти к оплате</button>
-        <p class="payment-note">Даты будут временно удерживаться. Бронирование подтверждается только после проверенного ответа платёжного сервиса.</p>
-        <div id="checkoutResult" aria-live="polite"></div>
-      </form>
-    </section>
-  </main>
+<section class="blk" id="catalog">
+  <div class="wrap">
+    <div class="sec-h"><div><h2>Наши квартиры</h2><p id="resInfo"></p></div>
+      <div class="tools"><div class="chips" id="roomChips"></div>
+        <select class="sort" id="sort" aria-label="Сортировка"><option value="pop">Сначала популярные</option><option value="cheap">Сначала дешевле</option><option value="exp">Сначала дороже</option><option value="rate">По рейтингу</option></select></div></div>
+    <div class="grid" id="grid"></div>
+  </div>
+</section>
 
-  <footer><span id="footerAbout">The Address · Apart Hotel</span><a id="footerPhone" href="#checkout">Связаться</a></footer>
-  <script type="module" src="/guest-assets/guest.js"></script>
+<section class="blk" id="map">
+  <div class="wrap">
+    <div class="sec-h"><div><h2>Квартиры на карте</h2><p>Нажмите на район, чтобы показать квартиры в нём</p></div></div>
+    <div class="map-wrap"><div class="map" id="mapBox"></div><div class="dlist" id="dlist"></div></div>
+  </div>
+</section>
+
+<section class="blk" id="transfer">
+  <div class="wrap">
+    <div class="sec-h"><div><h2>Трансфер из аэропорта и вокзала</h2><p>Встретим с табличкой с вашим именем и довезём до квартиры — или отвезём на рейс</p></div></div>
+    <div id="trSec"></div>
+  </div>
+</section>
+
+<section class="blk" id="how">
+  <div class="wrap">
+    <div class="sec-h"><div><h2>Как забронировать</h2><p>Без регистрации и комиссий площадок</p></div></div>
+    <div class="steps">
+      <div class="stp"><div class="n">1</div><b>Выберите квартиру и даты</b><span>В календаре видно, какие даты свободны.</span></div>
+      <div class="stp"><div class="n">2</div><b>Оставьте контакты</b><span>Добавьте трансфер и питомца, оплатите картой, наличными при заселении или через мессенджер.</span></div>
+      <div class="stp"><div class="n">3</div><b>Получите инструкцию</b><span>Код от замка и схему проезда пришлём в день заезда.</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="blk">
+  <div class="wrap">
+    <div class="sec-h"><div><h2>Отзывы гостей</h2><p>Средняя оценка 4,86 из 5 · отзывы вымышленные</p></div></div>
+    <div class="revs" id="revs"></div>
+  </div>
+</section>
+
+<footer class="site" id="contacts">
+  <div class="wrap">
+    <div class="fgrid">
+      <div><div class="f-lockup" data-brand="lockup"></div><span class="f-about">Самая высокая башня ЖК Хайвил — ближайшая к посольству США. Работаем 24/7.</span><div class="f-addr"><b>Адрес</b><br><span data-brand="address">пр. Кошкарбаева, 10/1, блок G-1 · Астана, р-н Сарайшык</span><br><span class="f-note">ЖК Хайвил · до посольства США — пешком</span></div></div>
+      <div><b>Контакты</b><br><span data-brand="phone">+7 700 000 00 00</span><br>Telegram: <span data-brand="telegram">@theaddress_demo</span><br><span data-brand="email">hello@theaddress.example</span></div>
+      <div><b>Гостям</b><br><a href="#catalog">Квартиры посуточно</a><br><a href="#transfer">Трансфер из аэропорта</a><br><a href="#how">Как забронировать</a></div>
+    </div>
+    <div class="fdemo"><span>Работает на Сутки·Pro</span><a class="team-link" href="/admin/">Вход для команды</a></div>
+  </div>
+</footer>
+
+<div class="modal" id="modal" aria-modal="true" role="dialog"><div class="mbox" id="mbox"></div></div>
+
+<div class="ssheet" id="ssheet" role="dialog" aria-modal="true" aria-label="Поиск квартиры"><div class="ss-box">
+  <div class="ss-h"><b>Поиск квартиры</b><button type="button" class="mclose static" data-ssclose aria-label="Закрыть"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+  <form class="search-card sheet" id="sheetForm" novalidate></form>
+  <button type="button" class="btn brand block ss-go" data-ssclose onclick="document.getElementById('catalog').scrollIntoView({behavior:'smooth'})" id="sheetCount">Показать квартиры</button>
+</div></div>
+
+<div class="dp" id="dp" role="dialog" aria-modal="true" aria-labelledby="dpTitle"><div class="dp-box">
+  <div class="dp-h"><div><b id="dpTitle">Даты</b><small id="dpSub"></small></div><button type="button" class="mclose static" data-dpclose aria-label="Закрыть календарь"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+  <div class="dp-wd"><span>Пн</span><span>Вт</span><span>Ср</span><span>Чт</span><span>Пт</span><span class="we">Сб</span><span class="we">Вс</span></div>
+  <div class="dp-body" id="dpBody"><div class="dpc" data-pk="dp" data-view="overlay"></div></div>
+  <div class="dp-f"><div class="dp-sum" id="dpSum"></div><div class="dp-btns"><button type="button" class="btn" data-dpreset>Сбросить</button><button type="button" class="btn brand" id="dpDone">Готово</button></div></div>
+</div></div>
+
+<script src="/guest-assets/catalog/i18n.js"></script>
+<script src="/guest-assets/catalog/i18n-en.js"></script>
+<script src="/guest-assets/catalog/brand.js"></script>
+<script type="module" src="/guest-assets/catalog/api.js"></script>
 </body>
 </html>

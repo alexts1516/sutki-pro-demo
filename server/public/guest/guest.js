@@ -161,6 +161,14 @@ for(const selector of ['#checkIn','#checkOut','#guests','#pets']) $(selector).ad
 
 async function init(){
   $('#checkIn').min=isoAfter(0);$('#checkOut').min=isoAfter(1);$('#checkIn').value=isoAfter(3);$('#checkOut').value=isoAfter(5);
-  try{applySite(await api('/site'));await loadCatalog();if(new URLSearchParams(location.search).get('payment')==='processing'){const token=rememberedBooking();if(token){$('#checkout').scrollIntoView({block:'start'});await refreshPaymentStatus(token,{poll:true});}else paymentMessage('<strong>Проверяем оплату</strong>Вернитесь к вкладке, где начинали оплату, чтобы увидеть состояние.');}}catch(error){$('#catalog').innerHTML=`<div class="load-error">${escapeHtml(error.message)}</div>`;$('#catalogStatus').textContent='Сайт временно недоступен';}
+  const incoming=new URLSearchParams(location.search);
+  const ci=incoming.get('checkIn'),co=incoming.get('checkOut'),guests=Number(incoming.get('guests'));
+  if(/^\d{4}-\d{2}-\d{2}$/.test(ci||'')&&/^\d{4}-\d{2}-\d{2}$/.test(co||'')&&ci>=$('#checkIn').min&&co>ci){$('#checkIn').value=ci;$('#checkOut').value=co;}
+  if(Number.isInteger(guests)&&guests>=1&&guests<=6)$('#guests').value=String(guests);
+  $('#pets').checked=incoming.get('pets')==='1';
+  try{applySite(await api('/site'));await loadCatalog();
+    const chosen=incoming.get('apartment');
+    if(chosen&&state.apartments.some(a=>a.ref===chosen&&a.available)){state.selected=chosen;renderCatalog();await loadQuote();}
+    if(incoming.get('payment')==='processing'){const token=rememberedBooking();if(token){$('#checkout').scrollIntoView({block:'start'});await refreshPaymentStatus(token,{poll:true});}else paymentMessage('<strong>Проверяем оплату</strong>Вернитесь к вкладке, где начинали оплату, чтобы увидеть состояние.');}}catch(error){$('#catalog').innerHTML=`<div class="load-error">${escapeHtml(error.message)}</div>`;$('#catalogStatus').textContent='Сайт временно недоступен';}
 }
 init();
