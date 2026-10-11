@@ -4,7 +4,15 @@ import crypto from 'node:crypto';
 import { safeEqual } from '../lib/tokens.js';
 import { randomToken } from '../lib/tokens.js';
 import { digest, scopedDigest, accessSecret, fingerprint, paymentGuest, safeIntent } from '../lib/publicDtos.js';
-import { createBookingRequest, withApartmentTx, extendHold } from './bookings.js';
+import { createBookingRequest, withApartmentTx, extendHold, quote } from './bookings.js';
+import { transferLegPrice, bundledTransferKeys } from './transfers.js';
+
+export function checkoutQuote(apartment, data) {
+  const stay = quote(apartment, new Date(data.checkIn+'T00:00:00Z'), new Date(data.checkOut+'T00:00:00Z'), data.pets);
+  const transfers = (data.transfers || []).map(t => ({...t, priceKzt:transferLegPrice(t)}));
+  const transferKzt = transfers.reduce((sum,t) => sum+t.priceKzt,0);
+  return {...stay, stayKzt:stay.totalKzt-stay.petFeeKzt, transferKzt, transfers, totalKzt:stay.totalKzt+transferKzt};
+}
 export const validSecret = s => typeof s === 'string' && /^[A-Za-z0-9_-]{43}$/.test(s);
 const proofSignature = (config,slug,nonce) => crypto.createHmac('sha256',config.publicAccessSecret || config.jwtSecret).update(JSON.stringify(['public-operation',slug,nonce])).digest('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 export function issueOperationKey(config,slug){ const nonce=randomToken(32); return nonce+'.'+proofSignature(config,slug,nonce); }
@@ -35,7 +43,16 @@ export async function checkout({ accountId, apartment, data, guestData, key, con
       pets: data.pets, note: data.comment, paymentMethod: 'card', currencyShown: data.currency, amountShown, holdUntil,
       onCreated: async (tx,b) => {
         const guest = await tx.guest.create({ data: { accountId, ...guestData } });
-        return tx.booking.update({ where: { id: b.id }, data: { guestId: guest.id, guestAccessHash: digest(token), checkoutKeyHash, checkoutRequestHash,
+        const q = checkoutQuote(apartment, data);
+        const keys = bundledTransferKeys({accountId, checkoutKeyHash});
+        for (const [i,t] of q.transfers.entries()) {
+          await tx.transfer.create({data:{accountId, bookingId:b.id, guestId:guest.id, apartmentId:apartment.id,
+            direction:t.direction,place:t.place,date:new Date(t.date+'T00:00:00Z'),time:t.time,flight:t.flight,
+            pax:t.pax,bags:t.bags,childSeats:t.childSeats,carClass:t.carClass,sign:t.sign,address:t.address,
+            priceKzt:t.priceKzt,status:'requested',guestPaymentMethod:'online',guestName:guestData.name,guestPhone:guestData.phone,
+            checkoutKeyHash:keys[i],checkoutRequestHash:fingerprint(t)}});
+        }
+        return tx.booking.update({ where: { id: b.id }, data: { totalKzt:q.totalKzt, guestId: guest.id, guestAccessHash: digest(token), checkoutKeyHash, checkoutRequestHash,
           ...(data.earlyCheckIn && data.earlyCheckIn < b.checkInTime ? { earlyCheckIn: data.earlyCheckIn, earlyCheckInStatus: 'requested' } : {}) }, include: { apartment: true, guest: true } });
       } });
     return { booking, token, replayed: false };
@@ -49,6 +66,7 @@ export async function startAttempt({ booking, key, payments, config, slug, trans
     const b = await tx.booking.findUnique({ where: { id: booking.id } });
     const t = transfer ? await tx.transfer.findFirst({where:{id:transfer.id,bookingId:b.id,accountId:b.accountId}}) : null;
     if(transfer && (!t || b.status!=='confirmed' || !t.checkoutKeyHash || ['cancelled','done'].includes(t.status))) return {refuse:'Трансфер недоступен для оплаты'};
+    if(t && bundledTransferKeys(b).includes(t.checkoutKeyHash)) return {refuse:'Трансфер включён в общую оплату бронирования'};
     if(t?.guestPaymentStatus==='PAID') return {refuse:'Трансфер уже оплачен'};
     if (!transfer && b.paymentStatus === 'paid') return { refuse: 'Бронь уже оплачена' };
     if (!['request','confirmed'].includes(b.status)) return { refuse: 'Время оплаты истекло или бронь отменена' };

@@ -23,19 +23,12 @@ import { loadBrand, loadTexts, loadCurrency } from '../site/config.js';
 import { deepLink } from '../telegram/linking.js';
 import { scopedDigest, fingerprint } from '../lib/publicDtos.js';
 import { apartmentGuest, bookingGuest, bookingPageGuest, paymentGuest, publicRef } from '../lib/publicDtos.js';
-import { checkout, operationKey, issueOperationKey, findGuestBooking, startAttempt } from '../services/publicCheckout.js';
+import { checkout, operationKey, issueOperationKey, findGuestBooking, startAttempt, checkoutQuote } from '../services/publicCheckout.js';
 import { linkGuard, createLimiter, tooMany } from '../lib/rateLimit.js';
 
 const CARD_ONLY = 'Бронирование на сайте — только с оплатой картой; для особых условий напишите нам';
 const HOLD_EXPIRED = 'Время на оплату истекло — даты освобождены. Забронируйте заново';
 const phoneRe = /^[+\d][\d\s()-]{5,20}$/;
-const BookingSchema = z.object({
-  apartmentId: z.string(), checkIn: z.string(), checkOut: z.string(), guests: z.number().int().min(1).max(30),
-  name: z.string().trim().min(2).max(80), phone: z.string().trim().regex(phoneRe, 'Телефон в формате +7 700 000 00 00'), email: z.string().email().optional().or(z.literal('').transform(() => undefined)),
-  comment: z.string().max(1000).optional(), pets: z.boolean().optional(), currency: z.enum(['KZT', 'RUB', 'USD', 'EUR']).default('KZT'),
-  paymentMethod: z.string().max(40).optional(), lang: z.enum(['ru', 'en']).default('ru'),   // проход 4: на сайте — только 'card' (проверка ниже)
-  earlyCheckIn: z.string().regex(/^\d{2}:\d{2}$/, 'Время в формате ЧЧ:ММ').optional(),   // «можно заехать в 10 утра?» — согласует админ
-});
 const TransferSchema = z.object({
   bookingToken: z.string().optional(), direction: z.enum(['in', 'out']), place: z.enum(['airport', 'station']).default('airport'),
   date: z.string(), time: z.string().regex(/^\d{2}:\d{2}$/), flight: z.string().max(40).optional(), pax: z.number().int().min(1).max(7).default(1),
@@ -43,6 +36,20 @@ const TransferSchema = z.object({
   sign: z.string().max(60).optional(), address: z.string().max(200).optional(),
   name: z.string().trim().min(2).max(80).optional(), phone: z.string().trim().regex(phoneRe).optional(), lang: z.enum(['ru', 'en']).default('ru'),
 });
+
+const BookingSchema = z.object({
+  transfers: z.array(TransferSchema.omit({bookingToken:true,name:true,phone:true,lang:true})).max(2).default([]),
+  apartmentId: z.string(), checkIn: z.string(), checkOut: z.string(), guests: z.number().int().min(1).max(30),
+  name: z.string().trim().min(2).max(80), phone: z.string().trim().regex(phoneRe, 'Телефон в формате +7 700 000 00 00'), email: z.string().email().optional().or(z.literal('').transform(() => undefined)),
+  comment: z.string().max(1000).optional(), pets: z.boolean().optional(), currency: z.enum(['KZT', 'RUB', 'USD', 'EUR']).default('KZT'),
+  paymentMethod: z.string().max(40).optional(), lang: z.enum(['ru', 'en']).default('ru'),   // проход 4: на сайте — только 'card' (проверка ниже)
+  earlyCheckIn: z.string().regex(/^\d{2}:\d{2}$/, 'Время в формате ЧЧ:ММ').optional(),   // «можно заехать в 10 утра?» — согласует админ
+});
+
+function checkCheckoutTransfers(d) {
+  if (new Set(d.transfers.map(t=>t.direction)).size !== d.transfers.length) throw badRequest('Выберите не больше одной поездки в каждом направлении');
+  for (const t of d.transfers) if (!parseDay(t.date) || t.date < d.checkIn || t.date > d.checkOut) throw badRequest('Дата трансфера должна быть в периоде проживания');
+}
 
 export default function publicRouter({ events, payments, config, dispatch, storage }) {
   const r = Router({ mergeParams: true });
@@ -139,9 +146,22 @@ export default function publicRouter({ events, payments, config, dispatch, stora
     res.json({ ref: publicRef(config,req.accountId,a.id), checkIn:isoDay(checkIn), checkOut:isoDay(checkOut), guests, pets, available, ...quote(a,checkIn,checkOut,pets) });
   });
 
+  r.post('/apartments/:id/checkout-quote', async (req,res) => {
+    const a=await findApt(req);
+    const d=parse(BookingSchema.pick({checkIn:true,checkOut:true,guests:true,pets:true,transfers:true}),req.body);
+    const ci=parseDay(d.checkIn),co=parseDay(d.checkOut);
+    if(!ci || !co || co<=ci || ci<todayIn(req.account.timezone) || nights(ci,co)>90) throw badRequest('Проверьте даты заезда и выезда');
+    if(d.guests>a.maxGuests) throw badRequest(`В этой квартире максимум ${a.maxGuests} гостей`);
+    if(d.pets && !a.petsAllowed) throw badRequest('В этой квартире нельзя с животными');
+    checkCheckoutTransfers(d);
+    res.json({ref:publicRef(config,req.accountId,a.id),checkIn:d.checkIn,checkOut:d.checkOut,guests:d.guests,pets:!!d.pets,
+      available:await isAvailable(req.accountId,a.id,ci,co),...checkoutQuote(a,d)});
+  });
+
   r.post('/bookings', async (req, res) => {
     const key = operationKey(req,config);
     const d = parse(BookingSchema, req.body);
+    checkCheckoutTransfers(d);
     // проход 4, шаг 4: обычный гость бронирует на сайте только с оплатой картой; способ оплаты ставит сервер.
     // Любое другое значение — 400 (а не молчаливая замена: гость должен понять, что наличных на сайте нет).
     if (d.paymentMethod !== undefined && d.paymentMethod !== 'card') throw badRequest(CARD_ONLY);
@@ -156,7 +176,7 @@ export default function publicRouter({ events, payments, config, dispatch, stora
     if (d.guests > apt.maxGuests) throw badRequest(`В этой квартире максимум ${apt.maxGuests} гостей`);
     if (d.pets && !apt.petsAllowed) throw badRequest('В этой квартире нельзя с животными');
     const cur = await loadCurrency(prisma, req.accountId);
-    const q = quote(apt, ci, co, d.pets);
+    const q = checkoutQuote(apt, d);
     const amountShown = convertKzt(q.totalKzt, d.currency, cur.rates, cur.roundStep);
     const result = await checkout({ accountId:req.accountId,apartment:apt,data:d,guestData:{name:d.name,phone:d.phone,email:d.email,locale:d.lang},key,config,
       amountShown,holdUntil:new Date(Date.now()+PUBLIC_HOLD_MIN*60000) });

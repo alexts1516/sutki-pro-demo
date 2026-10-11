@@ -1,0 +1,40 @@
+import './_env.js';
+import {test,after} from 'node:test';
+import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
+// Run against a disposable database, never the preview database.
+if (!process.env.COMBINED_CHECKOUT_TEST_DB) throw Error('Set COMBINED_CHECKOUT_TEST_DB to an isolated SQLite copy');
+process.env.DATABASE_URL='file:'+process.env.COMBINED_CHECKOUT_TEST_DB;
+const {makeApp,prisma,request,guestBooking,guestPayment,config}=await import('./helpers.js');
+const {createTestPayments}=await import('../src/payments/test.js');
+const {issueOperationKey}=await import('../src/services/publicCheckout.js');
+const secret='combined-checkout-test',stub=createTestPayments({callbackSecret:secret});let calls=0;
+const X=makeApp({payments:{...stub,async createPayment(args){calls++;return stub.createPayment(args);}}});
+const api=()=>request(X.app),base='/api/public/astana-stay',key=()=>issueOperationKey(config,'astana-stay');
+after(()=>prisma.$disconnect());
+for(const withTransfer of [false,true]) test(`one combined order ${withTransfer?'with':'without'} transfer`,async()=>{
+ const account=await prisma.account.findUnique({where:{slug:'astana-stay'}});
+ const apt=await prisma.apartment.create({data:{accountId:account.id,title:'Combined checkout isolated',address:'Test',district:'Test',rooms:'1-комн.',maxGuests:4,basePriceKzt:20000,petsAllowed:true,petFeeKzt:3000}});
+ const transfers=withTransfer?[{direction:'in',place:'airport',date:'2037-10-21',time:'12:00',pax:2}]:[];
+ const body={apartmentId:apt.id,checkIn:'2037-10-21',checkOut:'2037-10-23',guests:2,pets:true,name:'Combined guest',phone:'+77001234567',transfers};
+ const total=withTransfer?51000:43000;
+ const q=await api().post(`${base}/apartments/${apt.id}/checkout-quote`).send(body);
+ assert.equal(q.status,200,JSON.stringify(q.body));assert.equal(q.body.available,true);assert.equal(q.body.stayKzt,40000);assert.equal(q.body.petFeeKzt,3000);assert.equal(q.body.transferKzt,withTransfer?8000:0);assert.equal(q.body.totalKzt,total);
+ const ck=key();const r=await api().post(base+'/bookings').set('Idempotency-Key',ck).send({...body,totalKzt:1});
+ assert.equal(r.status,201,JSON.stringify(r.body));assert.equal(r.body.totalKzt,total);assert.equal(r.body.amountShown,total);
+ const replay=await api().post(base+'/bookings').set('Idempotency-Key',ck).send(body);assert.equal(replay.body.token,r.body.token);
+ const token=r.body.token,b=await prisma.booking.findUnique({where:{id:(await guestBooking(token)).id},include:{transfers:true}});
+ assert.equal(b.status,'request');assert.equal(b.transfers.length,withTransfer?1:0);assert.ok(b.transfers.every(t=>!t.paid));
+ const overlap=await api().post(base+'/bookings').send(body);assert.equal(overlap.status,409);
+ const pk=key(),before=calls;const pay=()=>api().post(`${base}/bookings/${token}/pay`).set('Idempotency-Key',pk).send({});
+ const pr=await pay();assert.equal(pr.status,201,JSON.stringify(pr.body));await pay();assert.equal(calls,before+1);
+ const p=await guestPayment(pr.body.paymentRef);assert.equal(p.amountKzt,total);assert.equal(p.transferId,null);assert.equal(await prisma.payment.count({where:{bookingId:b.id}}),1);
+ const raw=JSON.stringify({paymentRef:p.publicRef,operationId:'combined-'+p.publicRef,amount:total,currency:'KZT',status:'succeeded'});
+ const callback=()=>api().post('/api/payments/test/callback').set('Content-Type','application/json').set('X-Test-Signature',crypto.createHmac('sha256',secret).update(raw).digest('hex')).send(raw);
+ assert.equal((await callback()).status,200);await callback();await X.events.idle();
+ const confirmed=await prisma.booking.findUnique({where:{id:b.id},include:{transfers:true}});assert.equal(confirmed.status,'confirmed');assert.equal(confirmed.paymentStatus,'paid');assert.equal(confirmed.totalKzt,total);assert.equal(confirmed.transfers.length,withTransfer?1:0);
+ assert.ok(confirmed.transfers.every(t=>t.paid && t.guestPaymentStatus==='PAID' && t.guestPaidAt));
+ assert.equal(await prisma.transferJob.count({where:{bookingId:b.id}}),withTransfer?1:0);
+ assert.equal(await prisma.payment.count({where:{bookingId:b.id}}),1);
+ if(withTransfer){const page=await api().get(`${base}/bookings/${token}/page`);assert.equal(page.body.transfers[0].paymentStatus,'paid');const extra=await api().post(`${base}/bookings/${token}/transfers/${page.body.transfers[0].ref}/pay`).send({});assert.equal(extra.status,409);assert.equal(calls,before+1);}
+});

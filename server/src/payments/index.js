@@ -4,6 +4,7 @@ import { createPaylink } from './paylink.js';
 import { createTestPayments } from './test.js';
 import { withApartmentTx, confirmRequestInTx, confirmKeys, isAvailable } from '../services/bookings.js';
 import { enqueue, runOutbox } from '../services/outbox.js';
+import { bundledTransferKeys } from '../services/transfers.js';
 import { hook } from '../lib/testHooks.js';
 
 export function createPaymentProvider(cfg, { publicUrl, fetchImpl } = {}) {
@@ -57,13 +58,17 @@ export async function applyPaymentResult({ prisma, events, result, dispatch = nu
       const dispatchKey=`transfer.payment.dispatch:${t.id}`;
       await enqueue(tx,{accountId:payment.accountId,kind:'transfers.dispatch',dedupeKey:dispatchKey,payload:{bookingId:b.id,actor}});keys.push(dispatchKey);return 'transfer_paid';
     }
+    const markBundledPaid = () => tx.transfer.updateMany({where:{bookingId:b.id,accountId:b.accountId,
+      checkoutKeyHash:{in:bundledTransferKeys(b)}},data:{paid:true,guestPaymentStatus:'PAID',guestPaymentMethod:'online',guestPaidAt:new Date()}});
     if (b.status === 'request') {   // удержание живо (истёкшее уже снято выше) или без срока
       await tx.booking.update({ where: { id: b.id }, data: { paymentStatus: 'paid' } });
+      await markBundledPaid();
       await confirmRequestInTx(tx, b, { actor });
       keys.push(...confirmKeys(b.id));
       return 'confirmed';
     }
     if (b.status === 'confirmed' || b.status === 'completed') {
+      await markBundledPaid();
       await tx.booking.update({ where: { id: b.id }, data: { paymentStatus: 'paid' } });
       return 'paid';
     }
@@ -71,6 +76,7 @@ export async function applyPaymentResult({ prisma, events, result, dispatch = nu
     const expired = !!(await tx.outboxEvent.findUnique({ where: { dedupeKey: `event:booking.hold_expired:${b.id}` }, select: { id: true } }));
     if (expired && await isAvailable(b.accountId, b.apartmentId, b.checkIn, b.checkOut, b.id, tx)) {
       const back = await tx.booking.update({ where: { id: b.id }, data: { status: 'request', paymentStatus: 'paid', holdUntil: null } });
+      await markBundledPaid();
       await confirmRequestInTx(tx, back, { actor });
       keys.push(...confirmKeys(b.id));
       return 'restored';

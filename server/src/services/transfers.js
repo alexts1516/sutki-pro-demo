@@ -1,3 +1,4 @@
+import { scopedDigest } from '../lib/publicDtos.js';
 // Цены трансфера — те же правила, что в прототипе (assets/store.js): за машину, не за человека.
 export const TR_PRICES = {
   airport: { standard: { one: 8000, round: 14000 }, minivan: { one: 12000, round: 21000 } },
@@ -12,3 +13,7 @@ export function transferLegPrice({ place = 'airport', carClass = 'standard', tim
   const p = (TR_PRICES[place] || TR_PRICES.airport)[carClass] || TR_PRICES.airport.standard;
   return p.one + childSeats * TR_SEAT + (isNight(time) ? TR_NIGHT : 0);
 }
+
+// These keys identify only trips included in the original combined checkout.
+export const bundledTransferKeys = b => b.checkoutKeyHash
+  ? [0, 1].map(i => scopedDigest(b.accountId, JSON.stringify(['checkout-transfer', b.checkoutKeyHash, i]))) : [];

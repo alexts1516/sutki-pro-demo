@@ -281,6 +281,81 @@ function hoverPreview(box, cell){
 PK.search = {mode:'range', aptId:null, ci:null, co:null, off:0, onDone(){ G.ci=PK.search.ci; G.co=PK.search.co; syncSearch(); renderGrid(); }};
 
 /* ---------- трансфер: блок заказа (в форме брони и отдельный заказ) ---------- */
+// Server checkout: the original form remains the presentation layer.
+const formText=(ru,en)=>IS_EN?en:ru;
+const TR_PLACES = {
+  airport:{short:tx('Аэропорт NQZ'),meet:tx('в зоне прилёта у выхода из таможни'),wait:60,code:tx('Номер рейса'),codePh:tx('например, KC 852'),lead:180,dirs:{from:tx('Из аэропорта'),to:tx('В аэропорт'),round:tx('Туда и обратно')}},
+  station:{short:tx('Вокзал Нурлы Жол'),meet:tx('у выхода с платформы в главном зале'),wait:20,code:tx('Номер поезда и вагон'),codePh:tx('например, 002Ц, вагон 7'),lead:60,dirs:{from:tx('С вокзала'),to:tx('На вокзал'),round:tx('Туда и обратно')}}
+};
+const hmAdd=(hm,min)=>{const [h,m]=String(hm).split(':').map(Number);const t=((h*60+m+min)%1440+1440)%1440;return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');};
+function trSummary(T){return `${TR_PLACES[T.place].dirs[T.dir]} · ${TR_CLASSES[T.cls].name}`;}
+function formTransfers(){
+  const T=TR.bk;if(!T.on)return [];
+  const common={place:T.place,carClass:T.cls,pax:T.pax,bags:T.bags,childSeats:T.seats,sign:T.sign};const result=[];
+  if(T.dir!=='to')result.push({...common,direction:'in',date:T.arrDate==null?'':isoOf(T.arrDate),time:T.arrTime,flight:T.arrCode});
+  if(T.dir!=='from'){
+    const time=T.depTime?hmAdd(T.depTime,-TR_PLACES[T.place].lead):'';
+    const shift=time&&time>T.depTime?-1:0;
+    result.push({...common,direction:'out',date:T.depDate==null?'':isoOf(T.depDate+shift),time,flight:T.depCode});
+  }return result;
+}
+function formQuoteBody(){return {checkIn:M.ci==null?'':isoOf(M.ci),checkOut:M.co==null?'':isoOf(M.co),guests:M.guests,pets:M.pet,transfers:formTransfers()};}
+let formQuoteKey='',formQuoteSeq=0,formBusy=false,formPoll=0;
+function formMessage(message){const el=$('bErr');if(el){el.textContent=message;el.classList.add('show');}}
+function formSumHTML(){
+  const q=M.serverQuote;if(!q)return `<div class="sum muted">${esc(M.quoteError||formText('Проверяем цену и доступность…','Checking price and availability…'))}</div>`;
+  if(!q.available)return `<div class="sum muted">${tx('Эти даты уже заняты — выберите другие в календаре')}</div>`;
+  return `<div class="sum"><div class="ln"><span>${gm(q.nightlyKzt)} × ${nightsWord(q.nights)}</span><span>${gm(q.stayKzt)}</span></div>${q.petFeeKzt?`<div class="ln"><span>${tx('Проживание с животным')}</span><span>${gm(q.petFeeKzt)}</span></div>`:''}${q.transfers.map(t=>`<div class="ln"><span>${tx('Трансфер')} · ${t.direction==='in'?tx('Встреча'):tx('Подача')}</span><span>${gm(t.priceKzt)}</span></div>`).join('')}<div class="ln tot"><span>${tx('Итого')}</span><span>${gm(q.totalKzt)}</span></div></div>`;
+}
+function formTransferPriceHTML(){const q=M.serverQuote;return `<div class="trsum"><div class="ln tot"><span>${tx('Трансфер итого')}</span><span>${q?gm(q.transferKzt):'—'}</span></div>${!q?`<div class="muted">${esc(M.quoteError||formText('Проверяем цену и доступность…','Checking price and availability…'))}</div>`:''}</div>`;}
+function updateFormQuote(){
+  if(M.step!=='form')return;
+  const body=formQuoteBody(),k=JSON.stringify([M.apt.ref,body]);if(k===formQuoteKey)return;
+  formQuoteKey=k;const seq=++formQuoteSeq;M.serverQuote=null;M.quoteError='';M.quoteState='pending';
+  if(!body.checkIn||!body.checkOut||body.transfers.some(t=>!t.date||!t.time)){
+    M.quoteState='incomplete';M.quoteError=formText('Выберите даты и время всех поездок','Choose dates and times for all trips');return;
+  }
+  SERVER_HOME.api('/apartments/'+encodeURIComponent(M.apt.ref)+'/checkout-quote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
+    .then(q=>{if(seq!==formQuoteSeq||M.step!=='form')return;M.serverQuote=q;M.quoteState='ready';refreshFormBits();})
+    .catch(e=>{if(seq!==formQuoteSeq||M.step!=='form')return;M.quoteState='error';M.quoteError=e.message;refreshFormBits();});
+}
+let formOperation=null;try{formOperation=JSON.parse(sessionStorage.getItem('sutki.public.checkout-operation')||'null');}catch{}
+function persistFormOperation(){try{sessionStorage.setItem('sutki.public.checkout-operation',JSON.stringify(formOperation));if(formOperation?.token)sessionStorage.setItem('guest-payment:astana-stay',formOperation.token);}catch{}}
+function freezeForm(frozen){document.querySelectorAll('#bookForm input,#bookForm textarea,#bookForm select,#bookForm button,[data-back="details"]').forEach(el=>el.disabled=frozen);if($('mbSubmit'))$('mbSubmit').disabled=frozen;}
+async function showFormPayment(token){
+  const state=await SERVER_HOME.api('/bookings/'+encodeURIComponent(token)+'/page');
+  if(state.state==='confirmed'){formMessage(formText('Оплата проверена. Бронирование подтверждено.','Payment verified. Booking confirmed.'));location.assign('/booking/'+encodeURIComponent(token));return;}
+  if(state.state==='payment_orphaned'||state.state==='cancelled'){formMessage(formText('Платёж требует проверки. Свяжитесь с нами через контакты сайта.','Payment requires review. Contact us using the site contacts.'));return;}
+  const result=await SERVER_HOME.api('/bookings/'+encodeURIComponent(token)+'/payment');
+  if(['failed','cancelled'].includes(result.payment?.status)){
+    formBusy=false;formMessage(formText('Оплата не завершена. Можно повторить оплату.','Payment was not completed. You can retry.'));
+    for(const id of ['bSubmit','mbSubmit']){const el=$(id);if(el){el.disabled=false;el.textContent=formText('Повторить оплату','Retry payment');}}
+    formOperation.paymentKey=null;persistFormOperation();return;
+  }
+  formMessage(formText('Проверяем оплату. Бронь подтвердится только после ответа платёжного сервиса.','Checking payment. Booking will be confirmed only after the payment service response.'));
+  clearTimeout(formPoll);formPoll=setTimeout(()=>{if(M.step==='form'&&$('modal').classList.contains('open'))showFormPayment(token).catch(e=>formMessage(e.message));},1500);
+}
+async function submitServerForm(){
+  if(formBusy)return;readForm();
+  const body={apartmentId:M.apt.ref,...formQuoteBody(),name:M.form.name,phone:M.form.phone,comment:M.form.comment,paymentMethod:'card',currency:CUR,lang:IS_EN?'en':'ru'};
+  const fp=JSON.stringify(body),retry=formOperation?.token&&formOperation.fingerprint===fp;
+  if(!retry && !validateForm())return;
+  if(!retry && M.serverQuote?.available!==true){formQuoteKey='';updateFormQuote();refreshFormBits();return;}
+  formBusy=true;freezeForm(true);formMessage(formText('Открываем оплату…','Opening payment…'));
+  try{
+    if(!formOperation || formOperation.fingerprint!==fp){const issued=await SERVER_HOME.api('/operation-key',{method:'POST'});formOperation={fingerprint:fp,key:issued.operationKey};persistFormOperation();}
+    if(!formOperation.token){const b=await SERVER_HOME.api('/bookings',{method:'POST',headers:{'Content-Type':'application/json','Idempotency-Key':formOperation.key},body:JSON.stringify(body)});formOperation.token=b.token;persistFormOperation();}
+    if(!formOperation.paymentKey){const issued=await SERVER_HOME.api('/operation-key',{method:'POST'});formOperation.paymentKey=issued.operationKey;persistFormOperation();}
+    const token=formOperation.token,intent=await SERVER_HOME.api('/bookings/'+encodeURIComponent(token)+'/pay',{method:'POST',headers:{'Idempotency-Key':formOperation.paymentKey}});
+    if(intent.type==='redirect' && SERVER_HOME.payments.provider!=='test'){location.assign(intent.url);return;}
+    if(intent.type==='widget'){
+      await new Promise((resolve,reject)=>{const old=document.querySelector('script[data-guest-payment]');if(old&&window.cp?.CloudPayments)return resolve();const s=document.createElement('script');s.src=intent.script;s.dataset.guestPayment='1';s.onload=resolve;s.onerror=reject;document.head.append(s);});
+      if(!window.cp?.CloudPayments)throw Error(formText('Платёжная форма не загрузилась','Payment form could not be loaded'));new window.cp.CloudPayments().start(intent.params);
+    }
+    await showFormPayment(token);
+  }catch(e){formMessage(e.message);formBusy=false;freezeForm(!!formOperation?.token);if(formOperation?.token){for(const id of ['bSubmit','mbSubmit']){const el=$(id);if(el){el.disabled=false;el.textContent=formText('Повторить оплату','Retry payment');}}}else refreshFormBits();}
+}
+
 const newTr = o => Object.assign({on:false, place:'airport', dir:'from', cls:'standard', arrDate:null, arrTime:'', arrCode:'', depDate:null, depTime:'', depCode:'', pax:2, bags:2, seats:0, sign:''}, o||{});
 const TR = {bk:newTr(), sa:newTr()};
 const fits = (T, cls) => T.pax<=TR_CLASSES[cls].pax && T.bags<=TR_CLASSES[cls].bags;
@@ -303,6 +378,7 @@ function trLegHTML(T, kind){
     <div class="trhint">${ic('clock',14)}<span>${hint}</span></div></div>`;
 }
 function trPriceHTML(T){
+  if(T===TR.bk)return formTransferPriceHTML();
   const p=trPrice(T);
   return `<div class="trsum">${p.lines.map(([l,v])=>`<div class="ln ${v<0?'save':''}"><span>${l}</span><span>${v<0?'−'+gm(-v):gm(v)}</span></div>`).join('')}<div class="ln tot"><span>${tx("Трансфер итого")}</span><span>${gm(p.total)}</span></div></div>`;
 }
@@ -312,14 +388,14 @@ function trBlockHTML(T, c){
     <div class="trrow"><div class="lbl">${tx("Где встретить или куда отвезти")}</div><div class="seg">
       ${[['airport','plane',tx('Аэропорт NQZ'),tx('Международный аэропорт Астаны')],['station','train',tx('Ж/д вокзал «Нурлы Жол»'),tx('Главный вокзал, левый берег')]].map(([k,i,b,s])=>`<button type="button" class="${T.place===k?'on':''}" data-trk="place" data-v="${k}">${ic(i,18)}<span><b>${b}</b><small>${s}</small></span></button>`).join('')}</div></div>
     <div class="trrow"><div class="lbl">${tx("Направление")}</div><div class="seg three">
-      ${[['from',T.place==='airport'?tx('встреча с табличкой'):tx('встреча у вагона')],['to',tx('подача к дому')],['round',`${tx("выгоднее на")} ${gm(roundSave(T.place,T.cls))}`]].map(([k,s])=>`<button type="button" class="${T.dir===k?'on':''}" data-trk="dir" data-v="${k}">${ic(k==='round'?'swap':k==='from'?'in':'out',17)}<span><b>${P.dirs[k]}</b><small class="${k==='round'?'save':''}">${s}</small></span></button>`).join('')}</div></div>
+      ${[['from',T.place==='airport'?tx('встреча с табличкой'):tx('встреча у вагона')],['to',tx('подача к дому')],['round',T===TR.bk?formText('Две поездки','Two trips'):`${tx("выгоднее на")} ${gm(roundSave(T.place,T.cls))}`]].map(([k,s])=>`<button type="button" class="${T.dir===k?'on':''}" data-trk="dir" data-v="${k}">${ic(k==='round'?'swap':k==='from'?'in':'out',17)}<span><b>${P.dirs[k]}</b><small class="${k==='round'?'save':''}">${s}</small></span></button>`).join('')}</div></div>
     ${T.dir!=='to'?trLegHTML(T,'arr'):''}${T.dir!=='from'?trLegHTML(T,'dep'):''}
     <div class="trrow"><div class="lbl">${tx("Пассажиры и багаж")}</div><div class="stps">
       ${stepperHTML('pax',tx('Пассажиры'),T.pax,1,7,tx('включая детей'))}${stepperHTML('bags',tx('Чемоданы'),T.bags,0,8,tx('ручная кладь не в счёт'))}${stepperHTML('seats',tx('Детские кресла'),T.seats,0,3,`+${gm(TR_SEAT)} ${tx("за поездку")}`)}</div></div>
     <div class="trrow"><div class="lbl">${tx("Класс автомобиля")}</div><div class="cls2">
       ${Object.entries(TR_CLASSES).map(([k,C])=>{ const ok=fits(T,k); const pr=TR_PRICES[T.place][k]; return `<button type="button" class="clsc ${T.cls===k?'on':''}" data-trk="cls" data-v="${k}" ${ok?'':'disabled'}>
         <span class="cl-car">${carSVG(k)}</span><span class="cl-t"><b>${C.name}</b><small>${C.car}</small><small>${ic('users',13)} ${tx("до")} ${C.pax} · ${ic('luggage',13)} ${tx("до")} ${C.bags} ${tx("чемоданов")}</small></span>
-        <span class="cl-p">${ok?`<b>${gm(T.dir==='round'?pr.round:pr.one)}</b><small>${T.dir==='round'?tx('туда и обратно'):tx('в одну сторону')}</small>`:tx('<small class="bad">не поместятся</small>')}</span></button>`; }).join('')}</div>
+        <span class="cl-p">${ok?`<b>${T===TR.bk?(T.cls===k&&M.serverQuote?gm(M.serverQuote.transferKzt):'—'):gm(T.dir==='round'?pr.round:pr.one)}</b><small>${T.dir==='round'?tx('туда и обратно'):tx('в одну сторону')}</small>`:tx('<small class="bad">не поместятся</small>')}</span></button>`; }).join('')}</div>
       ${!fits(T,'standard')?`<div class="trhint">${ic('alert',14)}<span>${T.pax} ${tx("пасс. и")} ${T.bags} ${plural(T.bags,tx('чемодан'),tx('чемодана'),tx('чемоданов'))} ${tx("не поместятся в седан — выбран минивэн.")}</span></div>`:''}</div>
     <div class="field"><label>${tx("Имя на табличке")}</label><input class="inp" data-trf="sign" value="${esc(T.sign)}" placeholder="${tx("Например, AIDANA SERIKOVA")}" autocomplete="off"></div>
     <div class="trp" id="${c}TrPrice">${trPriceHTML(T)}</div>
@@ -406,7 +482,7 @@ function aptDatesChanged(){
   if(M.step==='details') refreshDetailsBits(); else if(M.step==='form'){ if(TR.bk.on) rerenderTr('bk'); refreshFormBits(); }
 }
 function totals(){const q=M.serverQuote;const n=M.ci!=null&&M.co!=null?M.co-M.ci:0;const total=q?.totalKzt||0,pet=q?.petFeeKzt||0;return {n,total,pet,cStay:conv(total-pet),cPet:conv(pet),cTotal:conv(total),cTr:0};}
-function sumHTML(){if(M.quoteState==='error')return `<div class="sum muted">${tx('Не удалось проверить доступность. Повторите проверку.')}</div>`;if(M.serverQuote?.available===false)return `<div class="sum muted">${tx('Эти даты уже заняты — выберите другие в календаре')}</div>`;if(M.ci==null||M.co==null)return `<div class="sum muted">${tx('Выберите даты заезда и выезда в календаре')}</div>`;if(!M.serverQuote)return `<div class="sum muted">${tx('Проверяем цену и доступность…')}</div>`;return `<div class="sum"><div class="ln"><span>${gmN(M.apt)} × ${nightsWord(totals().n)}</span><span>${gm(M.serverQuote.totalKzt-M.serverQuote.petFeeKzt)}</span></div>${M.serverQuote.petFeeKzt?`<div class="ln"><span>${tx('Проживание с животным')}</span><span>${gm(M.serverQuote.petFeeKzt)}</span></div>`:''}<div class="ln tot"><span>${tx('Итого')}</span><span>${gm(M.serverQuote.totalKzt)}</span></div></div>`;}
+function sumHTML(){if(M.step==='form')return formSumHTML();if(M.quoteState==='error')return `<div class="sum muted">${tx('Не удалось проверить доступность. Повторите проверку.')}</div>`;if(M.serverQuote?.available===false)return `<div class="sum muted">${tx('Эти даты уже заняты — выберите другие в календаре')}</div>`;if(M.ci==null||M.co==null)return `<div class="sum muted">${tx('Выберите даты заезда и выезда в календаре')}</div>`;if(!M.serverQuote)return `<div class="sum muted">${tx('Проверяем цену и доступность…')}</div>`;return `<div class="sum"><div class="ln"><span>${gmN(M.apt)} × ${nightsWord(totals().n)}</span><span>${gm(M.serverQuote.totalKzt-M.serverQuote.petFeeKzt)}</span></div>${M.serverQuote.petFeeKzt?`<div class="ln"><span>${tx('Проживание с животным')}</span><span>${gm(M.serverQuote.petFeeKzt)}</span></div>`:''}<div class="ln tot"><span>${tx('Итого')}</span><span>${gm(M.serverQuote.totalKzt)}</span></div></div>`;}
 function quoteButtonLabel(){
   if(!totals().n)return tx('Выбрать даты');
   if(M.quoteState==='error')return tx('Повторить проверку');
@@ -458,10 +534,10 @@ function houseRulesHTML(a){
   return `<div class="rules">${html}</div>`;
 }
 function petRuleHTML(a){ const p=a.pets;
-  return `<div class="rule ${p.allowed?'ok':'no'}" id="petRule"><span class="ri">${ic('paw',17)}</span><div><b>${p.allowed?tx('Можно с животными'):tx('Без животных')}</b><span>${p.allowed?`${p.count===1?tx('Один питомец'):tx('До двух питомцев')} ${p.weight}. ${p.fee?`${tx("Доплата")} ${gm(p.fee)} ${tx("за всё проживание.")}`:tx('Без доплаты.')} ${tx("Не оставляйте питомца одного надолго, лоток и миски — ваши.")}`:tx('В этой квартире нельзя с питомцами. Ищете жильё с животным — включите фильтр «Можно с животными».')}</span></div></div>`;
+  return `<div class="rule ${p.allowed?'ok':'no'}" id="petRule"><span class="ri">${ic('paw',17)}</span><div><b>${p.allowed?tx('Можно с животными'):tx('Без животных')}</b><span>${p.allowed?`${tx("Питомец")}. ${p.fee?`${tx("Доплата")} ${gm(p.fee)} ${tx("за всё проживание.")}`:tx('Без доплаты.')} ${tx("Не оставляйте питомца одного надолго, лоток и миски — ваши.")}`:tx('В этой квартире нельзя с питомцами. Ищете жильё с животным — включите фильтр «Можно с животными».')}</span></div></div>`;
 }
 function renderModal(){
-  updateQuote();
+  updateQuote();if(M.step==='form')updateFormQuote();
   const a=M.apt, box=$('mbox');
   const close = `<button type="button" class="mclose" data-close aria-label="${tx("Закрыть")}">${ic('x',18)}</button>`;
   if(M.flow==='tr'){ renderTrModal(box, close); return; }
@@ -489,7 +565,7 @@ function renderModal(){
   }
   else if(M.step==='form'){
     const payIc = {card:['card','#2c3038'],cash:['cash','#15803d'],telegram:['send','#229ED9'],whatsapp:['msg','#22B35E']};
-    const paySub = {card:tx('Visa, Mastercard · мгновенное подтверждение'),cash:tx('Оплата в ₸ при заселении'),telegram:tx('Обсудить и оплатить в чате'),whatsapp:tx('Обсудить и оплатить в чате')};
+    const paySub = {card:formText('Visa, Mastercard · подтверждение после проверки оплаты','Visa, Mastercard · confirmation after payment verification'),cash:tx('Оплата в ₸ при заселении'),telegram:tx('Обсудить и оплатить в чате'),whatsapp:tx('Обсудить и оплатить в чате')};
     const p=a.pets;
     box.innerHTML = close + `<div class="pane has-bar"><div class="step-h"><button type="button" class="backb" data-back="details" aria-label="${tx("Назад")}">${ic('chevL',18)}</button><div><h2 style="font-size:22px">${tx("Оформление брони")}</h2><div class="muted" style="font-size:13px">${tx("Шаг 2 из 3 · без регистрации")}</div></div></div>
       <form id="bookForm" class="form-grid" novalidate><div>
@@ -497,18 +573,18 @@ function renderModal(){
         <div class="field"><label for="bPhone">${tx("Телефон")}</label><input class="inp" id="bPhone" type="tel" inputmode="tel" value="${esc(M.form.phone)}" placeholder="+7 7__ ___ __ __" autocomplete="tel"></div></div>
         <div class="field"><label>${tx("Даты проживания")}</label><div id="formDates">${dateFieldsHTML('data-dp-apt')}</div></div>
         <div class="field"><label for="bG">${tx("Гости")}</label><select class="inp" id="bG">${Array.from({length:a.maxGuests},(_,i)=>`<option value="${i+1}" ${M.guests===i+1?'selected':''}>${guestsWord(i+1)}</option>`).join('')}</select></div>
-        <label class="chk ${p.allowed?'':'dis'}" id="petChk"><input type="checkbox" id="bPet" ${M.pet&&p.allowed?'checked':''} ${p.allowed?'':'disabled'}><div><b>${ic('paw',16)} ${tx("Еду с животным")} ${p.allowed?(p.fee?`+${gm(p.fee)}`:tx('— бесплатно')):''}</b><small>${p.allowed?`${p.count===1?tx('Один питомец'):tx('До двух питомцев')} ${p.weight} ${tx("· доплата за всё проживание, не за ночь")}`:tx('В этой квартире нельзя с животными — выберите квартиру со значком «можно с животными»')}</small></div></label>
+        <label class="chk ${p.allowed?'':'dis'}" id="petChk"><input type="checkbox" id="bPet" ${M.pet&&p.allowed?'checked':''} ${p.allowed?'':'disabled'}><div><b>${ic('paw',16)} ${tx("Еду с животным")} ${p.allowed?(p.fee?`+${gm(p.fee)}`:tx('— бесплатно')):''}</b><small>${p.allowed?`${tx("Питомец")} ${tx("· доплата за всё проживание, не за ночь")}`:tx('В этой квартире нельзя с животными — выберите квартиру со значком «можно с животными»')}</small></div></label>
         <div class="trwrap ${TR.bk.on?'on':''}" id="trWrap">${trWrapInner()}</div>
         <div class="field"><label for="bCom">${tx("Комментарий")} <span class="muted" style="font-weight:500">${tx("(необязательно)")}</span></label><textarea class="inp" id="bCom" placeholder="${tx("Поздний заезд, детская кроватка…")}">${esc(M.form.comment)}</textarea></div>
         <div class="field" style="margin-bottom:6px"><label>${tx("Способ оплаты")}</label></div>
-        <div class="pays">${Object.keys(PAY_METHODS).map(k=>`<button type="button" class="pay ${M.pay===k?'on':''}" data-pay="${k}"><span class="pi" style="background:${payIc[k][1]}">${ic(payIc[k][0],18)}</span><span><b>${PAY_METHODS[k].label}</b><small>${paySub[k]}</small></span></button>`).join('')}</div>
+        <div class="pays">${['card'].map(k=>`<button type="button" class="pay ${M.pay===k?'on':''}" data-pay="${k}"><span class="pi" style="background:${payIc[k][1]}">${ic(payIc[k][0],18)}</span><span><b>${tx("Оплата картой")}</b><small>${paySub[k]}</small></span></button>`).join('')}</div>
         <div class="err" id="bErr"></div>
       </div>
       <aside><div class="bookbox">${miniApt(a,'f0',`${tx(a.district)} · ${ic('star',12)} ${aptRating(a)}${p.allowed?` · ${ic('paw',12)} ${tx("с животными")}`:''}`)}
         <div style="font-size:14px;display:flex;justify-content:space-between"><span class="muted">${tx("Даты")}</span><b id="fDates">${t.n?`${fD(M.ci)} – ${fD(M.co)}`:'—'}</b></div>
         <div id="fSum">${sumHTML()}</div>
         <button class="btn brand block" type="submit" style="margin-top:14px;height:52px" id="bSubmit">${SUBMIT_LBL[M.pay]}</button>
-        <div class="muted" style="font-size:12px;text-align:center;margin-top:8px">${ic('shield',13)} ${tx("Демо: данные сохраняются только в этом браузере")}</div></div></aside></form></div>
+        <div class="muted" style="font-size:12px;text-align:center;margin-top:8px">${ic('shield',13)} ${formText("Одна оплата проживания и выбранных услуг", "One payment for your stay and selected services")}</div></div></aside></form></div>
       <div class="mbar"><div><b id="mbTot">${t.n?fc(t.cTotal):'—'}</b><div class="muted" style="font-size:12px">${tx("итого")}${t.n?tx(' за ')+nightsWord(t.n):''}</div></div><button type="submit" form="bookForm" class="btn brand" id="mbSubmit">${SUBMIT_LBL[M.pay]}</button></div>`;
   }
   else if(M.step==='card'){ box.innerHTML = close + cardStepHTML(fc(t.cTotal), miniApt(a,'c0',`${fD(M.ci)} – ${fD(M.co)} · ${guestsWord(M.guests)}`)+sumHTML(), 'form', tx('Шаг 3 из 3')); }
@@ -536,8 +612,8 @@ function renderModal(){
   }
 }
 function trWrapInner(){
-  const T=TR.bk; const from = Math.min(...Object.values(TR_PRICES).map(p=>p.standard.one));
-  return `<button type="button" class="trtoggle" data-trtoggle aria-expanded="${T.on}"><span class="pi">${ic('plane',18)}</span><span class="tt"><b>${tx("Трансфер из аэропорта или вокзала")}</b><small>${T.on?`${esc(trSummary(T))} · ${gm(trPrice(T).total)}`:`${tx("Встретим с табличкой · от")} ${gm(from)} ${tx("· туда и обратно со скидкой")}`}</small></span><span class="swc ${T.on?'on':''}"><i></i></span></button>
+  const T=TR.bk;
+  return `<button type="button" class="trtoggle" data-trtoggle aria-expanded="${T.on}"><span class="pi">${ic('plane',18)}</span><span class="tt"><b>${tx("Трансфер из аэропорта или вокзала")}</b><small>${T.on?`${esc(trSummary(T))} · ${M.serverQuote?gm(M.serverQuote.transferKzt):'—'}`:formText('Встретим с табличкой · стоимость рассчитает сервер','Meet and greet · server-calculated price')}</small></span><span class="swc ${T.on?'on':''}"><i></i></span></button>
     ${T.on?trBlockHTML(T,'bk'):''}`;
 }
 function trRecap(tr){ const P=TR_PLACES[tr.place]; return trLegs(tr).map(l=>`${l.dir==='in'?tx('встреча'):tx('подача')} ${fD(l.date)}, ${l.time}`).join(tx(' и '))+` · ${P.short} · ${TR_CLASSES[tr.cls].name} · ${gm(tr.price)}`; }
@@ -561,12 +637,15 @@ function refreshDetailsBits(){ const t=totals();
   document.querySelector('.bookbox .dfs').outerHTML = dateFieldsHTML('data-dp-apt');
   document.querySelectorAll('[data-to-form]').forEach(b=>{b.textContent=quoteButtonLabel();b.disabled=quoteButtonDisabled();});
   const mi=$('mbarInfo'); if(mi) mi.textContent = t.n?(M.serverQuote?`${nightsWord(t.n)} · ${fc(t.cTotal)}`:tx(M.quoteState==='error'?'Не удалось проверить доступность. Повторите проверку.':'Проверяем цену и доступность…')):tx('выберите даты'); }
-function refreshFormBits(){ const t=totals();
+function refreshFormBits(){updateFormQuote(); const t=totals();
   $('fSum').innerHTML = sumHTML(); $('fDates').textContent = t.n?`${fD(M.ci)} – ${fD(M.co)}`:'—';
   $('formDates').innerHTML = dateFieldsHTML('data-dp-apt');
-  $('bSubmit').textContent = SUBMIT_LBL[M.pay];
-  if($('mbSubmit')){ $('mbSubmit').textContent = SUBMIT_LBL[M.pay]; $('mbTot').textContent = t.n?fc(t.cTotal):'—'; }
-  const tg=document.querySelector('.trtoggle small'); if(tg && TR.bk.on) tg.textContent = `${trSummary(TR.bk)} · ${gm(trPrice(TR.bk).total)}`;
+  $('bSubmit').textContent = M.quoteState==='error'?formText('Повторить проверку','Retry availability check'):SUBMIT_LBL.card;
+  $('bSubmit').disabled=formBusy||M.quoteState==='pending'||M.quoteState==='incomplete'||M.serverQuote?.available===false||!SERVER_HOME.payments.online;
+  if($('mbSubmit')){ $('mbSubmit').textContent = $('bSubmit').textContent; $('mbSubmit').disabled=$('bSubmit').disabled; $('mbTot').textContent = M.serverQuote?gm(M.serverQuote.totalKzt):'—'; }
+  const tg=document.querySelector('.trtoggle small'); if(tg && TR.bk.on) tg.textContent = `${trSummary(TR.bk)} · ${M.serverQuote?gm(M.serverQuote.transferKzt):'—'}`;
+  if($('bkTrPrice'))$('bkTrPrice').innerHTML=formTransferPriceHTML();
+  document.querySelectorAll('#trWrap [data-trk="cls"] .cl-p b').forEach(el=>{el.textContent=el.closest('[data-trk]').dataset.v===TR.bk.cls&&M.serverQuote?gm(M.serverQuote.transferKzt):'—';});
   document.querySelectorAll('.pay[data-pay]').forEach(p=>p.classList.toggle('on', p.dataset.pay===M.pay)); }
 function readForm(){ if(!$('bName')) return; M.form.name=$('bName').value.trim(); M.form.phone=$('bPhone').value.trim(); M.form.comment=$('bCom').value.trim();
   M.guests=+$('bG').value; M.pet=$('bPet').checked; }
@@ -700,7 +779,7 @@ document.addEventListener('click', e=>{
   if(t.closest('[data-reset]')){ Object.assign(G,{ci:null,co:null,guests:1,district:'',maxPrice:0,rooms:'',pets:false}); syncSearch(); renderGrid(); return; }
   const ph=t.closest('[data-photo]'); if(ph){ M.photo=+ph.dataset.photo; document.querySelector('.mgal').outerHTML = galleryHTML(M.apt); return; }
   /* бронь */
-  if(t.closest('[data-to-form]')){if(!totals().n){openDP('apt','ci',M.apt.title);return;}if(M.quoteState==='pending'){return;}if(M.serverQuote?.available===false){toast(tx('Эти даты уже заняты — выберите другие в календаре'));return;}if(M.serverQuote?.available!==true){quoteKey='';updateQuote();refreshDetailsBits();return;}location.assign('/guest-assets/checkout.html?'+new URLSearchParams({apartment:M.apt.ref,checkIn:isoOf(M.ci),checkOut:isoOf(M.co),guests:M.guests,pets:M.pet?'1':'0',lang:IS_EN?'en':'ru',currency:CUR})+'#checkout');return;}
+  if(t.closest('[data-to-form]')){if(!totals().n){openDP('apt','ci',M.apt.title);return;}if(M.quoteState==='pending'){return;}if(M.serverQuote?.available===false){toast(tx('Эти даты уже заняты — выберите другие в календаре'));return;}if(M.serverQuote?.available!==true){quoteKey='';updateQuote();refreshDetailsBits();return;}M.step='form';formQuoteKey='';formBusy=false;TR.bk.arrDate=M.ci;TR.bk.depDate=M.co;renderModal();refreshFormBits();$('modal').scrollTop=0;return;}
   const back=t.closest('[data-back]'); if(back){ if(M.step==='form') readForm(); if(M.step==='trcard') {} M.step=back.dataset.back; renderModal(); return; }
   const pay=t.closest('[data-pay]'); if(pay){ M.pay=pay.dataset.pay; refreshFormBits(); return; }
   if(t.closest('#chatSend')){ saveRequest(); return; }
@@ -728,17 +807,14 @@ document.addEventListener('change', e=>{
 document.addEventListener('input', e=>{
   const el=e.target;
   if(el.id==='cNum'){ const v=el.value.replace(/\D/g,'').slice(0,16); el.value=v.replace(/(.{4})/g,'$1 ').trim(); $('cvNum').textContent = el.value || '•••• •••• •••• ••••'; return; }
-  if(el.dataset.trf && el.tagName==='INPUT'){ const c=trCtx(el); TR[c][el.dataset.trf]= el.dataset.trf==='sign' ? el.value.toUpperCase() : el.value; if(el.dataset.trf==='sign'){ const p=el.selectionStart; el.value=el.value.toUpperCase(); el.setSelectionRange(p,p); } el.classList.remove('bad'); if(c==='sa') refreshTrSide(); }
+  if(el.dataset.trf && el.tagName==='INPUT'){ const c=trCtx(el); TR[c][el.dataset.trf]= el.dataset.trf==='sign' ? el.value.toUpperCase() : el.value; if(el.dataset.trf==='sign'){ const p=el.selectionStart; el.value=el.value.toUpperCase(); el.setSelectionRange(p,p); } el.classList.remove('bad'); if(c==='sa') refreshTrSide(); else if(M.step==='form')refreshFormBits(); }
 });
 document.addEventListener('mouseover', e=>{ const c=e.target.closest && e.target.closest('.dc'); if(!c) return; const box=c.closest('[data-pk]'); if(box) hoverPreview(box, c); });
 document.addEventListener('mouseout', e=>{ const box=e.target.closest && e.target.closest('[data-pk]'); if(box && !(e.relatedTarget && box.contains(e.relatedTarget))) hoverPreview(box, null); });
 document.addEventListener('submit', e=>{
   const id=e.target.id;
   if(id==='searchForm'||id==='sheetForm'){ e.preventDefault(); closeSheet(); $('catalog').scrollIntoView({behavior:'smooth'}); return; }
-  if(id==='bookForm'){ e.preventDefault(); readForm(); if(!validateForm()) return;
-    if(M.pay==='card'){ M.step='card'; renderModal(); $('modal').scrollTop=0; }
-    else if(M.pay==='cash'){ saveRequest(); }
-    else { M.step='chat'; renderModal(); $('modal').scrollTop=0; } return; }
+  if(id==='bookForm'){e.preventDefault();submitServerForm();return;}
   if(id==='trForm'){ e.preventDefault(); readTrForm(); if(!validateTr()) return;
     if(M.trPay==='card'){ M.step='trcard'; renderModal(); $('modal').scrollTop=0; } else saveTransfer(); return; }
   if(id==='cardForm'){ e.preventDefault(); const n=$('cNum').value.replace(/\D/g,''); const err=$('cErr');
@@ -793,6 +869,7 @@ function updateQuote(){
 /* ---------- старт ---------- */
 syncSearch(); renderGrid();
 const qs = new URLSearchParams(location.search);
+if(qs.get('payment')==='processing'){let token=null;try{token=sessionStorage.getItem('guest-payment:astana-stay');}catch{}if(token&&/^[A-Za-z0-9_-]{43}$/.test(token))location.replace('/booking/'+encodeURIComponent(token));}
 const qa = +qs.get('apt'); if(qa) openApt(qa);
 if(qs.get('transfer')) openTrOrder(['from','to','round'].includes(qs.get('transfer'))?qs.get('transfer'):'from');
 window.__guest = {G, M, TR, PK, openApt, openTrOrder, openDP};
