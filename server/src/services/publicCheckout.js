@@ -1,3 +1,4 @@
+import { getSettings } from './settings.js';
 import { prisma } from '../db.js';
 import { HttpError } from '../lib/errors.js';
 import crypto from 'node:crypto';
@@ -7,9 +8,15 @@ import { digest, scopedDigest, accessSecret, fingerprint, paymentGuest, safeInte
 import { createBookingRequest, withApartmentTx, extendHold, quote } from './bookings.js';
 import { transferLegPrice, bundledTransferKeys } from './transfers.js';
 
-export function checkoutQuote(apartment, data) {
+export function checkoutQuote(apartment, data, offers) {
   const stay = quote(apartment, new Date(data.checkIn+'T00:00:00Z'), new Date(data.checkOut+'T00:00:00Z'), data.pets);
-  const transfers = (data.transfers || []).map(t => ({...t, priceKzt:transferLegPrice(t)}));
+  const transfers = (data.transfers || []).map(t => {
+    if(offers===undefined)return {...t,priceKzt:transferLegPrice(t)};
+    const offer=offers.find(o=>o.id===t.offerId && o.enabled);
+    if(!offer)throw new HttpError(400,'Выбранный транспорт больше недоступен');
+    if(t.pax>offer.passengers || t.bags>offer.bags)throw new HttpError(400,'Выбранный транспорт не вмещает пассажиров или багаж');
+    return {...t,carClass:offer.name,priceKzt:offer.priceKzt+transferLegPrice({...t,carClass:'standard'})-transferLegPrice({place:t.place,carClass:'standard',time:'12:00',childSeats:0})};
+  });
   const transferKzt = transfers.reduce((sum,t) => sum+t.priceKzt,0);
   return {...stay, stayKzt:stay.totalKzt-stay.petFeeKzt, transferKzt, transfers, totalKzt:stay.totalKzt+transferKzt};
 }
@@ -43,7 +50,7 @@ export async function checkout({ accountId, apartment, data, guestData, key, con
       pets: data.pets, note: data.comment, paymentMethod: 'card', currencyShown: data.currency, amountShown, holdUntil,
       onCreated: async (tx,b) => {
         const guest = await tx.guest.create({ data: { accountId, ...guestData } });
-        const q = checkoutQuote(apartment, data);
+        const q = checkoutQuote(apartment, data, (await getSettings(accountId,tx)).transferOffers||[]);
         const keys = bundledTransferKeys({accountId, checkoutKeyHash});
         for (const [i,t] of q.transfers.entries()) {
           await tx.transfer.create({data:{accountId, bookingId:b.id, guestId:guest.id, apartmentId:apartment.id,

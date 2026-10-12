@@ -288,10 +288,10 @@ const TR_PLACES = {
   station:{short:tx('Вокзал Нурлы Жол'),meet:tx('у выхода с платформы в главном зале'),wait:20,code:tx('Номер поезда и вагон'),codePh:tx('например, 002Ц, вагон 7'),lead:60,dirs:{from:tx('С вокзала'),to:tx('На вокзал'),round:tx('Туда и обратно')}}
 };
 const hmAdd=(hm,min)=>{const [h,m]=String(hm).split(':').map(Number);const t=((h*60+m+min)%1440+1440)%1440;return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');};
-function trSummary(T){return `${TR_PLACES[T.place].dirs[T.dir]} · ${TR_CLASSES[T.cls].name}`;}
+function trSummary(T){return `${TR_PLACES[T.place].dirs[T.dir]} · ${T===TR.bk?(SERVER_HOME.transferOffers.find(o=>o.ref===T.cls)?.name||formText('Транспорт не выбран','Transport not selected')):TR_CLASSES[T.cls].name}`;}
 function formTransfers(){
   const T=TR.bk;if(!T.on)return [];
-  const common={place:T.place,carClass:T.cls,pax:T.pax,bags:T.bags,childSeats:T.seats,sign:T.sign};const result=[];
+  const common={place:T.place,offerId:T.cls,carClass:'standard',pax:T.pax,bags:T.bags,childSeats:T.seats,sign:T.sign};const result=[];
   if(T.dir!=='to')result.push({...common,direction:'in',date:T.arrDate==null?'':isoOf(T.arrDate),time:T.arrTime,flight:T.arrCode});
   if(T.dir!=='from'){
     const time=T.depTime?hmAdd(T.depTime,-TR_PLACES[T.place].lead):'';
@@ -312,7 +312,7 @@ function updateFormQuote(){
   if(M.step!=='form')return;
   const body=formQuoteBody(),k=JSON.stringify([M.apt.ref,body]);if(k===formQuoteKey)return;
   formQuoteKey=k;const seq=++formQuoteSeq;M.serverQuote=null;M.quoteError='';M.quoteState='pending';
-  if(!body.checkIn||!body.checkOut||body.transfers.some(t=>!t.date||!t.time)){
+  if(!body.checkIn||!body.checkOut||body.transfers.some(t=>!t.date||!t.time||!t.offerId)){
     M.quoteState='incomplete';M.quoteError=formText('Выберите даты и время всех поездок','Choose dates and times for all trips');return;
   }
   SERVER_HOME.api('/apartments/'+encodeURIComponent(M.apt.ref)+'/checkout-quote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
@@ -358,9 +358,9 @@ async function submitServerForm(){
 
 const newTr = o => Object.assign({on:false, place:'airport', dir:'from', cls:'standard', arrDate:null, arrTime:'', arrCode:'', depDate:null, depTime:'', depCode:'', pax:2, bags:2, seats:0, sign:''}, o||{});
 const TR = {bk:newTr(), sa:newTr()};
-const fits = (T, cls) => T.pax<=TR_CLASSES[cls].pax && T.bags<=TR_CLASSES[cls].bags;
+const fits = (T, cls) => {const C=T===TR.bk?SERVER_HOME.transferOffers.find(o=>o.ref===cls):TR_CLASSES[cls];return !!C && T.pax<=(C.passengers??C.pax) && T.bags<=C.bags;};
 const roundSave = (place, cls) => TR_PRICES[place][cls].one*2 - TR_PRICES[place][cls].round;
-function trAuto(T){ if(!fits(T,'standard')) T.cls='minivan'; }
+function trAuto(T){if(T===TR.bk){if(!fits(T,T.cls))T.cls=SERVER_HOME.transferOffers.find(o=>fits(T,o.ref))?.ref||'';return;}if(!fits(T,'standard'))T.cls='minivan';}
 function stepperHTML(k, label, val, min, max, sub){
   return `<div class="stp2"><div><b>${label}</b>${sub?`<small>${sub}</small>`:''}</div><div class="stp2-c"><button type="button" data-trstep="${k}" data-delta="-1" ${val<=min?'disabled':''} aria-label="${tx("Меньше")}">−</button><output>${val}</output><button type="button" data-trstep="${k}" data-delta="1" ${val>=max?'disabled':''} aria-label="${tx("Больше")}">+</button></div></div>`;
 }
@@ -384,19 +384,20 @@ function trPriceHTML(T){
 }
 function trBlockHTML(T, c){
   trAuto(T); const P=TR_PLACES[T.place];
+  if(T===TR.bk && !SERVER_HOME.transferOffers.length)return `<div class="trb" data-tr="${c}"><p class="trhint">${formText('Транспорт пока недоступен. Продолжите бронирование без трансфера.','Transport is currently unavailable. Continue booking without a transfer.')}</p></div>`;
   return `<div class="trb" data-tr="${c}">
     <div class="trrow"><div class="lbl">${tx("Где встретить или куда отвезти")}</div><div class="seg">
-      ${[['airport','plane',tx('Аэропорт NQZ'),tx('Международный аэропорт Астаны')],['station','train',tx('Ж/д вокзал «Нурлы Жол»'),tx('Главный вокзал, левый берег')]].map(([k,i,b,s])=>`<button type="button" class="${T.place===k?'on':''}" data-trk="place" data-v="${k}">${ic(i,18)}<span><b>${b}</b><small>${s}</small></span></button>`).join('')}</div></div>
+      ${[['airport','plane',tx('Аэропорт NQZ'),tx('Международный аэропорт Астаны')],['station','train',tx('Ж/д вокзал «Нурлы Жол»'),tx('Главный вокзал, левый берег')]].map(([k,i,b,s])=>`<button type="button" class="${T.place===k?'on':''}" data-trk="place" data-v="${k}">${T===TR.bk?`<span class="transfer-place-photo ${k}" aria-hidden="true"></span>`:ic(i,18)}<span><b>${b}</b><small>${s}</small></span></button>`).join('')}</div></div>
     <div class="trrow"><div class="lbl">${tx("Направление")}</div><div class="seg three">
-      ${[['from',T.place==='airport'?tx('встреча с табличкой'):tx('встреча у вагона')],['to',tx('подача к дому')],['round',T===TR.bk?formText('Две поездки','Two trips'):`${tx("выгоднее на")} ${gm(roundSave(T.place,T.cls))}`]].map(([k,s])=>`<button type="button" class="${T.dir===k?'on':''}" data-trk="dir" data-v="${k}">${ic(k==='round'?'swap':k==='from'?'in':'out',17)}<span><b>${P.dirs[k]}</b><small class="${k==='round'?'save':''}">${s}</small></span></button>`).join('')}</div></div>
+      ${[['from',T.place==='airport'?tx('встреча с табличкой'):tx('встреча у вагона')],['to',tx('подача к дому')],['round',T===TR.bk?formText('Две поездки','Two trips'):`${tx("выгоднее на")} ${gm(roundSave(T.place,T.cls))}`]].map(([k,s])=>`<button type="button" class="${T.dir===k?'on':''}" data-trk="dir" data-v="${k}">${ic(k==='round'?'swap':k==='from'?'plane':'home',T===TR.bk?26:17)}<span><b>${P.dirs[k]}</b><small class="${k==='round'?'save':''}">${s}</small></span></button>`).join('')}</div></div>
     ${T.dir!=='to'?trLegHTML(T,'arr'):''}${T.dir!=='from'?trLegHTML(T,'dep'):''}
     <div class="trrow"><div class="lbl">${tx("Пассажиры и багаж")}</div><div class="stps">
-      ${stepperHTML('pax',tx('Пассажиры'),T.pax,1,7,tx('включая детей'))}${stepperHTML('bags',tx('Чемоданы'),T.bags,0,8,tx('ручная кладь не в счёт'))}${stepperHTML('seats',tx('Детские кресла'),T.seats,0,3,`+${gm(TR_SEAT)} ${tx("за поездку")}`)}</div></div>
+      ${stepperHTML('pax',(T===TR.bk?ic('users',22)+' ':'')+tx('Пассажиры'),T.pax,1,T===TR.bk?60:7,tx('включая детей'))}${stepperHTML('bags',(T===TR.bk?ic('luggage',22)+' ':'')+tx('Чемоданы'),T.bags,0,T===TR.bk?60:8,tx('ручная кладь не в счёт'))}${stepperHTML('seats',(T===TR.bk?ic('baby',22)+' ':'')+tx('Детские кресла'),T.seats,0,3,`+${gm(TR_SEAT)} ${tx("за поездку")}`)}</div></div>
     <div class="trrow"><div class="lbl">${tx("Класс автомобиля")}</div><div class="cls2">
-      ${Object.entries(TR_CLASSES).map(([k,C])=>{ const ok=fits(T,k); const pr=TR_PRICES[T.place][k]; return `<button type="button" class="clsc ${T.cls===k?'on':''}" data-trk="cls" data-v="${k}" ${ok?'':'disabled'}>
-        <span class="cl-car">${carSVG(k)}</span><span class="cl-t"><b>${C.name}</b><small>${C.car}</small><small>${ic('users',13)} ${tx("до")} ${C.pax} · ${ic('luggage',13)} ${tx("до")} ${C.bags} ${tx("чемоданов")}</small></span>
-        <span class="cl-p">${ok?`<b>${T===TR.bk?(T.cls===k&&M.serverQuote?gm(M.serverQuote.transferKzt):'—'):gm(T.dir==='round'?pr.round:pr.one)}</b><small>${T.dir==='round'?tx('туда и обратно'):tx('в одну сторону')}</small>`:tx('<small class="bad">не поместятся</small>')}</span></button>`; }).join('')}</div>
-      ${!fits(T,'standard')?`<div class="trhint">${ic('alert',14)}<span>${T.pax} ${tx("пасс. и")} ${T.bags} ${plural(T.bags,tx('чемодан'),tx('чемодана'),tx('чемоданов'))} ${tx("не поместятся в седан — выбран минивэн.")}</span></div>`:''}</div>
+      ${(T===TR.bk?SERVER_HOME.transferOffers.map(o=>[o.ref,{name:esc(o.name),car:formText('Тип транспорта, без гарантии марки','Vehicle type; no specific model guaranteed'),pax:o.passengers,bags:o.bags,priceKzt:o.priceKzt}]):Object.entries(TR_CLASSES)).map(([k,C])=>{ const ok=fits(T,k); const pr=TR_PRICES[T.place][k]; return `<button type="button" class="clsc ${T.cls===k?'on':''}" data-trk="cls" data-v="${k}" ${ok?'':'disabled'}>
+        <span class="cl-car">${T===TR.bk?`<span class="transfer-car-photo ${C.pax>4?'van':'sedan'}" aria-hidden="true"></span>`:carSVG(k)}</span><span class="cl-t"><b>${C.name}</b><small>${C.car}</small><small>${ic('users',13)} ${tx("до")} ${C.pax} · ${ic('luggage',13)} ${tx("до")} ${C.bags} ${tx("чемоданов")}</small></span>
+        <span class="cl-p">${ok?`<b>${T===TR.bk?gm(C.priceKzt*(T.dir==='round'?2:1)):gm(T.dir==='round'?pr.round:pr.one)}</b><small>${T.dir==='round'?tx('туда и обратно'):tx('в одну сторону')}</small>`:tx('<small class="bad">не поместятся</small>')}</span></button>`; }).join('')}</div>
+      ${T!==TR.bk&&!fits(T,'standard')?`<div class="trhint">${ic('alert',14)}<span>${T.pax} ${tx("пасс. и")} ${T.bags} ${plural(T.bags,tx('чемодан'),tx('чемодана'),tx('чемоданов'))} ${tx("не поместятся в седан — выбран минивэн.")}</span></div>`:''}</div>
     <div class="field"><label>${tx("Имя на табличке")}</label><input class="inp" data-trf="sign" value="${esc(T.sign)}" placeholder="${tx("Например, AIDANA SERIKOVA")}" autocomplete="off"></div>
     <div class="trp" id="${c}TrPrice">${trPriceHTML(T)}</div>
   </div>`;
@@ -415,7 +416,7 @@ function trValidate(T, c, bad){
     if(T.place==='airport' && T.arrCode.trim().length<3) return bad(q('[data-trf="arrCode"]'),tx('Трансфер: укажите номер рейса — по нему водитель отследит задержку')); }
   if(T.dir!=='from'){ if(T.depDate==null) return bad(q('[data-trdate="dep"]'),tx('Трансфер: выберите дату вылета')); if(!T.depTime) return bad(q('[data-trf="depTime"]'),tx('Трансфер: укажите время вылета — рассчитаем время подачи')); }
   if(T.dir==='round' && (T.depDate<T.arrDate || (T.depDate===T.arrDate && T.depTime<=T.arrTime))) return bad(q('[data-trdate="dep"]'),tx('Трансфер: обратная поездка должна быть позже прилёта'));
-  if(!fits(T,T.cls)) return bad(q('[data-trk="cls"]'),tx('Трансфер: выберите минивэн — в седан столько не поместится'));
+  if(!fits(T,T.cls)) return bad(q('[data-trk="cls"]')||q('.trhint'),formText('Выберите доступный транспорт для пассажиров и багажа','Select available transport for your passengers and luggage'));
   return true;
 }
 function rerenderTr(c){
@@ -551,16 +552,16 @@ function renderModal(){
       ${amenitiesHTML(a)}
       <h3 class="rh">${tx("Правила проживания")}</h3>
       ${houseRulesHTML(a)}
+    <div class="avail" id="availBox"><div class="avail-h"><div><h3>${tx("Свободные даты")}</h3><p class="muted">${tx("Зачёркнутые дни заняты. Нажмите на день заезда, затем на день выезда — ночи и сумма посчитаются сразу.")}</p></div></div>
+      <div class="dpc inline" data-pk="apt" data-view="inline"></div></div>
     </div>
     <aside class="bookbox"><div style="display:flex;align-items:baseline;justify-content:space-between"><div><b style="font-size:22px">${gmN(a)}</b> <span class="muted">${tx("/ ночь")}</span></div><span class="rt">${ic('star',14)} ${aptRating(a)}</span></div>
       ${dateFieldsHTML('data-dp-apt')}
       <div id="selInfo" class="selinfo">${selText()}</div>
       <div id="sumBox">${sumHTML()}</div>
       <button type="button" class="btn brand block" style="margin-top:12px;height:50px" data-to-form id="toFormBtn" ${quoteButtonDisabled()?'disabled':''}>${quoteButtonLabel()}</button>
-      <div class="muted" style="font-size:12.5px;text-align:center;margin-top:8px">${tx("Оплата картой")}</div></aside></div>
-    <div class="avail" id="availBox"><div class="avail-h"><div><h3>${tx("Свободные даты")}</h3><p class="muted">${tx("Зачёркнутые дни заняты. Нажмите на день заезда, затем на день выезда — ночи и сумма посчитаются сразу.")}</p></div></div>
-      <div class="dpc inline" data-pk="apt" data-view="inline"></div></div>
-    <div class="mbar"><div><b>${gmN(a)}</b> <span class="muted">${tx("/ ночь")}</span><div class="muted" style="font-size:12px" id="mbarInfo">${t.n?(M.serverQuote?`${nightsWord(t.n)} · ${fc(t.cTotal)}`:tx(M.quoteState==='error'?'Не удалось проверить доступность. Повторите проверку.':'Проверяем цену и доступность…')):tx('выберите даты')}</div></div><button type="button" class="btn brand" data-to-form ${quoteButtonDisabled()?'disabled':''}>${quoteButtonLabel()}</button></div>`;
+      <div class="muted" style="font-size:12.5px;text-align:center;margin-top:8px">${tx("Оплата картой")}</div><button type="button" class="apartment-back" data-close>${tx("Назад")}</button></aside></div>
+    <div class="mbar apartment-bar"><button type="button" class="apartment-back" data-close>${tx("Назад")}</button><div><b>${gmN(a)}</b> <span class="muted">${tx("/ ночь")}</span><div class="muted" style="font-size:12px" id="mbarInfo">${t.n?(M.serverQuote?`${nightsWord(t.n)} · ${fc(t.cTotal)}`:tx(M.quoteState==='error'?'Не удалось проверить доступность. Повторите проверку.':'Проверяем цену и доступность…')):tx('выберите даты')}</div></div><button type="button" class="btn brand" data-to-form ${quoteButtonDisabled()?'disabled':''}>${quoteButtonLabel()}</button></div>`;
     renderPK('apt');
   }
   else if(M.step==='form'){
@@ -613,7 +614,7 @@ function renderModal(){
 }
 function trWrapInner(){
   const T=TR.bk;
-  return `<button type="button" class="trtoggle" data-trtoggle aria-expanded="${T.on}"><span class="pi">${ic('plane',18)}</span><span class="tt"><b>${tx("Трансфер из аэропорта или вокзала")}</b><small>${T.on?`${esc(trSummary(T))} · ${M.serverQuote?gm(M.serverQuote.transferKzt):'—'}`:formText('Встретим с табличкой · стоимость рассчитает сервер','Meet and greet · server-calculated price')}</small></span><span class="swc ${T.on?'on':''}"><i></i></span></button>
+  return `<button type="button" class="trtoggle" data-trtoggle aria-expanded="${T.on}"><span class="pi">${ic('plane',18)}</span><span class="tt"><b>${tx("Трансфер из аэропорта или вокзала")}</b><small>${formText('Встреча, помощь с багажом и поездка до квартиры','Meet and greet, luggage assistance and a ride to the apartment')}</small></span><span class="swc ${T.on?'on':''}"><i></i></span></button>
     ${T.on?trBlockHTML(T,'bk'):''}`;
 }
 function trRecap(tr){ const P=TR_PLACES[tr.place]; return trLegs(tr).map(l=>`${l.dir==='in'?tx('встреча'):tx('подача')} ${fD(l.date)}, ${l.time}`).join(tx(' и '))+` · ${P.short} · ${TR_CLASSES[tr.cls].name} · ${gm(tr.price)}`; }
@@ -643,9 +644,8 @@ function refreshFormBits(){updateFormQuote(); const t=totals();
   $('bSubmit').textContent = M.quoteState==='error'?formText('Повторить проверку','Retry availability check'):SUBMIT_LBL.card;
   $('bSubmit').disabled=formBusy||M.quoteState==='pending'||M.quoteState==='incomplete'||M.serverQuote?.available===false||!SERVER_HOME.payments.online;
   if($('mbSubmit')){ $('mbSubmit').textContent = $('bSubmit').textContent; $('mbSubmit').disabled=$('bSubmit').disabled; $('mbTot').textContent = M.serverQuote?gm(M.serverQuote.totalKzt):'—'; }
-  const tg=document.querySelector('.trtoggle small'); if(tg && TR.bk.on) tg.textContent = `${trSummary(TR.bk)} · ${M.serverQuote?gm(M.serverQuote.transferKzt):'—'}`;
+
   if($('bkTrPrice'))$('bkTrPrice').innerHTML=formTransferPriceHTML();
-  document.querySelectorAll('#trWrap [data-trk="cls"] .cl-p b').forEach(el=>{el.textContent=el.closest('[data-trk]').dataset.v===TR.bk.cls&&M.serverQuote?gm(M.serverQuote.transferKzt):'—';});
   document.querySelectorAll('.pay[data-pay]').forEach(p=>p.classList.toggle('on', p.dataset.pay===M.pay)); }
 function readForm(){ if(!$('bName')) return; M.form.name=$('bName').value.trim(); M.form.phone=$('bPhone').value.trim(); M.form.comment=$('bCom').value.trim();
   M.guests=+$('bG').value; M.pet=$('bPet').checked; }
@@ -787,8 +787,8 @@ document.addEventListener('click', e=>{
   if(t.closest('[data-trtoggle]')){ readForm(); const T=TR.bk; T.on=!T.on; if(T.on){ if(T.autoDates!==false){ T.arrDate=M.ci; T.depDate=M.co; } T.pax=Math.max(T.pax, M.guests); if(!T.sign) T.sign=M.form.name; }
     const w=$('trWrap'); w.classList.toggle('on',T.on); w.innerHTML=trWrapInner(); refreshFormBits(); if(T.on) w.scrollIntoView({block:'nearest',behavior:'smooth'}); return; }
   const trk=t.closest('[data-trk]'); if(trk){ if(trk.disabled) return; const c=trCtx(trk); const T=TR[c]; T[trk.dataset.trk]=trk.dataset.v; rerenderTr(c); return; }
-  const trs=t.closest('[data-trstep]'); if(trs){ const c=trCtx(trs); const T=TR[c]; const k=trs.dataset.trstep; const lim={pax:[1,7],bags:[0,8],seats:[0,3]}[k];
-    T[k]=Math.max(lim[0],Math.min(lim[1],T[k]+(+trs.dataset.delta))); const before=T.cls; trAuto(T); if(before!==T.cls) toast(tx('Не помещается в седан — переключили на минивэн')); rerenderTr(c); return; }
+  const trs=t.closest('[data-trstep]'); if(trs){ const c=trCtx(trs); const T=TR[c]; const k=trs.dataset.trstep; const lim={pax:[1,c==='bk'?60:7],bags:[0,c==='bk'?60:8],seats:[0,3]}[k];
+    T[k]=Math.max(lim[0],Math.min(lim[1],T[k]+(+trs.dataset.delta))); const before=T.cls; trAuto(T); if(before!==T.cls && c!=='bk') toast(tx('Не помещается в седан — переключили на минивэн')); rerenderTr(c); return; }
   const trd=t.closest('[data-trdate]'); if(trd){ const c=trCtx(trd); if(c==='bk') TR.bk.autoDates=false; openTrDate(c, trd.dataset.trdate); return; }
   const rs=t.closest('[data-refsrc]'); if(rs){ readTrForm(); M.ref.src=rs.dataset.refsrc; renderModal(); setTimeout(()=>$('tRef').focus({preventScroll:true}),0); return; }
   const tp=t.closest('[data-trpay]'); if(tp){ M.trPay=tp.dataset.trpay; document.querySelectorAll('[data-trpay]').forEach(p=>p.classList.toggle('on',p.dataset.trpay===M.trPay)); refreshTrSide(); return; }

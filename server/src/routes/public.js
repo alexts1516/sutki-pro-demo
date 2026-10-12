@@ -38,7 +38,7 @@ const TransferSchema = z.object({
 });
 
 const BookingSchema = z.object({
-  transfers: z.array(TransferSchema.omit({bookingToken:true,name:true,phone:true,lang:true})).max(2).default([]),
+  transfers: z.array(TransferSchema.omit({bookingToken:true,name:true,phone:true,lang:true}).extend({offerId:z.string().uuid(),pax:z.number().int().min(1).max(60),bags:z.number().int().min(0).max(60)})).max(2).default([]),
   apartmentId: z.string(), checkIn: z.string(), checkOut: z.string(), guests: z.number().int().min(1).max(30),
   name: z.string().trim().min(2).max(80), phone: z.string().trim().regex(phoneRe, 'Телефон в формате +7 700 000 00 00'), email: z.string().email().optional().or(z.literal('').transform(() => undefined)),
   comment: z.string().max(1000).optional(), pets: z.boolean().optional(), currency: z.enum(['KZT', 'RUB', 'USD', 'EUR']).default('KZT'),
@@ -94,6 +94,7 @@ export default function publicRouter({ events, payments, config, dispatch, stora
       account: { name: req.account.name, slug: req.account.slug }, brand, texts,
       currency: { base: 'KZT', shown: currency.shown, rates: currency.rates, roundStep: currency.roundStep },
       payments: { online: !!payments && payments.guestCheckoutReady !== false, provider: payments?.name || null, offline: [], bookingMethod: 'card' },   // бронь на сайте — только с оплатой картой (особые условия — личная ссылка)
+      transferOffers: ((await getSettings(req.accountId)).transferOffers||[]).filter(o=>o.enabled).map(({id,name,passengers,bags,priceKzt})=>({ref:id,name,passengers,bags,priceKzt})),
       telegram: { bot: config.telegram.username || null },
     });
   });
@@ -155,7 +156,7 @@ export default function publicRouter({ events, payments, config, dispatch, stora
     if(d.pets && !a.petsAllowed) throw badRequest('В этой квартире нельзя с животными');
     checkCheckoutTransfers(d);
     res.json({ref:publicRef(config,req.accountId,a.id),checkIn:d.checkIn,checkOut:d.checkOut,guests:d.guests,pets:!!d.pets,
-      available:await isAvailable(req.accountId,a.id,ci,co),...checkoutQuote(a,d)});
+      available:await isAvailable(req.accountId,a.id,ci,co),...checkoutQuote(a,d,(await getSettings(req.accountId)).transferOffers||[])});
   });
 
   r.post('/bookings', async (req, res) => {
@@ -176,7 +177,7 @@ export default function publicRouter({ events, payments, config, dispatch, stora
     if (d.guests > apt.maxGuests) throw badRequest(`В этой квартире максимум ${apt.maxGuests} гостей`);
     if (d.pets && !apt.petsAllowed) throw badRequest('В этой квартире нельзя с животными');
     const cur = await loadCurrency(prisma, req.accountId);
-    const q = checkoutQuote(apt, d);
+    const q = checkoutQuote(apt, d,(await getSettings(req.accountId)).transferOffers||[]);
     const amountShown = convertKzt(q.totalKzt, d.currency, cur.rates, cur.roundStep);
     const result = await checkout({ accountId:req.accountId,apartment:apt,data:d,guestData:{name:d.name,phone:d.phone,email:d.email,locale:d.lang},key,config,
       amountShown,holdUntil:new Date(Date.now()+PUBLIC_HOLD_MIN*60000) });
