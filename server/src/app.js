@@ -1,3 +1,4 @@
+import { adminSupportRouter } from './routes/support.js';
 // Сборка Express-приложения. Всё внешнее (хранилище, бот, оплата) передаётся параметрами —
 // так приложение легко тестировать и запускать без токенов.
 import express from 'express';
@@ -64,7 +65,7 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
   app.use('/api/public', (req, res, next) => {
     const origin = req.headers.origin;
     if (origin && (config.corsOrigins.includes(origin) || config.corsOrigins.includes('*'))) {
-      res.set({ 'Access-Control-Allow-Origin': origin, Vary: 'Origin', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type' });
+      res.set({ 'Access-Control-Allow-Origin': origin, Vary: 'Origin', 'Access-Control-Allow-Methods': 'GET,POST,OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type,X-Support-Token' });
     }
     if (req.method === 'OPTIONS') return res.sendStatus(204);
     next();
@@ -79,6 +80,7 @@ export function createApp({ config = defaultConfig, events, storage, payments = 
   app.use('/api/public/:slug', publicRouter({ events, payments, config, dispatch, storage }));
   const admin = express.Router();
   admin.use(authenticate, requireRole(...MANAGERS));
+  admin.use(adminSupportRouter());
   admin.use(apartmentsRouter({ storage, config }));
   admin.use(siteRouter({ storage, config }));
   admin.use(operationsRouter({ events, dispatch, cleaning }));

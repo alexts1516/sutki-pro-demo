@@ -1,3 +1,4 @@
+import { guestSupportRouter } from './support.js';
 import { parsePhoneNumberFromString, getCountries } from 'libphonenumber-js/max';
 import { getSettings } from '../services/settings.js';
 import { resolveRules } from '../../public/shared/house-rules.js';
@@ -70,6 +71,8 @@ export default function publicRouter({ events, payments, config, dispatch, stora
     if (acc.status === 'suspended') throw new HttpError(403, 'Сайт временно недоступен');
     req.account = acc; req.accountId = acc.id; next();
   });
+
+  r.use('/support',guestSupportRouter({config}));
 
   r.post('/operation-key',(req,res)=>res.status(201).json({operationKey:issueOperationKey(config,req.params.slug)}));
 

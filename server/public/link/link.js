@@ -10,7 +10,7 @@ async function start() {
   try {
     const { kind } = await api(`/api/link/${encodeURIComponent(token)}`);
     if (kind === 'transfer') return showTransfer();
-    if (kind === 'special') return (await import('./special.js')).showSpecial(token);   // вид гостя — отдельный модуль
+    if (kind === 'special') { document.dispatchEvent(new Event('sutki-guest-link')); return (await import('./special.js')).showSpecial(token); }   // вид гостя — отдельный модуль
     return showTask();
   } catch (e) {
     if (e.status === 410) return closed('Задача уже закрыта — ссылка больше не действует');

@@ -32,6 +32,7 @@ model Account {
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
+  supportThreads SupportThread[]
   memberships    Membership[]
   invites        Invite[]
   guests         Guest[]
@@ -859,4 +860,29 @@ model BookingPriceChange {
   createdAt        DateTime @default(now())
 
   @@index([accountId, bookingId])
+}
+
+/// Guest support capability is stored only as a hash. No booking access is granted.
+model SupportThread {
+  id         String @id @default(cuid())
+  accountId  String
+  accessHash String @unique
+  topic      String
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  account    Account @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  messages   SupportMessage[]
+  @@index([accountId, updatedAt])
+}
+model SupportMessage {
+  id           String @id @default(cuid())
+  threadId     String
+  sender       String /// guest | owner | admin, assigned by server
+  authorId     String?
+  text         String
+  operationKey String
+  createdAt    DateTime @default(now())
+  thread       SupportThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  @@unique([threadId, operationKey])
+  @@index([threadId, createdAt])
 }

@@ -44,7 +44,7 @@ $('#loginForm').addEventListener('submit', async (e) => {
 $('#logoutBtn').addEventListener('click', async () => { await api('/api/auth/logout', { method: 'POST' }); linkSecrets.clear(); location.hash = ''; showLogin(); });
 $('#menuBtn').addEventListener('click', () => $('#sidebar').classList.toggle('open'));
 
-const VIEWS = [['today', '🔥', 'Сегодня'], ['calendar', '🗓', 'Календарь'], ['bookings', '📅', 'Брони'], ['transfers', '🚗', 'Трансферы'], ['repairs', '🛠', 'Заявки мастерам'], ['apartments', '🏠', 'Квартиры и фото'], ['texts', '✏️', 'Тексты сайта'], ['brand', '🎨', 'Бренд и логотип'], ['team', '👥', 'Команда и Telegram'], ['payouts', '💵', 'Выплаты'], ['finance', '💰', 'Финансы', 'owner'], ['notifications', '🔔', 'Уведомления'], ['settings', '⚙️', 'Настройки']];
+const VIEWS = [['today', '🔥', 'Сегодня'], ['calendar', '🗓', 'Календарь'], ['bookings', '📅', 'Брони'], ['transfers', '🚗', 'Трансферы'], ['repairs', '🛠', 'Заявки мастерам'], ['apartments', '🏠', 'Квартиры и фото'], ['texts', '✏️', 'Тексты сайта'], ['brand', '🎨', 'Бренд и логотип'], ['team', '👥', 'Команда и Telegram'], ['payouts', '💵', 'Выплаты'], ['finance', '💰', 'Финансы', 'owner'], ['support', '💬', 'Обращения'], ['notifications', '🔔', 'Уведомления'], ['settings', '⚙️', 'Настройки']];
 const myViews = () => VIEWS.filter(v => !v[3] || v[3] === S.me?.role);
 function start(me) {
   S.me = me; $('#login').hidden = true; $('#app').hidden = false;
@@ -66,6 +66,7 @@ function go(view, id) {
     if (view === 'apartments') return id ? openApartment(id) : renderApartments();
     if (view === 'repairs') return id ? (id === 'new' ? newRepair() : openRepair(id)) : renderRepairs();
     if (view === 'transfers') return renderTransfers(id);
+    if (view === 'support') return renderSupport(id);
     return ({ today: renderToday, calendar: renderCalendar, bookings: renderBookings, texts: renderTexts, brand: renderBrand, team: renderTeam, notifications: renderNotifications, settings: renderSettings, finance: renderFinance, payouts: renderPayouts })[view]();
   })();
 }
@@ -1249,3 +1250,15 @@ async function renderTransfers(openId) {
 
 // ---------------- старт ----------------
 api('/api/auth/session').then(me => { if (!me.authenticated || !['owner', 'admin'].includes(me.role)) return showLogin(); start(me); api('/api/admin/bookings?status=request').then(r => { S.reqCount = r.length; renderNav(); }).catch(() => {}); api('/api/admin/repairs').then(r => { S.wrCount = r.filter(x => x.pendingEstimate || x.pendingExtras).length; renderNav(); }).catch(() => {}); api('/api/admin/transfer-jobs?status=UNASSIGNED').then(r => { S.trCount = r.items.length; renderNav(); }).catch(() => {}); }).catch(() => showLogin());
+
+// Shared direct support conversations.
+const SUPPORT_TOPICS={booking:'Бронирование',checkin:'Заселение',transfer:'Трансфер',other:'Другой вопрос'};
+let supportTimer=null,supportSelected='',supportReply=null;
+async function renderSupport(id){
+ clearInterval(supportTimer);const list=await api('/api/admin/support');supportSelected=id||list[0]?.id||'';
+ view(`<div class="page-head"><div><h1>Обращения гостей</h1><p class="sub">Прямой чат с гостями. Владелец и администратор видят одну историю.</p></div><button class="btn sm" id="supportRefresh">Обновить</button></div><div class="support-grid"><section class="card"><div class="card-h"><h2>Разговоры</h2></div><div class="card-b support-list">${list.map((t,i)=>`<button class="li ${t.id===supportSelected?'selected':''}" data-support-id="${esc(t.id)}"><span><b>${esc(SUPPORT_TOPICS[t.topic]||'Обращение')} · ${i+1}</b><small>${esc(t.lastMessage.slice(0,100))}</small><small>${new Date(t.updatedAt).toLocaleString('ru-RU')}</small></span><span class="chip ${t.lastSender==='guest'?'violet':''}">${t.lastSender==='guest'?'Гость':'Ответили'}</span></button>`).join('')||'<p class="muted">Обращений пока нет.</p>'}</div></section><section class="card"><div class="card-h"><h2 id="supportTitle">Переписка</h2></div><div class="card-b"><div id="supportMessages" class="support-messages"></div>${supportSelected?'<form id="supportReplyForm" class="stack"><label>Ответ гостю<textarea id="supportReplyText" maxlength="2000" required placeholder="Напишите ответ…"></textarea></label><p id="supportReplyStatus" role="status" class="muted small"></p><button class="btn primary" type="submit">Отправить ответ</button></form>':'<p class="muted">Выберите разговор.</p>'}</div></section></div>`);
+ $('#supportRefresh').onclick=()=>renderSupport(supportSelected);
+ $('.support-list').onclick=e=>{const b=e.target.closest('[data-support-id]');if(b)go('support',b.dataset.supportId);};
+ const read=async()=>{if(S.view!=='support'||!supportSelected)return;const selected=supportSelected;const d=await api('/api/admin/support/'+selected);if(selected!==supportSelected||S.view!=='support')return;$('#supportTitle').textContent=SUPPORT_TOPICS[d.topic]||'Переписка';const el=$('#supportMessages'),html=d.messages.map(m=>`<div class="support-message ${m.sender}"><small>${m.sender==='guest'?'Гость':'Поддержка'} · ${new Date(m.createdAt).toLocaleString('ru-RU')}</small><div>${esc(m.text)}</div></div>`).join('');if(el.innerHTML!==html){el.innerHTML=html;el.scrollTop=el.scrollHeight;}};
+ if(supportSelected){await read();const form=$('#supportReplyForm');form.onsubmit=async e=>{e.preventDefault();const text=$('#supportReplyText').value.trim();if(!text)return;if(!supportReply||supportReply.thread!==supportSelected||supportReply.text!==text)supportReply={thread:supportSelected,text,key:crypto.randomUUID()};const selected=supportSelected,button=form.querySelector('button');button.disabled=true;$('#supportReplyStatus').textContent='Отправляем…';try{await api('/api/admin/support/'+selected+'/messages',{method:'POST',body:{text,key:supportReply.key}});if(supportSelected===selected){$('#supportReplyText').value='';$('#supportReplyStatus').textContent='Ответ отправлен.';supportReply=null;await read();}}catch(err){if(supportSelected===selected)$('#supportReplyStatus').textContent='Не удалось отправить: '+err.message;}finally{button.disabled=false;}};supportTimer=setInterval(()=>{if(S.view==='support')read().catch(()=>{});else clearInterval(supportTimer);},10000);}
+}
