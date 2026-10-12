@@ -289,6 +289,14 @@ const TR_PLACES = {
 };
 const hmAdd=(hm,min)=>{const [h,m]=String(hm).split(':').map(Number);const t=((h*60+m+min)%1440+1440)%1440;return String(Math.floor(t/60)).padStart(2,'0')+':'+String(t%60).padStart(2,'0');};
 function trSummary(T){return `${TR_PLACES[T.place].dirs[T.dir]} · ${T===TR.bk?(SERVER_HOME.transferOffers.find(o=>o.ref===T.cls)?.name||formText('Транспорт не выбран','Transport not selected')):TR_CLASSES[T.cls].name}`;}
+const phoneCountries=libphonenumber.getCountries();
+const countryNames=new Intl.DisplayNames([IS_EN?'en':'ru'],{type:'region'});
+const sortedPhoneCountries=['RU','KZ',...phoneCountries.filter(c=>!['RU','KZ'].includes(c)).sort((a,b)=>countryNames.of(a).localeCompare(countryNames.of(b),IS_EN?'en':'ru'))];
+const countryLabel=c=>`${countryNames.of(c)} +${libphonenumber.getCountryCallingCode(c)}`;
+function guestPhoneNumber(){try{const p=libphonenumber.parsePhoneNumberFromString(M.form.phone,{defaultCountry:M.form.phoneCountry||'KZ',extract:false});return p?.isValid()&&!p.ext&&p.country===(M.form.phoneCountry||'KZ')?p:null;}catch{return null;}}
+function phoneCountryHTML(){const c=M.form.phoneCountry||'KZ';return `<details class="phone-country" id="phoneCountryPicker"><summary aria-label="${formText('Страна и телефонный код','Country and calling code')}">${esc(countryLabel(c))}</summary><div class="phone-country-menu"><input class="inp" type="search" id="phoneCountrySearch" aria-label="${formText('Поиск страны или кода','Search country or calling code')}" placeholder="${formText('Страна или код','Country or code')}" autocomplete="off"><div class="phone-country-options">${sortedPhoneCountries.map(k=>`<button type="button" data-phone-country="${k}" aria-pressed="${c===k}">${esc(countryLabel(k))}</button>`).join('')}</div><p id="phoneCountryEmpty" hidden>${formText('Страна не найдена','Country not found')}</p></div></details>`;}
+document.addEventListener('input',e=>{if(e.target.id!=='phoneCountrySearch')return;const q=e.target.value.trim().toLocaleLowerCase();let count=0;document.querySelectorAll('[data-phone-country]').forEach(b=>{b.hidden=!`${b.textContent} ${b.dataset.phoneCountry}`.toLocaleLowerCase().includes(q);if(!b.hidden)count++;});$('phoneCountryEmpty').hidden=count>0;});
+document.addEventListener('click',e=>{const b=e.target.closest('[data-phone-country]');if(!b)return;M.form.phoneCountry=b.dataset.phoneCountry;$('phoneCountryPicker').querySelector('summary').textContent=countryLabel(M.form.phoneCountry);document.querySelectorAll('[data-phone-country]').forEach(el=>el.setAttribute('aria-pressed',String(el===b)));$('phoneCountryPicker').open=false;$('bPhone').focus();});
 function formTransfers(){
   const T=TR.bk;if(!T.on)return [];
   const common={place:T.place,offerId:T.cls,carClass:'standard',pax:T.pax,bags:T.bags,childSeats:T.seats,sign:T.sign};const result=[];
@@ -337,7 +345,7 @@ async function showFormPayment(token){
 }
 async function submitServerForm(){
   if(formBusy)return;readForm();
-  const body={apartmentId:M.apt.ref,...formQuoteBody(),name:M.form.name,phone:M.form.phone,comment:M.form.comment,paymentMethod:'card',currency:CUR,lang:IS_EN?'en':'ru'};
+  const body={apartmentId:M.apt.ref,...formQuoteBody(),name:M.form.name,email:M.form.email,phone:guestPhoneNumber()?.number||M.form.phone,phoneCountry:M.form.phoneCountry,comment:M.form.comment,paymentMethod:'card',currency:CUR,lang:IS_EN?'en':'ru'};
   const fp=JSON.stringify(body),retry=formOperation?.token&&formOperation.fingerprint===fp;
   if(!retry && !validateForm())return;
   if(!retry && M.serverQuote?.available!==true){formQuoteKey='';updateFormQuote();refreshFormBits();return;}
@@ -463,7 +471,7 @@ function renderTransferSection(){
 renderTransferSection();
 
 /* ---------- модальное окно: квартира → бронь → оплата; отдельный заказ трансфера ---------- */
-const M = {flow:'booking', apt:null, step:'details', ci:null, co:null, guests:2, pet:false, pay:'card', form:{name:'',phone:'+7 ',comment:''}, photo:0, saved:null, ref:{src:'site',num:'',addr:''}, trPay:'driver'};
+const M = {flow:'booking', apt:null, step:'details', ci:null, co:null, guests:2, pet:false, pay:'card', form:{name:'',email:'',phone:'',phoneCountry:'KZ',comment:''}, photo:0, saved:null, ref:{src:'site',num:'',addr:''}, trPay:'driver'};
 const SUBMIT_LBL = {card:tx('Перейти к оплате'),cash:tx('Забронировать'),telegram:tx('Продолжить в Telegram'),whatsapp:tx('Продолжить в WhatsApp')};
 function showModal(){ $('modal').classList.add('open'); document.body.classList.add('dp-lock'); $('modal').scrollTop=0; }
 function showApt(id){
@@ -570,8 +578,9 @@ function renderModal(){
     const p=a.pets;
     box.innerHTML = close + `<div class="pane has-bar"><div class="step-h"><button type="button" class="backb" data-back="details" aria-label="${tx("Назад")}">${ic('chevL',18)}</button><div><h2 style="font-size:22px">${tx("Оформление брони")}</h2><div class="muted" style="font-size:13px">${tx("Шаг 2 из 3 · без регистрации")}</div></div></div>
       <form id="bookForm" class="form-grid" novalidate><div>
-        <div class="two"><div class="field"><label for="bName">${tx("Имя и фамилия")}</label><input class="inp" id="bName" value="${esc(M.form.name)}" placeholder="${tx("Айдана Серикова")}" autocomplete="name"></div>
-        <div class="field"><label for="bPhone">${tx("Телефон")}</label><input class="inp" id="bPhone" type="tel" inputmode="tel" value="${esc(M.form.phone)}" placeholder="+7 7__ ___ __ __" autocomplete="tel"></div></div>
+        <div class="two"><div class="field"><label for="bName">${tx("Имя и фамилия")}</label><input class="inp" id="bName" value="${esc(M.form.name)}" placeholder="${tx("Айдана Серикова")}" autocomplete="name" required></div>
+        <div class="field"><label for="bEmail">Email</label><input class="inp" id="bEmail" type="email" value="${esc(M.form.email||'')}" placeholder="name@example.com" autocomplete="email" required></div></div>
+        <div class="field"><label for="bPhone">${tx("Телефон")}</label><div class="guest-phone-fields">${phoneCountryHTML()}<input class="inp" id="bPhone" type="tel" inputmode="tel" value="${esc(M.form.phone)}" placeholder="${formText('Номер телефона','Phone number')}" aria-label="${tx('Телефон')}" autocomplete="tel-national" required></div></div>
         <div class="field"><label>${tx("Даты проживания")}</label><div id="formDates">${dateFieldsHTML('data-dp-apt')}</div></div>
         <div class="field"><label for="bG">${tx("Гости")}</label><select class="inp" id="bG">${Array.from({length:a.maxGuests},(_,i)=>`<option value="${i+1}" ${M.guests===i+1?'selected':''}>${guestsWord(i+1)}</option>`).join('')}</select></div>
         <label class="chk ${p.allowed?'':'dis'}" id="petChk"><input type="checkbox" id="bPet" ${M.pet&&p.allowed?'checked':''} ${p.allowed?'':'disabled'}><div><b>${ic('paw',16)} ${tx("Еду с животным")} ${p.allowed?(p.fee?`+${gm(p.fee)}`:tx('— бесплатно')):''}</b><small>${p.allowed?`${tx("Питомец")} ${tx("· доплата за всё проживание, не за ночь")}`:tx('В этой квартире нельзя с животными — выберите квартиру со значком «можно с животными»')}</small></div></label>
@@ -647,7 +656,7 @@ function refreshFormBits(){updateFormQuote(); const t=totals();
 
   if($('bkTrPrice'))$('bkTrPrice').innerHTML=formTransferPriceHTML();
   document.querySelectorAll('.pay[data-pay]').forEach(p=>p.classList.toggle('on', p.dataset.pay===M.pay)); }
-function readForm(){ if(!$('bName')) return; M.form.name=$('bName').value.trim(); M.form.phone=$('bPhone').value.trim(); M.form.comment=$('bCom').value.trim();
+function readForm(){ if(!$('bName')) return; M.form.name=$('bName').value.trim(); M.form.phone=$('bPhone').value.trim(); M.form.email=$('bEmail').value.trim(); M.form.comment=$('bCom').value.trim();
   M.guests=+$('bG').value; M.pet=$('bPet').checked; }
 function makeBad(errId){
   const err=$(errId);
@@ -657,7 +666,8 @@ function clearBad(root, errId){ document.querySelectorAll(root+' .bad').forEach(
 function validateForm(){
   const bad=makeBad('bErr'); clearBad('#bookForm','bErr');
   if(M.form.name.length<2) return bad($('bName'),tx('Укажите имя'));
-  if(M.form.phone.replace(/\D/g,'').length<11) return bad($('bPhone'),tx('Укажите телефон полностью, например +7 701 123 45 67'));
+  if(!M.form.email||!$('bEmail').checkValidity())return bad($('bEmail'),formText('Укажите корректный email','Enter a valid email address'));
+  if(!guestPhoneNumber())return bad($('bPhone'),formText('Проверьте номер и выбранную страну','Check the phone number and selected country'));
   if(M.ci==null) return bad($('dfCi'),tx('Выберите дату заезда'));
   if(M.co==null || M.co<=M.ci) return bad($('dfCo'),tx('Выберите дату выезда'));
   if(!rangeFree(M.apt.id,M.ci,M.co)) return bad($('dfCi'),tx('Эти даты уже заняты — выберите другие в календаре'));

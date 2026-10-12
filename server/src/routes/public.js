@@ -1,3 +1,4 @@
+import { parsePhoneNumberFromString, getCountries } from 'libphonenumber-js/max';
 import { getSettings } from '../services/settings.js';
 import { resolveRules } from '../../public/shared/house-rules.js';
 // API для сайта гостей (без входа). Аккаунт определяется по slug в адресе:
@@ -40,7 +41,7 @@ const TransferSchema = z.object({
 const BookingSchema = z.object({
   transfers: z.array(TransferSchema.omit({bookingToken:true,name:true,phone:true,lang:true}).extend({offerId:z.string().uuid(),pax:z.number().int().min(1).max(60),bags:z.number().int().min(0).max(60)})).max(2).default([]),
   apartmentId: z.string(), checkIn: z.string(), checkOut: z.string(), guests: z.number().int().min(1).max(30),
-  name: z.string().trim().min(2).max(80), phone: z.string().trim().regex(phoneRe, 'Телефон в формате +7 700 000 00 00'), email: z.string().email().optional().or(z.literal('').transform(() => undefined)),
+  name: z.string().trim().min(2).max(80), phone: z.string().trim().max(40).transform((value,ctx)=>{const p=parsePhoneNumberFromString(value,{extract:false});if(!p?.isValid()||p.ext){ctx.addIssue({code:z.ZodIssueCode.custom,message:'Укажите корректный международный номер телефона'});return z.NEVER;}return p.number;}), phoneCountry:z.enum(getCountries()).optional(), email: z.string().trim().email('Укажите корректный email'),
   comment: z.string().max(1000).optional(), pets: z.boolean().optional(), currency: z.enum(['KZT', 'RUB', 'USD', 'EUR']).default('KZT'),
   paymentMethod: z.string().max(40).optional(), lang: z.enum(['ru', 'en']).default('ru'),   // проход 4: на сайте — только 'card' (проверка ниже)
   earlyCheckIn: z.string().regex(/^\d{2}:\d{2}$/, 'Время в формате ЧЧ:ММ').optional(),   // «можно заехать в 10 утра?» — согласует админ
@@ -162,6 +163,7 @@ export default function publicRouter({ events, payments, config, dispatch, stora
   r.post('/bookings', async (req, res) => {
     const key = operationKey(req,config);
     const d = parse(BookingSchema, req.body);
+    if(d.phoneCountry && parsePhoneNumberFromString(d.phone)?.country!==d.phoneCountry)throw badRequest('Номер не соответствует выбранной стране');
     checkCheckoutTransfers(d);
     // проход 4, шаг 4: обычный гость бронирует на сайте только с оплатой картой; способ оплаты ставит сервер.
     // Любое другое значение — 400 (а не молчаливая замена: гость должен понять, что наличных на сайте нет).
