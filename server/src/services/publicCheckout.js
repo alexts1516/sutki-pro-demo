@@ -4,7 +4,7 @@ import { HttpError } from '../lib/errors.js';
 import crypto from 'node:crypto';
 import { safeEqual } from '../lib/tokens.js';
 import { randomToken } from '../lib/tokens.js';
-import { digest, scopedDigest, accessSecret, fingerprint, paymentGuest, safeIntent } from '../lib/publicDtos.js';
+import { digest, scopedDigest, accessSecret, notificationAccessSecret, fingerprint, paymentGuest, safeIntent } from '../lib/publicDtos.js';
 import { createBookingRequest, withApartmentTx, extendHold, quote } from './bookings.js';
 import { transferLegPrice, bundledTransferKeys } from './transfers.js';
 
@@ -36,12 +36,16 @@ export async function findGuestBooking(accountId, token) {
 }
 export async function checkout({ accountId, apartment, data, guestData, key, config, holdUntil, amountShown }) {
   const checkoutKeyHash = scopedDigest(accountId, key), checkoutRequestHash = fingerprint(data);
-  const token = accessSecret(config, accountId, key);
+  let token = notificationAccessSecret(config, accountId, checkoutKeyHash);
   const replay = async () => {
     const b = await prisma.booking.findUnique({ where: { checkoutKeyHash }, include: { apartment: true, guest: true } });
     if (!b) return null;
     if (b.checkoutRequestHash !== checkoutRequestHash) throw new HttpError(409, 'Ключ операции уже использован с другими условиями');
-    if (b.guestAccessHash !== digest(token)) throw new HttpError(409, 'Доступ к этой операции нужно восстановить');
+    if (b.guestAccessHash !== digest(token)) {
+      const oldToken=accessSecret(config,accountId,key);
+      if(b.guestAccessHash!==digest(oldToken))throw new HttpError(409,'Доступ к этой операции нужно восстановить');
+      token=oldToken;
+    }
     return b;
   };
   const existing = await replay(); if (existing) return { booking: existing, token, replayed: true };

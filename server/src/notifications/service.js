@@ -1,6 +1,7 @@
 // Сервис уведомлений: слушает события и пишет владельцу/админам, сотрудникам и гостям.
 // Если Telegram-бот не настроен (нет TELEGRAM_BOT_TOKEN) — сообщение печатается в консоль
 // и сохраняется в журнал NotificationLog со статусом «logged». Ничего не падает.
+import { paidBookingUrl } from '../lib/publicDtos.js';
 import { render } from './templates.js';
 import { consoleTransport } from './transports.js';
 import { nights } from '../lib/dates.js';
@@ -18,7 +19,7 @@ export const EVENTS = ['booking.requested', 'booking.confirmed', 'checkin.upcomi
   'cleaning.problem', 'repair.declined', 'payout.created', 'payout.reminder',
   'link.started', 'link.completed', 'link.expired', 'link.conflict', 'payment.orphaned'];
 
-export function createNotificationService({ prisma, transport = null, logger = console, quiet = false }) {
+export function createNotificationService({ prisma, transport = null, logger = console, quiet = false, bookingDelivery = null, notificationConfig = config }) {
   const fallback = consoleTransport({ quiet });
 
   /** Отправить одно сообщение и записать в журнал */
@@ -128,7 +129,19 @@ export function createNotificationService({ prisma, transport = null, logger = c
     },
     async 'booking.confirmed'({ accountId, bookingId }) {
       const b = await loadBooking(accountId, bookingId); if (!b) return;
-      return toGuest(accountId, b.guest, 'booking.confirmed', bookingData(b), `booking.confirmed:${b.id}`);
+      const telegramResult=await toGuest(accountId, b.guest, 'booking.confirmed', bookingData(b), `booking.confirmed:${b.id}`);
+      // A transient delivery capability: never add it to events, DTOs or NotificationLog.
+      // A manual confirmation or browser redirect is insufficient proof of payment.
+      if(bookingDelivery && b.status==='confirmed' && b.paymentStatus==='paid' && b.source==='site'){
+        const verified=await prisma.payment.findFirst({where:{accountId,bookingId:b.id,transferId:null,status:'succeeded'},select:{id:true}});
+        const bookingUrl=verified?paidBookingUrl(notificationConfig,b):null;
+        if(bookingUrl)try{
+          await bookingDelivery({accountId,bookingId:b.id,number:b.number,email:b.guest?.email||null,
+            apartment:b.apartment.title,checkIn:b.checkIn,checkOut:b.checkOut,totalKzt:b.totalKzt,bookingUrl,
+            dedupeKey:`booking.confirmed.delivery:${b.id}`});
+        }catch{throw new Error('Booking confirmation delivery failed');} // no secret in provider errors/logs
+      }
+      return telegramResult;
     },
     /** Напоминание команде о заезде (сегодня/завтра) + инструкция гостю */
     async 'checkin.upcoming'({ accountId, bookingId, when }) {

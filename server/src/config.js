@@ -1,9 +1,11 @@
 // Все настройки сервера из переменных окружения (.env). Ничего секретного в коде.
 import 'dotenv/config';
+import dotenv from 'dotenv';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+dotenv.config({path:path.join(ROOT,'.env.resend.local'),quiet:true});
 const env = process.env;
 const list = s => (s || '').split(',').map(x => x.trim()).filter(Boolean);
 
@@ -57,6 +59,7 @@ export const config = {
     aerodataboxKey: env.AERODATABOX_API_KEY || '',
     aerodataboxHost: env.AERODATABOX_HOST || 'aerodatabox.p.rapidapi.com',
   },
+  resend: { enabled:env.RESEND_ENABLED==='1', apiKey:env.RESEND_API_KEY||'', from:env.RESEND_FROM||'SUTKI PRO <onboarding@resend.dev>', testTo:(env.RESEND_TEST_TO||'').trim().toLowerCase() },
   // Ограничение попыток входа и запросов к ссылкам без входа (в памяти процесса)
   rateLimit: {
     loginMax: Number(env.LOGIN_MAX_ATTEMPTS || 5),          // неудачных попыток на логин+IP за окно

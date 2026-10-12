@@ -5,6 +5,18 @@ export const digest = value => crypto.createHash('sha256').update(String(value))
 export const scopedDigest = (accountId, value) => digest(JSON.stringify([accountId, value]));
 export const publicRef = (config, accountId, id) => crypto.createHmac('sha256', config.publicAccessSecret || config.jwtSecret).update(JSON.stringify(['apartment', accountId, id])).digest('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
 export const accessSecret = (config, accountId, key) => crypto.createHmac('sha256', config.publicAccessSecret || config.jwtSecret).update(JSON.stringify(['booking-access', accountId, key])).digest('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+// Recoverable only with the server secret, scoped to this account and checkout.
+// The stored operation hash alone is never a guest capability.
+export const notificationAccessSecret = (config, accountId, checkoutKeyHash) => crypto.createHmac('sha256', config.publicAccessSecret || config.jwtSecret).update(JSON.stringify(['booking-notification-access-v1', accountId, checkoutKeyHash])).digest('base64url');
+export function paidBookingUrl(config, b) {
+  if(b.source!=='site'||b.status!=='confirmed'||b.paymentStatus!=='paid'||!b.checkoutKeyHash||!b.guestAccessHash)return null;
+  const token=notificationAccessSecret(config,b.accountId,b.checkoutKeyHash);
+  // Older capabilities retain their original access; never issue a different secret.
+  if(digest(token)!==b.guestAccessHash)return null;
+  const base=new URL(config.publicUrl);
+  if(!['http:','https:'].includes(base.protocol)||base.username||base.password)throw Error('Invalid public booking URL configuration');
+  return new URL('/booking/'+token,base).href;
+}
 export const fingerprint = data => digest(JSON.stringify(Object.keys(data).sort().map(k => [k, data[k]])));
 const photo = (p,config,accountId,slug) => p ? { url: (p.url.startsWith('data:') || p.url.includes('/demo/assets/')) ? p.url : `/api/public/${encodeURIComponent(slug)}/photos/${publicRef(config,accountId,'photo:'+p.id)}`, caption:p.caption,isCover:!!p.isCover } : null;
 export function apartmentGuest(a, config, accountId, slug) {

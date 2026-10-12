@@ -3,6 +3,7 @@ import { config } from './config.js';
 import { prisma } from './db.js';
 import { createApp } from './app.js';
 import { createEventBus } from './notifications/events.js';
+import { createResendBookingDelivery } from './notifications/resend.js';
 import { createNotificationService } from './notifications/service.js';
 import { telegramTransport } from './notifications/transports.js';
 import { startScheduler } from './notifications/scheduler.js';
@@ -22,7 +23,7 @@ if (config.telegram.token) {
   transport = telegramTransport(bot.api);
   if (config.telegram.mode === 'webhook') telegramWebhook = telegramWebhookHandler(bot);
 }
-createNotificationService({ prisma, transport }).register(events);
+createNotificationService({ prisma, transport, notificationConfig:config, bookingDelivery:createResendBookingDelivery({prisma,config}) }).register(events);
 
 const app = createApp({ config, events, storage, payments, telegramWebhook, flights });
 if (bot) {
