@@ -239,18 +239,29 @@ export async function apartmentOps(accountId, apartmentId, { role, now = new Dat
   const { items } = await buildItems(snap, { role, accountId });
   const photos = await prisma.cleaningPhoto.findMany({ where: { accountId, id: { in: s.defects.flatMap(d => d.photoIds || []) } } });
   const bk = (b) => b && { id: b.id, number: b.number, guest: b.guest?.name || null, phone: b.guest?.phone || null, guestsCount: b.guestsCount, checkIn: isoDay(b.checkIn), checkInTime: b.checkInTime, checkOut: isoDay(b.checkOut), checkOutTime: b.checkOutTime, paymentStatus: b.paymentStatus, earlyCheckIn: b.earlyCheckIn, earlyCheckInStatus: b.earlyCheckInStatus };
-  const prep = s.pending[0] || null;
+  // В карточке отделяем незакрытые задачи до текущего заезда, не закрывая их автоматически.
+  const previousPrep = s.current ? snap.cleanings.filter(c => c.apartmentId === a.id && c.status !== 'done' && c.date < s.current.checkIn && c.bookingId !== s.current.id) : [];
+  const previousIds = new Set(previousPrep.map(c => c.id));
+  const upcomingPrep = s.pending.filter(c => !previousIds.has(c.id));
+  const prep = upcomingPrep[0] || null;
+  const linkedBookings = previousPrep.length ? await prisma.booking.findMany({ where: { accountId, id: { in: previousPrep.map(c => c.bookingId).filter(Boolean) } }, select: { id: true, number: true, checkOut: true } }) : [];
+  const prepOut = c => ({ id: c.id, date: isoDay(c.date), status: c.status, assignee: c.assignee?.name || null, deadline: cleaningDeadline(c, snap.bookings, snap.tz) });
+  const pastActions = items.filter(i => previousIds.has(i.ref) && i.kind.startsWith('prep_'));
+  const currentReasons = s.reasons.filter(reason => !previousPrep.some(c => reason === (c.status === 'progress' ? `Подготовка идёт (${c.assignee?.name || '—'})` : c.assigneeId ? `Подготовка не начата (${c.assignee?.name})` : 'Подготовка не назначена')) || upcomingPrep.some(c => reason === (c.status === 'progress' ? `Подготовка идёт (${c.assignee?.name || '—'})` : c.assigneeId ? `Подготовка не начата (${c.assignee?.name})` : 'Подготовка не назначена')));
   const proof = s.lastDone ? s.lastDone.photos.slice(-8).map(p => ({ id: p.id, url: p.url, itemIndex: p.itemIndex, kind: p.kind })) : [];
   return {
     apartment: { id: a.id, title: a.title, label: s.label, address: a.address },
     state: s.state, stateLabel: s.stateLabel, ready: s.ready, reasons: s.reasons,
     current: bk(s.current), next: bk(s.next), nextOut: s.nextOut && s.nextOut !== s.current ? bk(s.nextOut) : null,
-    prep: prep && { id: prep.id, date: isoDay(prep.date), status: prep.status, assignee: prep.assignee?.name || null, deadline: cleaningDeadline(prep, snap.bookings, snap.tz) },
+    prep: prep && prepOut(prep),
+    currentReasons,
+    previousPrep: previousPrep.map(c => { const b = linkedBookings.find(b => b.id === c.bookingId); return { ...prepOut(c), bookingNumber: b?.number || null, checkOut: b ? isoDay(b.checkOut) : null }; }),
+    previousPrepActions: pastActions,
     lastDone: s.lastDone && { id: s.lastDone.id, date: isoDay(s.lastDone.date), assignee: s.lastDone.assignee?.name || null, startedAt: s.lastDone.startedAt, doneAt: s.lastDone.doneAt, finishNote: s.lastDone.finishNote, reviewedAt: s.lastDone.reviewedAt },
     proofPhotos: proof,
     defects: s.defects.map(d => defectOut(d, photos)),
     repairs: s.repairs.map(r => ({ id: r.id, title: r.title, status: r.status, date: isoDay(r.date), executor: r.contractor?.name || r.assignee?.name || r.assigneeLabel || null })),
-    actions: items.filter(i => i.aptId === a.id && ['critical', 'action'].includes(i.level)).sort((x, y) => LEVELS.indexOf(x.level) - LEVELS.indexOf(y.level)),
+    actions: items.filter(i => i.aptId === a.id && ['critical', 'action'].includes(i.level) && !pastActions.includes(i)).sort((x, y) => LEVELS.indexOf(x.level) - LEVELS.indexOf(y.level)),
   };
 }
 

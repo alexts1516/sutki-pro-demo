@@ -74,15 +74,41 @@ const view = (html) => { $('#view').innerHTML = html; };
 window.addEventListener('hashchange', () => { if (!S.me) return; const [v, id] = location.hash.slice(1).split('/'); if (myViews().some(x => x[0] === v)) go(v, id); });
 
 // ---------------- квартиры ----------------
+function apartmentListMarkup(list,states,search){
+    const q=String(search||'').trim().toLocaleLowerCase('ru');
+    const result=list.filter(a=>!q||(/^\d+$/.test(q)?String(a.code||'')===q:[a.code,a.title,a.complex,a.address,a.district].some(x=>String(x||'').toLocaleLowerCase('ru').includes(q))));
+    const html=result.map(a=>{const c=a.photos[0],o=states[a.id];return `<button class="card apt-card" data-apt="${a.id}"><div class="ph">${c?`<img src="${esc(c.url)}" alt="${esc(c.caption||a.title)}" loading="lazy">`:'<span class="apartment-no-photo">Фото пока не добавлено</span>'}<span class="apartment-number">${esc(a.code?'№ '+a.code:'Квартира')}</span></div><div class="bd"><b title="${esc(a.title)}">${esc(a.title)}</b><div class="muted" title="${esc(a.address||a.district||'')}">${esc(a.address||a.district||'Адрес не заполнен')}</div><div class="apartment-state"><span class="chip ${o?.state==='occupied'?'blue':''}">${o?o.state==='occupied'?'Гость живёт':'Свободна сейчас':'Проживание: нет данных'}</span><span class="chip ${o?.ready?'green':'amber'}">Готовность: ${o?o.ready?'готова':'требует проверки':'нет данных'}</span>${o?.urgentDefects?`<span class="chip red">Срочных недочётов: ${o.urgentDefects}</span>`:''}</div><div class="apartment-next">${o?.next?'Ближайший заезд: '+fmtDay(o.next.checkIn)+' '+esc(o.next.time):'Ближайший заезд не указан'}</div><div class="apartment-card-foot"><span>${money(a.basePriceKzt)} / ночь</span><strong>Открыть управление →</strong></div></div></button>`;}).join('')||'<div class="empty">Квартиры не найдены</div>';
+
+    return {html,count:'Показано: '+result.length+' из '+list.length};
+  };
+
+async function openApartmentListPanel(ids=null){
+  const [list,operations]=await Promise.all([api('/api/admin/apartments'),api('/api/admin/today')]);
+  if(S.view!=='today')return;
+  const states=Object.fromEntries(operations.apartments.map(a=>[a.id,a]));
+  const shown=ids?list.filter(a=>ids.includes(a.id)):list;
+  S.aptPanelSearch ??= '';S.aptPanelScroll=0;S.apartmentOrigin='today';
+  S.apartmentListPanel=()=>{
+    cardGeneration++;cardHistory.length=0;activeCard=null;
+    const body=drawer(`<div class="apartment-list-panel"><div class="dh"><h2>Квартиры</h2></div><label class="apartment-search">Найти квартиру<input id="aptPanelSearch" type="search" placeholder="Адрес, ЖК или номер квартиры" value="${esc(S.aptPanelSearch)}"></label><p class="muted small" id="aptPanelResults"></p><div class="apt-list ops-apartment-list" id="aptPanelCards"></div></div>`);
+    const paint=()=>{const r=apartmentListMarkup(shown,states,S.aptPanelSearch);$('#aptPanelResults',body).textContent=r.count;$('#aptPanelCards',body).innerHTML=r.html;};paint();body.scrollTop=S.aptPanelScroll||0;
+    $('#aptPanelSearch',body).oninput=e=>{S.aptPanelSearch=e.target.value;paint();S.aptPanelScroll=0;};
+    body.onclick=e=>{const card=e.target.closest('[data-apt]');if(card){S.aptPanelScroll=body.scrollTop;S.apartmentOrigin='today';openItem('apt:'+card.dataset.apt);}};
+  };
+  S.apartmentListPanel();
+}
+
 async function renderApartments() {
-  const list = await api('/api/admin/apartments');
-  view(`<div class="page-head"><div><h1>Квартиры</h1><p class="sub">${list.length} объектов · фото без ограничений, у каждого — подпись и порядок</p></div>
-    <button class="btn primary" id="aptNew">+ Добавить квартиру</button></div>
-    <div class="apt-list">${list.map(a => { const c = a.photos[0]; return `<button class="card apt-card" data-apt="${a.id}">
-      <div class="ph" style="${c ? `background-image:url('${esc(c.url)}')` : ''}">${a.photos.length ? `<span class="n">📷 ${a.photos.length}</span>` : '<span class="n">нет фото</span>'}</div>
-      <div class="bd"><b>${esc(a.title)}</b><div class="muted">${esc(a.district)} · ${esc(a.rooms)} · до ${a.maxGuests} гост.</div><div style="margin-top:6px;font-weight:600">${money(a.basePriceKzt)} <span class="muted" style="font-weight:400">/ ночь</span>${a.active ? '' : ' <span class="chip">скрыта</span>'}</div></div></button>`; }).join('')}</div>`);
-  $('#aptNew').onclick = () => go('apartments', 'new');
-  $('#view').onclick = (e) => { const c = e.target.closest('[data-apt]'); if (c) go('apartments', c.dataset.apt); };
+  const [list,operations]=await Promise.all([api('/api/admin/apartments'),api('/api/admin/today')]);
+  if(S.view!=='apartments')return;
+  const states=Object.fromEntries(operations.apartments.map(a=>[a.id,a]));
+  S.aptSearch ??= new URLSearchParams(location.search).get('apartment') || '';
+  view(`<div class="page-head"><div><h1>Квартиры</h1><p class="sub">${list.length} объектов · состояние, подготовка и вопросы по каждой квартире</p></div><button class="btn primary" id="aptNew">+ Добавить квартиру</button></div><label class="apartment-search">Найти квартиру<input type="search" id="aptSearch" placeholder="Адрес, ЖК или номер квартиры" value="${esc(S.aptSearch)}"></label><p class="muted small" id="aptResults"></p><div class="apt-list ops-apartment-list" id="aptCards"></div>`);
+  const resultMarkup=()=>apartmentListMarkup(list,states,S.aptSearch);
+  const paint=()=>{const r=resultMarkup();$('#aptResults').textContent=r.count;$('#aptCards').innerHTML=r.html;};
+  paint();$('#aptSearch').oninput=e=>{S.aptSearch=e.target.value;paint();};
+  $('#aptNew').onclick=()=>go('apartments','new');
+  $('#view').onclick=e=>{const card=e.target.closest('[data-apt]');if(card){S.aptListScroll=window.scrollY;S.apartmentOrigin='catalog';openItem('apt:'+card.dataset.apt);}};
 }
 
 const FIELDS = [
@@ -856,7 +882,7 @@ function drawer(html) {
   body.scrollTop = 0;
   return body;
 }
-function closeDrawer(preserve = false) { if (!preserve) { cardGeneration++; cardHistory.length = 0; activeCard = null; } const d = $('#drawer'); if (d) d.hidden = true; document.body.classList.remove('noscroll'); }
+function closeDrawer(preserve = false) { if (!preserve) { cardGeneration++; cardHistory.length = 0; activeCard = null; } const d = $('#drawer'); if (d) d.hidden = true; document.body.classList.remove('noscroll'); if(S.view==='apartments' && S.aptListScroll!=null)window.scrollTo(0,S.aptListScroll); }
 /** Открыть детали одним кликом: apt:<id> квартира · bk:<id> бронь · tr:<jobId>:<transferId> трансфер · cl:<id> подготовка · wr:<id> заявка мастеру */
 const openItem = guard(async (code, back = false) => {
   if (cardLoading) return;
@@ -949,6 +975,7 @@ async function renderToday() {
   const setDate=guard(async d=>{S.homeDate=d;await renderToday();});
   $('#homeDate').onchange=e=>{if(e.target.value)setDate(e.target.value);};$('#homeRefresh').onclick=guard(renderToday);
   const allList=key=>{
+    if(['apartments','occupied','free'].includes(key)){const selected=key==='apartments'?null:key==='free'?notOccupied.map(a=>a.id):cal.apartments.filter(a=>!notOccupied.includes(a)).map(a=>a.id);return openApartmentListPanel(selected);}
     const list=key==='plan'?filtered():key==='attention'?attention:null;
     const title=key==='attention'?'Актуальные проблемы':key==='plan'?'План на '+fmtDay(date):'Квартиры · '+fmtDay(date);
     const apts=key==='occupied'?cal.apartments.filter(a=>!notOccupied.includes(a)):key==='free'?notOccupied:cal.apartments;
@@ -989,25 +1016,26 @@ async function defectAction(e) {
 }
 async function apartmentCard(id) {
   const generation = cardGeneration;
-  const o = await api(`/api/admin/apartments/${id}/ops`);
+  const [o, apartment] = await Promise.all([api(`/api/admin/apartments/${id}/ops`), api(`/api/admin/apartments/${id}`)]);
   if (generation !== cardGeneration) return;
   const ph = (list) => list?.length ? `<div class="wr-photos sm">${list.map(p => `<a href="${esc(p.url)}" target="_blank" rel="noopener" style="background-image:url('${esc(p.url)}')"></a>`).join('')}</div>` : '';
   const g = (b, what) => b ? `<button class="li" data-open="bk:${b.id}"><span>${what} · бронь №${b.number || '—'} · <b>${esc(b.guest || 'гость')}</b> · ${b.guestsCount} гост.<br><span class="muted small">${fmtDay(b.checkIn)} ${esc(b.checkInTime)} → ${fmtDay(b.checkOut)} ${esc(b.checkOutTime)}${b.earlyCheckInStatus === 'requested' ? ` · 🕙 просит заезд в ${esc(b.earlyCheckIn)}` : ''}</span></span><span>›</span></button>` : '';
-  const body = drawer(`<div class="dh"><div class="muted small">🏠 Квартира</div><h2>${esc(o.apartment.label)}</h2><div class="muted small">${esc(o.apartment.title)}${o.apartment.address ? ' · ' + esc(o.apartment.address) : ''}</div>
-      <div class="row" style="margin-top:8px"><span class="chip ${READY_TONE[o.state] || ''}">${o.state === 'ready' ? '✓ ' : ''}${esc(o.stateLabel)}</span></div></div>
-    ${o.reasons.length ? `<div class="alert ${o.state === 'blocked' ? 'red' : 'amber'}"><b>${o.state === 'occupied' ? 'Что важно' : 'Почему не готова'}:</b><ul class="reasons">${o.reasons.map(r => `<li>${esc(r)}</li>`).join('')}</ul></div>` : o.state === 'ready' ? '<div class="muted small">Готова: подготовка закончена, отчёт принят, срочных недочётов нет.</div>' : ''}
-    ${o.actions.length ? `<section class="ds"><h3>Что сделать</h3><div class="op-list">${o.actions.filter(a => a.open !== 'apt:' + id).map(opItem).join('') || '<div class="muted small">Ниже — недочёты с кнопками</div>'}</div></section>` : ''}
-    <section class="ds"><h3>Гости</h3>${o.current ? g(o.current, 'Сейчас живёт') : '<div class="muted small" style="margin-bottom:6px">Сейчас свободна</div>'}${g(o.next, o.nextOut?.id === o.next?.id ? 'Ближайшая бронь · заезд и выезд' : 'Ближайший заезд')}${o.nextOut && o.nextOut.id !== o.next?.id && o.nextOut.id !== o.current?.id ? g(o.nextOut, 'Ближайший выезд') : ''}${!o.current && !o.next ? '<div class="muted small">Ближайших броней нет</div>' : ''}</section>
-    <section class="ds"><h3>Подготовка</h3>${o.prep ? `<button class="li" data-open="cl:${o.prep.id}"><span>✨ ${fmtDay(o.prep.date)} · ${esc(o.prep.assignee || 'не назначена')}<br><span class="muted small">срок: ${deadlineText(o.prep.deadline.at)} (${esc(o.prep.deadline.reason)})</span></span>${badge(CL_ST, o.prep.status)}</button>` : '<div class="muted small">Текущей подготовки нет</div>'}
-      ${o.lastDone ? `<button class="li" data-open="cl:${o.lastDone.id}"><span>Последняя готова: ${fmtDay(o.lastDone.date)} · ${esc(o.lastDone.assignee || '')}${o.lastDone.doneAt ? ' · ' + hmOf(o.lastDone.doneAt) : ''}</span><span>›</span></button>` : ''}
-      ${o.proofPhotos.length ? `<div class="small muted" style="margin:4px 0">Фото-подтверждение</div>${ph(o.proofPhotos)}` : ''}</section>
+  const body = drawer(`<div class="apartment-manage"><div class="apartment-return"><button class="btn sm" data-apt-list>← К списку квартир</button></div><div class="dh">${apartment.photos?.[0] ? `<img class="apartment-manage-photo" src="${esc(apartment.photos[0].url)}" alt="${esc(apartment.title)}">` : ''}<div class="muted small">🏠 Управление квартирой</div><h2>${esc(o.apartment.label)}</h2><div class="muted small">${esc(o.apartment.title)}${o.apartment.address ? ' · ' + esc(o.apartment.address) : ''}</div>
+      <div class="row" style="margin-top:8px"><span class="chip ${o.current?'blue':''}">Проживание: ${o.current?'гость живёт':'сейчас свободна'}</span><span class="chip ${o.ready?'green':'amber'}">Готовность: ${o.ready?'готова':'требует проверки'}</span></div></div>
+    ${o.actions.length ? `<section class="ds"><h3>Требуют внимания сейчас</h3><div class="op-list">${o.actions.filter(a => a.open !== 'apt:' + id).map(opItem).join('') || '<div class="muted small">Ниже — недочёты с кнопками</div>'}</div></section>` : ''}
+    <section class="ds"><h3>Проживание и ближайшая бронь</h3>${o.current ? g(o.current, 'Сейчас живёт') : '<div class="muted small" style="margin-bottom:6px">Сейчас свободна</div>'}${g(o.next, o.nextOut?.id === o.next?.id ? 'Ближайшая бронь · заезд и выезд' : 'Ближайший заезд')}${o.nextOut && o.nextOut.id !== o.next?.id && o.nextOut.id !== o.current?.id ? g(o.nextOut, 'Ближайший выезд') : ''}${!o.current && !o.next ? '<div class="muted small">Ближайших броней нет</div>' : ''}</section>
+    <section class="ds"><h3>Подготовка к ближайшему заезду</h3>${o.prep ? `<button class="li" data-open="cl:${o.prep.id}"><span>✨ ${fmtDay(o.prep.date)} · ${esc(o.prep.assignee || 'не назначена')}<br><span class="muted small">срок: ${deadlineText(o.prep.deadline.at)} (${esc(o.prep.deadline.reason)})</span></span>${badge(CL_ST, o.prep.status)}</button>` : '<div class="muted small">Незавершённой подготовки к ближайшему заезду нет</div>'}
+    </section>
+    ${o.lastDone ? `<details class="ds apartment-completed"><summary>История завершённой подготовки</summary><button class="li" data-open="cl:${o.lastDone.id}"><span>${fmtDay(o.lastDone.date)} · ${esc(o.lastDone.assignee || '')}${o.lastDone.doneAt?' · '+hmOf(o.lastDone.doneAt):''}</span><span>Открыть →</span></button>${o.proofPhotos.length?ph(o.proofPhotos):''}</details>`:''}
+    ${o.previousPrep?.length ? `<section class="ds apartment-previous"><h3>Незакрытые задачи до текущего заезда · ${o.previousPrep.length}</h3><p class="muted small">Это предыдущая подготовка. Нет отметки о завершении — проверьте отчёт с исполнителем. Проживание гостя не подтверждает выполнение задачи.</p>${o.previousPrep.map(c=>`<button class="li" data-open="cl:${c.id}"><span><b>Подготовка ${fmtDay(c.date)}${c.bookingNumber?' · после брони №'+c.bookingNumber:''}</b><br><span class="muted small">${esc(c.assignee||'Не назначена')} · отметки о завершении нет</span></span><span>Проверить →</span></button>`).join('')}</section>` : ''}
     <section class="ds"><h3>Недочёты · ${o.defects.length}</h3>${o.defects.length ? o.defects.map(p => defectHtml(p, ph)).join('') : '<div class="muted small">Открытых недочётов нет</div>'}
       <details style="margin-top:8px"><summary class="small" style="cursor:pointer;color:var(--primary);font-weight:600">+ Добавить недочёт</summary><form id="dfNew" class="stack" style="gap:8px;margin-top:8px"><input name="text" placeholder="Что не так (например: мигает лампа в коридоре)" required>
         <div class="row"><label class="chk"><input type="radio" name="priority" value="later" checked> можно позже</label><label class="chk"><input type="radio" name="priority" value="urgent"> срочно — мешает заезду</label><button class="btn sm primary">Добавить</button></div></form></details></section>
-    <section class="ds"><h3>Работы мастеров</h3>${o.repairs.length ? o.repairs.map(r => `<button class="li" data-wr="${r.id}"><span>🔧 ${esc(r.title)}<br><span class="muted small">${fmtDay(r.date)}${r.executor ? ' · ' + esc(r.executor) : ' · мастер не выбран'}</span></span>${wrBadge(r.status)}</button>`).join('') : '<div class="muted small">Активных работ нет</div>'}</section>
-    <div class="row"><button class="btn sm" data-edit>Данные и фото квартиры</button></div>`);
+    ${o.repairs.some(r=>!o.actions.some(a=>a.open==='wr:'+r.id))?`<section class="ds"><h3>Другие работы мастеров</h3>${o.repairs.filter(r=>!o.actions.some(a=>a.open==='wr:'+r.id)).map(r=>`<button class="li" data-wr="${r.id}"><span>🔧 ${esc(r.title)}<br><span class="muted small">${fmtDay(r.date)} · ${esc(r.executor||'мастер не выбран')}</span></span>${wrBadge(r.status)}</button>`).join('')}</section>`:''}
+    <div class="row"><button class="btn sm" data-edit>Редактировать данные и фото</button></div></div>`);
   body.querySelector('#dfNew').onsubmit = guard(async (e) => { e.preventDefault(); const f = e.target; await api('/api/admin/defects', { method: 'POST', body: { apartmentId: id, text: f.elements.text.value, priority: f.querySelector('[name=priority]:checked').value } }); toast('Недочёт добавлен'); refresh(); apartmentCard(id); });
   body.onclick = guard(async (e) => {
+    if(e.target.closest('[data-apt-list]')){if(S.apartmentOrigin==='today'&&S.view==='today'&&S.apartmentListPanel)S.apartmentListPanel();else if(S.apartmentOrigin==='catalog'&&S.view==='apartments')closeDrawer();else go('apartments');return;}
     if (e.target.closest('[data-edit]')) { closeDrawer(); return go('apartments', id); }
     if (await defectAction(e)) return apartmentCard(id);
     const op = e.target.closest('[data-open]'); if (op && op.dataset.open && op.dataset.open !== 'apt:' + id) openItem(op.dataset.open);
