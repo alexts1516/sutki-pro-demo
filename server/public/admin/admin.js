@@ -896,27 +896,74 @@ const opItem = (i) => `<button class="op lv-${i.level}" data-open="${esc(i.open 
   <span class="op-m">${i.deadline ? `<span>⏰ ${deadlineText(i.deadline)}</span>` : ''}${i.object ? `<span>📍 ${esc(i.object)}</span>` : ''}${i.readyLabel ? `<span class="chip ${i.ready ? 'green' : 'amber'}">${esc(i.readyLabel)}</span>` : ''}</span>
   <span class="op-d">Ответственный: ${i.action ? (i.kind?.startsWith('payout') || (i.decision && i.level === 'info') ? 'владелец' : 'владелец / администратор') : 'исполнитель по плану'}${i.details ? ' · ' + esc(i.details) : ''}</span></button>`;
 async function renderToday() {
-  const t = await api('/api/admin/today');
-  const owner = S.me.role === 'owner';
-  S.critCount = t.counts.critical; renderNav();
-  const by = (lv) => t.items.filter(i => i.level === lv);
-  const sec = (lv, open) => { const list = by(lv); if (!list.length) return ''; const [tone, title, hint] = LV[lv];
-    const inner = `<div class="op-list">${list.map(opItem).join('')}</div>`;
-    return open ? `<section class="op-sec ${tone}"><h2>${title} · ${list.length} <small>${hint}</small></h2>${inner}</section>`
-      : `<details class="op-sec ${tone}"><summary><h2>${title} · ${list.length} <small>${hint}</small></h2></summary>${inner}</details>`; };
-  const calm = !t.counts.critical && !t.counts.action;
-  const b = t.business;
-  const notReady = t.apartments.filter(a => !a.ready && a.state !== 'occupied');
-  view(`<div class="page-head"><div><h1>Сегодня</h1><p class="sub">${fmtDay(t.date)} · ${owner && b ? 'только отклонения и ваши решения — рутину ведёт администратор' : 'наверху — только то, где нужно действие; обычные дела не шумят'}</p></div>
-      <button class="btn sm" id="tdSchedule">Расписание дня</button><button class="btn sm" id="tdRefresh">↻ Обновить</button></div>
-    ${b ? `<div class="biz m-scroll"><div><b>${b.apartments - b.occupied - b.notReady}</b><span>готовы</span></div><div><b>${b.occupied}</b><span>гость живёт</span></div><div class="${b.notReady ? 'warn' : ''}"><b>${b.notReady}</b><span>не готовы</span></div><div><b>${money(b.revenueMonthKzt)}</b><span>брони за месяц</span></div><div class="${b.owedCount ? 'warn' : ''}"><b>${money(b.owedKzt)}</b><span>к выплате исполнителям</span></div></div>` : ''}
-    ${calm ? '<div class="op-calm">✓ Всё идёт по плану — сейчас от вас ничего не требуется</div>' : ''}
-    <div class="stack">${sec('critical', true)}${sec('action', true)}${sec('today', false)}${sec('info', false)}
-    <section class="op-sec"><h2>🏠 Квартиры <small>нажмите — карточка квартиры</small></h2><div class="apt-chips">${t.apartments.map(a => `<button class="achip ${READY_TONE[a.state] || ''}" data-open="apt:${a.id}" title="${esc(a.reasons.join(' · ') || a.stateLabel)}"><i class="dot ${READY_TONE[a.state] || 'grey'}"></i>${esc(a.label)}${a.defects ? ` <span class="dwarn${a.urgentDefects ? ' red' : ''}">⚠${a.defects}</span>` : ''}<small>${esc(a.stateLabel)}</small>${!a.ready && a.reasons.length ? `<span class="small muted">${a.state === 'occupied' ? 'Не готова к следующему заезду: ' : ''}${esc(a.reasons[0])}</span>` : ''}</button>`).join('')}</div>
-      ${notReady.length ? '' : '<div class="muted small" style="margin-top:6px">Все свободные квартиры готовы к заезду.</div>'}</section></div>`);
-  $('#tdRefresh').onclick = () => renderToday();
-  $('#tdSchedule').onclick = () => { S.cal.mode = 'list'; S.cal.from = todayIso(); S.cal.days = 1; go('calendar'); };
-  $('#view').onclick = (e) => { const o = e.target.closest('[data-open]'); if (o && o.dataset.open) openItem(o.dataset.open); };
+  const generation=S.homeGeneration=(S.homeGeneration||0)+1;
+  const t=await api('/api/admin/today');
+  const date=S.homeDate||t.date;
+  const [cal,messages]=await Promise.all([api('/api/admin/calendar?from='+isoAdd(date,-1)+'&days=5'),api('/api/admin/support')]);
+  if(S.view!=='today'||generation!==S.homeGeneration)return;
+  S.critCount=t.counts.critical;renderNav();
+  const apt=Object.fromEntries(cal.apartments.map(a=>[a.id,a.number?'кв. '+a.number:a.title]));
+  const attention=t.items.filter(i=>['critical','action'].includes(i.level));
+  const active=cal.bookings.filter(b=>['confirmed','completed'].includes(b.status));
+  const dayRows=d=>{
+    const rows=[];
+    for(const b of active){
+      if(b.checkIn===d)rows.push({kind:'arrival',time:b.checkInTime,title:'Заезд',icon:'↗',text:apt[b.apartmentId]+' · '+(b.guestName||'Гость'),status:badge(BK_ST,b.status),open:'bk:'+b.id});
+      if(b.checkOut===d)rows.push({kind:'departure',time:b.checkOutTime,title:'Выезд',icon:'↙',text:apt[b.apartmentId]+' · '+(b.guestName||'Гость'),status:badge(BK_ST,b.status),open:'bk:'+b.id});
+    }
+    for(const c of cal.cleanings.filter(x=>x.date===d))rows.push({kind:'cleaning',time:c.fromTime,title:'Подготовка',icon:'✨',text:apt[c.apartmentId]+' · '+(c.assignee||'Не назначена'),status:badge(CL_ST,c.status),open:'cl:'+c.id});
+    for(const x of cal.transfers.filter(x=>x.date===d))rows.push({kind:'transfer',time:x.time,title:DIR[x.direction],icon:'🚗',text:(x.apartmentId?apt[x.apartmentId]+' · ':'')+(x.driverName||'Водитель не назначен'),status:badge(TR_ST,x.status),open:'tr:'+(x.jobId||'')+':'+x.transferId});
+    for(const r of cal.repairs.filter(x=>x.date===d))rows.push({kind:'repair',time:'',title:'Ремонт',icon:'🔧',text:apt[r.apartmentId]+' · '+r.title,status:badge(WR_ST,r.status),open:'wr:'+r.id});
+    return rows.sort((x,y)=>(x.time||'99').localeCompare(y.time||'99'));
+  };
+  const rows=dayRows(date),count=(kind,d=date)=>dayRows(d).filter(x=>x.kind===kind).length;
+  const occupied=new Set(active.filter(b=>b.checkIn<=date&&b.checkOut>date).map(b=>b.apartmentId)).size;
+  const total=cal.apartments.length;
+  const held=new Set(cal.bookings.filter(b=>b.status==='request'&&b.checkIn<=date&&b.checkOut>date).map(b=>b.apartmentId));
+  const notOccupied=cal.apartments.filter(a=>!active.some(b=>b.apartmentId===a.id&&b.checkIn<=date&&b.checkOut>date));
+  const fullDate=d=>new Date(d+'T12:00:00Z').toLocaleDateString('ru-RU',{weekday:'long',day:'numeric',month:'long',timeZone:TZ});
+  const filters=[['all','Все'],['arrival','Заезды'],['departure','Выезды'],['cleaning','Подготовка'],['transfer','Трансферы'],['repair','Ремонт']];
+  const line=x=>`<button class="home-plan-row" data-open="${esc(x.open)}"><span class="home-time">${esc(x.time||'—')}</span><span class="home-icon ${x.kind}">${x.icon}</span><b>${esc(x.title)}</b><span class="home-object">${esc(x.text)}</span>${x.status}<span class="home-open">Открыть ›</span></button>`;
+  const issue=i=>`<button class="home-issue" data-open="${esc(i.open||'')}"><span class="home-icon problem">!</span><span><b>${esc(i.problem)}</b><small>${esc(i.object||'')}${i.deadline?' · '+esc(new Date(i.deadline).toLocaleString('ru-RU',{timeZone:TZ,day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'})):''}</small></span><span class="home-open">Подробнее ›</span></button>`;
+  const metric=(icon,n,label,key,extra='')=>`<button class="card home-metric" data-metric="${key}"><span class="home-icon ${key}">${icon}</span><span><b>${n}</b><small>${label}</small>${extra?`<small>${extra}</small>`:''}</span></button>`;
+  view(`<div class="home-dashboard"><div class="home-toolbar"><div class="home-date-tabs">${['Сегодня','Завтра','Послезавтра'].map((label,n)=>`<button class="${date===isoAdd(t.date,n)?'on':''}" data-home-date="${isoAdd(t.date,n)}">${label}<small>${fmtDay(isoAdd(t.date,n))}</small></button>`).join('')}</div><label class="home-date-picker">Выбрать дату<input type="date" id="homeDate" aria-label="Выбрать дату" value="${date}"></label><button class="btn sm" id="homeRefresh">↻ Обновить</button></div>
+  <div class="page-head"><h1>${esc(fullDate(date))}</h1><span class="muted small">${esc(S.me.user.name)} · ${esc(ROLE[S.me.role])}</span></div>
+  <div class="home-metrics">${metric('⌂',total,'Всего квартир','apartments')}${metric('▣',occupied,'С проживанием','occupied',total?Math.round(occupied/total*100)+'%':'')}${metric('⌂',total-occupied,'Без проживания','free',held.size?'Удержаний: '+held.size:'')}${metric('↗',count('arrival'),'Заездов','arrival')}${metric('↙',count('departure'),'Выездов','departure')}${metric('✨',count('cleaning'),'Подготовок','cleaning')}${metric('🚗',count('transfer'),'Трансферов','transfer')}${metric('!',date===t.date?attention.length:'—',date===t.date?'Требуют решения':'Проблемы: нет прогноза','attention')}</div>
+  <div class="home-layout"><div class="home-primary"><section class="card home-urgent"><div class="home-section-head"><h2>Требуют решения <span class="chip red">${attention.length}</span></h2><button data-home-list="attention">Все проблемы →</button></div><p class="muted small home-caption">Актуальные вопросы сейчас · ${fmtDay(t.date)}${date!==t.date?' · не прогноз на выбранную дату':''}</p><div class="home-issues">${attention.slice(0,3).map(issue).join('')||'<p class="muted">Срочных вопросов нет</p>'}</div></section>
+  <section class="card home-plan"><div class="home-section-head"><h2>План на ${fmtDay(date)}</h2><button data-home-list="plan">Весь день →</button></div><div class="home-filters">${filters.map(([key,label])=>`<button data-home-filter="${key}" class="${(S.homeFilter||'all')===key?'on':''}">${label} ${key==='all'?rows.length:count(key)}</button>`).join('')}</div><p class="muted small home-caption">Статусы из сервера сейчас; для будущих дат показан план.</p><div id="homePlanRows"></div><button class="home-plan-more" data-home-list="plan"></button></section>
+  <section class="card home-quick"><button class="btn primary" data-home-quick="booking">📅 Особая бронь</button><button class="btn" data-home-quick="repair">🔧 Новая задача</button><button class="btn" data-goto="support">💬 Сообщение гостю</button><button class="btn" data-goto="apartments">⌂ Найти квартиру</button><button class="btn" data-goto="calendar">🗓 Календарь</button></section></div>
+  <div class="home-secondary"><section class="card home-upcoming"><div class="home-section-head"><h2>Ближайшие дни</h2><button data-goto="calendar">Календарь →</button></div>${[1,2,3].map(n=>{const d=isoAdd(date,n);return `<button class="home-day" data-home-date="${d}"><b>${esc(fullDate(d))}</b><span>${[['arrival','↗'],['departure','↙'],['cleaning','✨'],['transfer','🚗']].map(([key,icon])=>`<span title="${filters.find(x=>x[0]===key)[1]}"><i class="home-icon ${key}">${icon}</i>${count(key,d)}</span>`).join('')}<span>›</span></span></button>`}).join('')}</section>
+  <section class="card home-messages"><div class="home-section-head"><h2>Последние сообщения</h2><button data-goto="support">Все →</button></div>${messages.slice(0,4).map(m=>`<button class="home-message" data-support="${esc(m.id)}"><span class="home-icon">💬</span><span><b>${esc(({booking:'Бронирование',checkin:'Заселение',transfer:'Трансфер',other:'Другой вопрос'})[m.topic])}</b><small>${esc(m.lastMessage)}</small><small>${esc(fmtTime(m.updatedAt))} · ${m.lastSender==='guest'?'Гость':'Ответ поддержки'}</small></span><span>›</span></button>`).join('')||'<p class="muted">Обращений пока нет</p>'}<button class="btn primary block" data-goto="support">Открыть чат поддержки</button></section></div></div></div>`);
+  const filtered=()=>rows.filter(x=>(S.homeFilter||'all')==='all'||x.kind===S.homeFilter);
+  const paint=()=>{
+    const list=filtered(),desktop=innerWidth>=861,limit=desktop&&innerHeight<=800?4:5;
+    const nowTime=new Date(t.now).toLocaleTimeString('en-GB',{timeZone:TZ,hour:'2-digit',minute:'2-digit'});
+    const nearest=date===t.date?list.filter(x=>!x.time||x.time>=nowTime):list;
+    $('#homePlanRows').innerHTML=nearest.slice(0,limit).map(line).join('')||'<p class="home-empty muted">Ближайших событий на эту дату нет</p>';
+    $('.home-plan-more').hidden=list.length<=nearest.slice(0,limit).length;
+    $('.home-plan-more').textContent='Весь день · '+list.length+' событий →';
+    $('.home-filters').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.homeFilter===(S.homeFilter||'all')));
+  };paint();
+  if(S.homeResize)window.removeEventListener('resize',S.homeResize);
+  S.homeResize=()=>{if(S.view==='today'&&$('#homePlanRows'))paint();};window.addEventListener('resize',S.homeResize);
+  const setDate=guard(async d=>{S.homeDate=d;await renderToday();});
+  $('#homeDate').onchange=e=>{if(e.target.value)setDate(e.target.value);};$('#homeRefresh').onclick=guard(renderToday);
+  const allList=key=>{
+    const list=key==='plan'?filtered():key==='attention'?attention:null;
+    const title=key==='attention'?'Актуальные проблемы':key==='plan'?'План на '+fmtDay(date):'Квартиры · '+fmtDay(date);
+    const apts=key==='occupied'?cal.apartments.filter(a=>!notOccupied.includes(a)):key==='free'?notOccupied:cal.apartments;
+    const body=drawer(`<div class="dh"><h2>${title}</h2></div><section class="ds">${list?list.map(key==='attention'?opItem:line).join(''):apts.map(a=>`<button class="li" data-open="apt:${a.id}"><span>${esc(apt[a.id])}<small class="muted">${active.some(b=>b.apartmentId===a.id&&b.checkIn<=date&&b.checkOut>date)?' · Проживание':held.has(a.id)?' · Удержание':' · Нет проживания'}${date===t.date&&a.stateLabel?' · '+esc(a.stateLabel):''}</small></span><span>›</span></button>`).join('')||'<p class="muted">Нет записей</p>'}</section>`);body.onclick=e=>{const o=e.target.closest('[data-open]');if(o?.dataset.open)openItem(o.dataset.open);};
+  };
+  $('#view').onclick=guard(async e=>{
+    const open=e.target.closest('[data-open]');if(open?.dataset.open)return openItem(open.dataset.open);
+    const d=e.target.closest('[data-home-date]');if(d)return setDate(d.dataset.homeDate);
+    const f=e.target.closest('[data-home-filter]');if(f){S.homeFilter=f.dataset.homeFilter;return paint();}
+    const m=e.target.closest('[data-metric]');if(m){const key=m.dataset.metric;if(filters.some(x=>x[0]===key)){S.homeFilter=key;paint();return;}return allList(key==='attention'?'attention':key);}
+    const all=e.target.closest('[data-home-list]');if(all)return allList(all.dataset.homeList);
+    const chat=e.target.closest('[data-support]');if(chat)return go('support',chat.dataset.support);
+    const quick=e.target.closest('[data-home-quick]');if(quick)return quick.dataset.homeQuick==='repair'?go('repairs','new'):newSpecialBooking();
+    const nav=e.target.closest('[data-goto]');if(nav){if(nav.dataset.goto==='calendar'){S.cal.mode='list';S.cal.from=date;S.cal.days=1;}go(nav.dataset.goto);}
+  });
 }
 
 // ---------------- карточка квартиры: одно место, где видно всё её состояние ----------------

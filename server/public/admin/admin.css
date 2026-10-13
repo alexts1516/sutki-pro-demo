@@ -258,3 +258,65 @@ button.cal-apt{text-align:left;cursor:pointer}button.cal-apt:hover{background:#f
 @media(max-width:600px){#transferOffersForm .card-h{padding:12px 14px;gap:8px;flex-wrap:wrap}#transferOffersForm .card-b{padding:12px}.transfer-offer>summary{gap:5px;padding:10px 8px}.transfer-offer-heading{gap:6px}.transfer-offer-heading b{font-size:12px;flex:1}.transfer-offer-heading small{font-size:10px}.transfer-offer>summary .chip{font-size:9px;padding:3px 5px}.transfer-offer-fields{padding:0 10px 10px}.transfer-offer-numbers{grid-template-columns:1fr 1fr 1.2fr;gap:6px}.transfer-offer-fields label{font-size:11px}}
 
 .support-grid{display:grid;grid-template-columns:minmax(240px,1fr) minmax(0,1.7fr);gap:18px;align-items:start}.support-list .li{width:100%;text-align:left}.support-list .li.selected{background:#f1edff}.support-list small{display:block;font-size:11px;color:var(--muted);margin-top:5px;overflow-wrap:anywhere}.support-messages{height:360px;overflow:auto;background:#faf9f7;border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:12px}.support-message{border:1px solid var(--border);background:white;border-radius:12px;padding:10px;margin:8px 28px 8px 0;white-space:pre-wrap;overflow-wrap:anywhere}.support-message.support{margin:8px 0 8px 28px;background:#f1edff}.support-message small{font-size:10px;color:var(--muted);display:block;margin-bottom:5px}#supportReplyText{min-height:80px;width:100%}@media(max-width:700px){.support-grid{grid-template-columns:1fr;gap:12px}.support-messages{height:300px}.support-list{max-height:200px;overflow:auto}}
+
+
+/* Главная администратора — утверждённая компоновка SUTKI_PRO_admin_concept. */
+.main:has(.home-dashboard)>.topbar{height:24px}.home-dashboard{display:grid;gap:14px}.home-toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.home-date-tabs{display:flex;gap:8px}.home-date-tabs button{padding:8px 18px;border-radius:9px;background:var(--primary-50);font-size:12px;min-width:110px}.home-date-tabs button.on,.home-filters button.on{background:var(--primary);color:white}.home-date-tabs small{display:block;font-size:11px;margin-top:2px}.home-date-picker{font-size:11px;max-width:155px}.home-date-picker input{padding:5px 8px;font-size:12px}.home-toolbar>.btn{margin-left:auto}.home-dashboard .page-head{margin:0;align-items:center}.home-dashboard h1{font-size:26px;text-transform:capitalize}.home-metrics{display:grid;grid-template-columns:repeat(7,minmax(0,1fr)) minmax(140px,1.4fr);gap:8px}.home-metric{padding:10px 8px;display:flex;align-items:center;gap:7px;text-align:left;min-width:0}.home-metric b{font-size:21px;display:block;line-height:1.1}.home-metric small{display:block;font-size:10.5px;color:var(--muted);margin-top:3px;line-height:1.3}.home-icon{height:32px;width:32px;flex:none;display:inline-grid;place-items:center;font-style:normal;border-radius:50%;background:var(--primary-50);color:var(--primary);font-size:18px}.home-icon.arrival,.home-icon.occupied{background:#dcfce7;color:#15803d}.home-icon.departure,.home-icon.attention,.home-icon.problem{background:#fee2e2;color:#dc2626}.home-icon.cleaning{background:#e0f2fe;color:#0369a1}.home-metric:last-child{background:#fff1f2}.home-layout{display:grid;grid-template-columns:minmax(0,2.65fr) minmax(280px,1fr);gap:14px;align-items:start}.home-primary,.home-secondary{display:grid;gap:14px;min-width:0}.home-urgent,.home-plan,.home-upcoming,.home-messages{padding:14px}.home-section-head{display:flex;align-items:center;gap:8px;justify-content:space-between;margin-bottom:8px}.home-section-head h2{font-size:16px}.home-section-head>button{font-size:11.5px;color:var(--primary);font-weight:600;flex:none}.home-urgent{background:#fff5f6;border-color:#ffe1e4}.home-caption{margin:3px 0 9px;font-size:11px}.home-issues{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}.home-issue{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px;background:white;border-radius:10px;text-align:left;min-width:0}.home-issue>span:nth-child(2){flex:1;min-width:0}.home-issue b{font-size:11.5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.home-issue small{display:block;font-size:10.5px;color:var(--muted);margin-top:5px}.home-open{font-size:11px;font-weight:600;color:var(--primary);white-space:nowrap}.home-issue>.home-open{margin-left:auto}.home-filters{display:flex;gap:6px;flex-wrap:wrap;margin:10px 0}.home-filters button{background:var(--primary-50);padding:7px 11px;border-radius:8px;font-size:11.5px}.home-plan-row{display:grid;grid-template-columns:42px 32px 90px minmax(0,1fr) 105px 70px;align-items:center;gap:10px;text-align:left;width:100%;padding:11px 0;border-top:1px solid var(--border2)}.home-time{font-size:12px;font-weight:700}.home-plan-row>b{font-size:12px}.home-object{font-size:12px;color:var(--muted);overflow-wrap:anywhere}.home-plan-row>.chip{font-size:10.5px;white-space:normal;border-radius:8px;padding:5px 7px}.home-plan-row>.home-icon{width:28px;height:28px;font-size:16px}.home-plan-more{padding-top:10px;font-size:12px;color:var(--primary)}.home-day{width:100%;text-align:left;padding:12px 0;border-top:1px solid var(--border2)}.home-day>b{display:block;font-size:12px;text-transform:capitalize;margin-bottom:10px}.home-day>span{display:flex;gap:10px;align-items:center;justify-content:space-between}.home-day>span>span{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600}.home-day .home-icon{width:27px;height:27px;font-size:15px}.home-message{display:flex;align-items:start;width:100%;gap:8px;padding:12px 0;text-align:left;border-top:1px solid var(--border2)}.home-message>span:nth-child(2){min-width:0;flex:1}.home-message b{font-size:12px}.home-message small{display:block;color:var(--muted);font-size:11px;margin-top:5px}.home-message small:first-of-type{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}.home-quick{padding:12px;display:flex;gap:9px;flex-wrap:wrap}.home-quick .btn{flex:1;font-size:11.5px;padding:10px;white-space:normal}.home-empty{padding:18px 0}
+@media(max-width:1250px){.home-metrics{grid-template-columns:repeat(4,minmax(0,1fr))}.home-layout{grid-template-columns:minmax(0,2fr) minmax(260px,1fr)}.home-plan-row{grid-template-columns:35px 25px 65px minmax(0,1fr) 80px;gap:7px}.home-plan-row>.home-open{display:none}.home-issues{grid-template-columns:1fr}.home-issue{flex-wrap:nowrap}.home-issue b{-webkit-line-clamp:1}}
+@media(max-width:800px){.home-layout{grid-template-columns:1fr}.home-secondary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:600px){.home-dashboard{gap:12px}.home-toolbar{gap:8px}.home-date-tabs{width:100%;gap:6px}.home-date-tabs button{min-width:0;flex:1;padding:8px;font-size:11px}.home-dashboard h1{font-size:22px}.home-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}.home-metric{padding:10px}.home-layout,.home-secondary{grid-template-columns:1fr}.home-issues{grid-template-columns:1fr}.home-issue b{-webkit-line-clamp:2}.home-issue{flex-wrap:wrap}.home-plan-row{grid-template-columns:36px 26px minmax(0,1fr) 93px;padding:12px 0;gap:7px}.home-plan-row .home-object{grid-column:3;grid-row:auto;font-size:11px}.home-plan-row>.chip{grid-column:4;grid-row:span 2}.home-plan-row>b{grid-column:3}.home-plan-row>.home-time,.home-plan-row>.home-icon{grid-row:span 2}.home-section-head h2{font-size:15px}.home-quick .btn{flex-basis:42%}.home-urgent,.home-plan,.home-upcoming,.home-messages{padding:12px}}
+
+@media(min-width:1251px){.home-plan-row{padding:7px 0;min-height:43px}.home-plan-row>.chip{padding:3px 7px}.home-dashboard{gap:12px}.home-urgent,.home-plan,.home-upcoming,.home-messages{padding:12px}.home-plan-more{padding-top:7px}.home-quick{padding:10px}}
+
+/* Компактная главная для окна ноутбука, без прокрутки внутри блоков. */
+@media(min-width:861px) and (max-height:800px){
+ .main:has(.home-dashboard){padding:0 18px 10px}
+ .main:has(.home-dashboard)>.topbar{height:20px}
+ .home-dashboard,.home-primary,.home-secondary{gap:9px}
+ .home-toolbar{gap:8px}.home-date-tabs button{padding:5px 12px;min-width:100px}.home-date-tabs small{margin-top:1px}.home-date-picker input{padding:4px 7px}
+ .home-dashboard h1{font-size:22px}.home-dashboard .page-head{min-height:28px}
+ .home-metrics{grid-template-columns:repeat(8,minmax(0,1fr));gap:6px}.home-metric{padding:8px 6px;gap:5px;align-items:flex-start}.home-metric b{font-size:19px}.home-metric small{font-size:10.5px;margin-top:2px}.home-metric>.home-icon{width:24px;height:24px;font-size:15px}
+ .home-layout{grid-template-columns:minmax(0,2.65fr) minmax(255px,1fr);gap:10px}
+ .home-urgent,.home-plan,.home-upcoming,.home-messages{padding:10px}
+ .home-section-head{margin-bottom:6px}.home-section-head h2{font-size:14px}.home-caption{margin:2px 0 6px;font-size:10.5px}
+ .home-issues{grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}.home-issue{padding:8px;gap:6px;flex-wrap:wrap}.home-issue b{-webkit-line-clamp:2;font-size:11.5px}.home-issue .home-icon{width:25px;height:25px;font-size:15px}.home-issue small{margin-top:3px}.home-issue>.home-open{font-size:10.5px}
+ .home-filters{gap:5px;margin:7px 0}.home-filters button{padding:5px 8px;font-size:11px}
+ .home-plan-row{grid-template-columns:34px 25px 66px minmax(0,1fr) 85px;gap:7px;padding:7px 0;min-height:42px}.home-plan-row>.home-open{display:none}.home-plan-row>.chip{font-size:10.5px;padding:3px 6px}.home-plan-row>.home-icon{width:25px;height:25px;font-size:15px}
+ .home-day{padding:8px 0}.home-day>b{font-size:12px;margin-bottom:7px}.home-day>span{gap:6px}.home-day .home-icon{width:24px;height:24px;font-size:14px}
+ .home-message{padding:8px 0}.home-message:nth-of-type(n+3){display:none}.home-message small{margin-top:3px}.home-messages>.btn{padding:7px;font-size:11.5px}
+ .home-quick{gap:7px;padding:9px}.home-quick .btn{padding:8px 6px;font-size:11px}
+}
+
+@media(min-width:861px) and (max-height:800px){.home-dashboard,.home-primary,.home-secondary{gap:7px}.home-day{padding:6px 0}.home-day>b{margin-bottom:5px}.home-message small:first-of-type{-webkit-line-clamp:1}.home-message{padding:6px 0}.home-plan-row{min-height:38px;padding:5px 0}.home-metric>.home-icon{width:20px;height:20px;font-size:13px}.home-metric{gap:4px}}
+
+/* Более узкое/низкое окно ноутбука: сохраняем блоки и доступ к навигации. */
+@media(min-width:861px) and (max-width:1100px) and (max-height:800px){
+ .app:has(.home-dashboard)>.sidebar:not(.open){transform:translateX(-100%)}
+ .app:has(.home-dashboard)>.sidebar.open{transform:none}
+ .main:has(.home-dashboard){margin-left:0}
+ .main:has(.home-dashboard) .only-m{display:inline-grid}
+}
+@media(min-width:861px) and (max-height:680px){
+ .home-dashboard,.home-primary,.home-secondary{gap:6px}
+ .home-toolbar{gap:7px}.home-date-tabs button{padding:4px 10px}.home-date-tabs small{font-size:10.5px}.home-date-picker input{padding:3px 7px}
+ .home-dashboard h1{font-size:21px}.home-metric{padding:6px}.home-metric b{font-size:18px}
+ .home-urgent,.home-plan,.home-upcoming,.home-messages{padding:8px}
+ .home-issues{grid-template-columns:repeat(2,minmax(0,1fr))}.home-issue:nth-child(n+3){display:none}.home-issue{padding:7px;flex-wrap:nowrap}
+ .home-message:nth-of-type(n+2){display:none}
+ .home-day{padding:5px 0}.home-day>b{margin-bottom:5px}.home-section-head{margin-bottom:4px}
+ .home-filters{margin:6px 0}.home-filters button{padding:4px 7px}
+ .home-plan-row{padding:4px 0;min-height:36px}
+ .home-quick{padding:7px}.home-quick .btn{padding:7px 5px}
+}
+
+/* Только верхняя зона главной: используем ширину, не уменьшаем шрифты. */
+.main:has(.home-dashboard)>.topbar{height:0;min-height:0;overflow:visible;position:relative;z-index:1}
+.main:has(.home-dashboard)>.topbar #crumb{display:none}
+.home-dashboard{padding-top:8px}
+.home-toolbar{flex-wrap:nowrap;align-items:center}
+.home-date-picker{flex-direction:row;align-items:center;gap:8px;max-width:none;white-space:nowrap}
+.home-date-picker input{width:138px;min-width:138px}
+.home-date-tabs{flex:none}
+@media(max-width:1100px){.main:has(.home-dashboard)>.topbar .only-m{position:absolute;top:14px;left:0}.home-toolbar{padding-left:40px}}
+@media(min-width:1101px){.home-toolbar{padding-left:0}}
+@media(max-width:600px){.home-toolbar{flex-wrap:wrap;gap:6px;padding-left:40px}.home-date-tabs{width:100%;flex:none}.home-date-picker{gap:6px}.home-date-picker input{width:130px;min-width:130px}.home-toolbar>.btn{margin-left:auto}.main:has(.home-dashboard)>.topbar .only-m{top:12px}.home-dashboard{padding-top:6px}}
