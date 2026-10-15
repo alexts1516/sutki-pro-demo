@@ -3,7 +3,7 @@
 // Уровни: critical (КРИТИЧНО) → action (ТРЕБУЕТ ДЕЙСТВИЯ) → today (СЕГОДНЯ по плану) → info (ИНФОРМАЦИЯ).
 //
 // Квартира «Готова», если одновременно:
-//   1) нет незаконченной подготовки перед ближайшим заездом (за последние 3 дня и до дня заезда);
+//   1) нет незаконченной подготовки перед ближайшим заездом; возраст задачи не подтверждает выполнение;
 //   2) последняя подготовка закончена полностью (все пункты и обязательные фото) — или отчёт принят владельцем/админом;
 //   3) нет открытого срочного недочёта и нет ремонта, закрывающего даты.
 // Гость сейчас в квартире — «Гость живёт» (готовность к следующему заезду считается так же).
@@ -27,7 +27,7 @@ const DIR = { in: 'Встреча', out: 'Проводы' };
 /** Срок подготовки: заезд следующего гостя в тот же день — к времени заезда, иначе — до конца окна по плану */
 export function cleaningDeadline(task, bookings, tz) {
   const day = isoDay(task.date);
-  const next = bookings.filter(b => b.apartmentId === task.apartmentId && b.status === 'confirmed' && isoDay(b.checkIn) >= day).sort((a, b) => a.checkIn - b.checkIn)[0];
+  const next = bookings.filter(b => b.apartmentId === task.apartmentId && ['confirmed', 'completed'].includes(b.status) && isoDay(b.checkIn) >= day).sort((a, b) => a.checkIn - b.checkIn)[0];
   if (next && isoDay(next.checkIn) === day) return { at: atLocal(task.date, next.checkInTime, tz), reason: `заезд гостя в ${next.checkInTime}`, bookingId: next.id };
   return { at: atLocal(task.date, task.toTime || '18:00', tz), reason: `до ${task.toTime || '18:00'} по плану`, bookingId: next?.id || null };
 }
@@ -40,7 +40,7 @@ async function snapshot(accountId, now) {
   const [apartments, bookings, cleanings, defects, repairs, jobs, holds, settings, specialBookings] = await Promise.all([
     prisma.apartment.findMany({ where: { accountId, active: true }, orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }], select: { id: true, title: true, code: true, complex: true, address: true } }),
     prisma.booking.findMany({ where: { accountId, status: { in: ['confirmed', 'completed'] }, checkOut: { gte: addDays(today, -1) }, checkIn: { lte: addDays(today, 30) } }, include: { guest: { select: { name: true, phone: true } }, link: true }, orderBy: { checkIn: 'asc' } }),
-    prisma.cleaningTask.findMany({ where: { accountId, date: { gte: addDays(today, -14), lte: addDays(today, 14) } }, include: { assignee: { select: { id: true, name: true } }, photos: true }, orderBy: [{ date: 'asc' }, { fromTime: 'asc' }] }),
+    prisma.cleaningTask.findMany({ where: { accountId, date: { lte: addDays(today, 14) } }, include: { assignee: { select: { id: true, name: true } }, photos: true }, orderBy: [{ date: 'asc' }, { fromTime: 'asc' }] }),
     prisma.defect.findMany({ where: { accountId, status: 'open' }, include: { repairTask: { select: { id: true, status: true, title: true } } }, orderBy: { createdAt: 'asc' } }),
     prisma.repairTask.findMany({ where: { accountId, status: { notIn: ['DONE', 'CANCELLED'] } }, include: { estimates: true, extras: true, contractor: { select: { name: true } }, assignee: { select: { name: true } } }, orderBy: { date: 'asc' } }),
     prisma.transferJob.findMany({ where: { accountId, status: { not: 'CANCELLED' }, pickupAt: { gte: new Date(now.getTime() - 6 * H), lt: atLocal(addDays(today, 2), '00:00', tz) } }, include: { transfer: true, apartment: { select: { id: true, title: true, code: true } } }, orderBy: { pickupAt: 'asc' } }),
@@ -48,7 +48,9 @@ async function snapshot(accountId, now) {
     getSettings(accountId),
     prisma.booking.findMany({ where: { accountId, source: 'link', status: 'confirmed', checkOut: { gte: today } }, include: { link: true } }),
   ]);
-  return { tz, today, now, apartments, bookings, cleanings, defects, repairs, jobs, holds, settings, specialBookings };
+  // Прошедший заезд остаётся фактическим сроком старой подготовки.
+  const prepBookings = await prisma.booking.findMany({ where: { accountId, status: { in: ['confirmed', 'completed'] }, checkIn: { gte: cleanings[0]?.date || today, lte: addDays(today, 30) } }, select: { id: true, apartmentId: true, status: true, checkIn: true, checkInTime: true } });
+  return { tz, today, now, apartments, bookings, prepBookings, cleanings, defects, repairs, jobs, holds, settings, specialBookings };
 }
 
 /** Состояние одной квартиры из снимка */
@@ -61,7 +63,7 @@ function apartmentState(a, snap) {
   const nextOut = current || bks.filter(b => outAt(b) > now).sort((x, y) => outAt(x) - outAt(y))[0] || null;
   const horizon = next ? isoDay(next.checkIn) : isoDay(today);
   const list = snap.cleanings.filter(c => c.apartmentId === a.id);
-  const pending = list.filter(c => c.status !== 'done' && isoDay(c.date) <= horizon && isoDay(c.date) >= isoDay(addDays(today, -3)));
+  const pending = list.filter(c => c.status !== 'done' && isoDay(c.date) <= horizon);
   const lastDone = list.filter(c => c.status === 'done' && isoDay(c.date) <= isoDay(today)).sort((x, y) => (x.doneAt || x.date) - (y.doneAt || y.date)).at(-1) || null;
   const needsReview = !!(lastDone && lastDone.finishNote && !lastDone.reviewedAt && !pending.length);
   const defects = snap.defects.filter(d => d.apartmentId === a.id);
@@ -70,11 +72,12 @@ function apartmentState(a, snap) {
   const repairs = snap.repairs.filter(r => r.apartmentId === a.id);
   const blocking = repairs.filter(r => r.blockDays > 0 && r.date <= onDay && addDays(r.date, r.blockDays) > onDay);
   const reasons = [];
+  if (!lastDone && !pending.length) reasons.push('Нет подтверждённой завершённой подготовки');
   for (const d of urgent) reasons.push(`Срочный недочёт: ${d.text}`);
   for (const r of blocking) reasons.push(`Ремонт закрывает даты: ${r.title}`);
   for (const c of pending) reasons.push(c.status === 'progress' ? `Подготовка идёт (${c.assignee?.name || '—'})` : c.assigneeId ? `Подготовка не начата (${c.assignee?.name})` : 'Подготовка не назначена');
   if (needsReview) reasons.push(`Подготовка закончена не полностью: ${lastDone.finishNote}`);
-  const state = current ? 'occupied' : (urgent.length || blocking.length) ? 'blocked' : pending.length ? 'not_ready' : needsReview ? 'check' : 'ready';
+  const state = current ? 'occupied' : (urgent.length || blocking.length) ? 'blocked' : pending.length ? 'not_ready' : needsReview || !lastDone ? 'check' : 'ready';
   return { apartment: a, label: aptLabel(a), state, stateLabel: READY_RU[state], ready: !reasons.length, reasons, current, next, nextOut, pending, lastDone, needsReview, defects, repairs, inAt, outAt };
 }
 
@@ -102,9 +105,9 @@ async function buildItems(snap, { role, accountId }) {
     }
     // подготовка: не назначена / просрочена / нужно принять отчёт
     for (const c of s.pending) {
-      const dl = cleaningDeadline(c, snap.bookings, tz);
-      if (!c.assigneeId && isoDay(c.date) <= t1) push(dl.at - now <= 3 * H ? 'critical' : 'action', 'prep_unassigned', { ref: c.id, problem: 'Подготовка не назначена', action: 'Назначить специалиста', deadline: dl.at, object: s.label, details: dl.reason, open: `cl:${c.id}`, aptId: a.id });
-      else if (c.assigneeId && now > dl.at) push('critical', 'prep_overdue', { ref: c.id, problem: `Подготовка просрочена — ${c.status === 'progress' ? 'ещё идёт' : 'не начата'}`, action: `Позвонить: ${c.assignee?.name || 'специалист'}`, deadline: dl.at, object: s.label, details: dl.reason, open: `cl:${c.id}`, aptId: a.id });
+      const dl = cleaningDeadline(c, snap.prepBookings, tz);
+      if (!c.assigneeId && isoDay(c.date) <= t1) push(isoDay(c.date) < isoDay(addDays(today,-3)) ? 'action' : dl.at - now <= 3 * H ? 'critical' : 'action', 'prep_unassigned', { ref: c.id, problem: 'Подготовка не назначена', action: 'Назначить специалиста', deadline: dl.at, object: s.label, details: dl.reason, responsible: c.assignee?.name || null, phase: c.assigneeId ? 'execution' : 'assignment', open: `cl:${c.id}`, aptId: a.id });
+      else if (c.assigneeId && now > dl.at) push(isoDay(c.date) < isoDay(addDays(today,-3)) ? 'action' : 'critical', 'prep_overdue', { ref: c.id, problem: `Подготовка просрочена — ${c.status === 'progress' ? 'ещё идёт' : 'не начата'}`, action: `Позвонить: ${c.assignee?.name || 'специалист'}`, deadline: dl.at, object: s.label, details: dl.reason, responsible: c.assignee?.name || null, phase: c.assigneeId ? 'execution' : 'assignment', open: `cl:${c.id}`, aptId: a.id });
     }
     if (s.needsReview) push('action', 'prep_review', { ref: s.lastDone.id, problem: 'Подготовка закончена не полностью', action: 'Проверить отчёт и принять', object: s.label, details: s.lastDone.finishNote, open: `cl:${s.lastDone.id}`, aptId: a.id });
     // недочёты
@@ -189,7 +192,7 @@ async function buildItems(snap, { role, accountId }) {
   }
   for (const c of snap.cleanings.filter(c => isoDay(c.date) === t0)) {
     if (items.some(i => i.ref === c.id && ['critical', 'action'].includes(i.level))) continue;
-    const dl = cleaningDeadline(c, snap.bookings, tz);
+    const dl = cleaningDeadline(c, snap.prepBookings, tz);
     push('today', 'prep', { ref: c.id, problem: `Подготовка — ${c.assignee?.name || 'не назначена'}`, action: null, deadline: dl.at, object: byApt[c.apartmentId]?.label || '', details: dl.reason, open: `cl:${c.id}`, aptId: c.apartmentId, status: c.status });
   }
   return { items, states };
@@ -224,6 +227,11 @@ export async function todayView(accountId, { role, now = new Date() }) {
     date: isoDay(snap.today), now, role,
     counts: Object.fromEntries(LEVELS.map(l => [l, list.filter(i => i.level === l).length])),
     items: list, business,
+    controlItems: snap.cleanings.filter(c => c.status !== 'done' && c.assigneeId && c.date <= addDays(snap.today,1)).map(c => {
+      const deadline = cleaningDeadline(c, snap.prepBookings, snap.tz).at;
+      const overdue = deadline < now;
+      return { id: `prep_control:${c.id}`, ref: c.id, kind: 'prep_control', level: overdue ? 'action' : 'today', problem: overdue ? 'Срок подготовки прошёл — завершение не отмечено' : c.status === 'progress' ? 'Подготовка выполняется' : 'Подготовка назначена — ожидается выполнение', action: overdue ? 'Проверить завершение' : 'Открыть подготовку', object: aptLabel(snap.apartments.find(a=>a.id===c.apartmentId)), deadline, responsible: c.assignee?.name || null, phase: 'execution', open: `cl:${c.id}`, aptId: c.apartmentId, status: c.status };
+    }),
     apartments: states.map(s => ({ id: s.apartment.id, label: s.label, title: s.apartment.title, state: s.state, stateLabel: s.stateLabel, ready: s.ready, reasons: s.reasons, defects: s.defects.length, urgentDefects: s.defects.filter(d => d.priority === 'urgent').length,
       next: s.next ? { id: s.next.id, checkIn: isoDay(s.next.checkIn), time: s.next.checkInTime } : null })),
   };
@@ -245,7 +253,7 @@ export async function apartmentOps(accountId, apartmentId, { role, now = new Dat
   const upcomingPrep = s.pending.filter(c => !previousIds.has(c.id));
   const prep = upcomingPrep[0] || null;
   const linkedBookings = previousPrep.length ? await prisma.booking.findMany({ where: { accountId, id: { in: previousPrep.map(c => c.bookingId).filter(Boolean) } }, select: { id: true, number: true, checkOut: true } }) : [];
-  const prepOut = c => ({ id: c.id, date: isoDay(c.date), status: c.status, assignee: c.assignee?.name || null, deadline: cleaningDeadline(c, snap.bookings, snap.tz) });
+  const prepOut = c => ({ id: c.id, date: isoDay(c.date), status: c.status, assignee: c.assignee?.name || null, deadline: cleaningDeadline(c, snap.prepBookings, snap.tz) });
   const pastActions = items.filter(i => previousIds.has(i.ref) && i.kind.startsWith('prep_'));
   const currentReasons = s.reasons.filter(reason => !previousPrep.some(c => reason === (c.status === 'progress' ? `Подготовка идёт (${c.assignee?.name || '—'})` : c.assigneeId ? `Подготовка не начата (${c.assignee?.name})` : 'Подготовка не назначена')) || upcomingPrep.some(c => reason === (c.status === 'progress' ? `Подготовка идёт (${c.assignee?.name || '—'})` : c.assigneeId ? `Подготовка не начата (${c.assignee?.name})` : 'Подготовка не назначена')));
   const proof = s.lastDone ? s.lastDone.photos.slice(-8).map(p => ({ id: p.id, url: p.url, itemIndex: p.itemIndex, kind: p.kind })) : [];
