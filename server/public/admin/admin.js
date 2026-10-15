@@ -959,22 +959,23 @@ async function renderToday() {
   const generation=S.homeGeneration=(S.homeGeneration||0)+1;
   const t=await api('/api/admin/today');
   const date=S.homeDate||t.date;
-  const [cal,messages]=await Promise.all([api('/api/admin/calendar?from='+isoAdd(date,-1)+'&days=5'),api('/api/admin/support')]);
+  const upcomingDate=S.homeUpcomingDate??=isoAdd(date,1);
+  const [cal,messages,upcoming]=await Promise.all([api('/api/admin/calendar?from='+isoAdd(date,-1)+'&days=5'),api('/api/admin/support'),api('/api/admin/calendar?from='+isoAdd(upcomingDate,-1)+'&days=4')]);
   if(S.view!=='today'||generation!==S.homeGeneration)return;
   S.critCount=t.counts.critical;renderNav();
   const apt=Object.fromEntries(cal.apartments.map(a=>[a.id,a.number?'кв. '+a.number:a.title]));
   const queue=issueQueue(t),attention=queue.filter(i=>['critical','action'].includes(i.level));
   const issueSummary=`Срочно: ${queue.filter(i=>i.level==='critical').length} · Действия: ${queue.filter(i=>i.level==='action').length} · Под контролем: ${queue.filter(i=>i.level==='today').length}`;
   const active=cal.bookings.filter(b=>['confirmed','completed'].includes(b.status));
-  const dayRows=d=>{
+  const dayRows=(d,source=cal)=>{
     const rows=[];
-    for(const b of active){
+    for(const b of source.bookings.filter(b=>['confirmed','completed'].includes(b.status))){
       if(b.checkIn===d)rows.push({kind:'arrival',time:b.checkInTime,title:'Заезд',icon:'↗',text:apt[b.apartmentId]+' · '+(b.guestName||'Гость'),status:badge(BK_ST,b.status),open:'bk:'+b.id});
       if(b.checkOut===d)rows.push({kind:'departure',time:b.checkOutTime,title:'Выезд',icon:'↙',text:apt[b.apartmentId]+' · '+(b.guestName||'Гость'),status:badge(BK_ST,b.status),open:'bk:'+b.id});
     }
-    for(const c of cal.cleanings.filter(x=>x.date===d))rows.push({kind:'cleaning',time:c.fromTime,title:'Подготовка',icon:'✨',text:apt[c.apartmentId]+' · '+(c.assignee||'Не назначена'),status:badge(CL_ST,c.status),open:'cl:'+c.id});
-    for(const x of cal.transfers.filter(x=>x.date===d))rows.push({kind:'transfer',time:x.time,title:DIR[x.direction],icon:'🚗',text:(x.apartmentId?apt[x.apartmentId]+' · ':'')+(x.driverName||'Водитель не назначен'),status:badge(TR_ST,x.status),open:'tr:'+(x.jobId||'')+':'+x.transferId});
-    for(const r of cal.repairs.filter(x=>x.date===d))rows.push({kind:'repair',time:'',title:'Ремонт',icon:'🔧',text:apt[r.apartmentId]+' · '+r.title,status:badge(WR_ST,r.status),open:'wr:'+r.id});
+    for(const c of source.cleanings.filter(x=>x.date===d))rows.push({kind:'cleaning',time:c.fromTime,title:'Подготовка',icon:'✨',text:apt[c.apartmentId]+' · '+(c.assignee||'Не назначена'),status:badge(CL_ST,c.status),open:'cl:'+c.id});
+    for(const x of source.transfers.filter(x=>x.date===d))rows.push({kind:'transfer',time:x.time,title:DIR[x.direction],icon:'🚗',text:(x.apartmentId?apt[x.apartmentId]+' · ':'')+(x.driverName||'Водитель не назначен'),status:badge(TR_ST,x.status),open:'tr:'+(x.jobId||'')+':'+x.transferId});
+    for(const r of source.repairs.filter(x=>x.date===d))rows.push({kind:'repair',time:'',title:'Ремонт',icon:'🔧',text:apt[r.apartmentId]+' · '+r.title,status:badge(WR_ST,r.status),open:'wr:'+r.id});
     return rows.sort((x,y)=>(x.time||'99').localeCompare(y.time||'99'));
   };
   const rows=dayRows(date),count=(kind,d=date)=>dayRows(d).filter(x=>x.kind===kind).length;
@@ -993,7 +994,7 @@ async function renderToday() {
   <div class="home-layout"><div class="home-primary"><section class="card home-urgent"><div class="home-section-head"><h2>Требуют решения <span class="chip red">${attention.length}</span></h2><button data-home-list="attention">Все ${queue.length} →</button></div><p class="muted small home-caption">${issueSummary}<br>Требуют решения: ${attention.length} · срочно + действия · ${fmtDay(t.date)}${date!==t.date?' · не прогноз на выбранную дату':''}</p><div class="home-issues">${attention.slice(0,3).map(issue).join('')||'<p class="muted">Срочных вопросов нет</p>'}</div></section>
   <section class="card home-plan"><div class="home-section-head"><h2>План на ${fmtDay(date)}</h2><button data-home-list="plan">Весь день →</button></div><div class="home-filters">${filters.map(([key,label])=>`<button data-home-filter="${key}" class="${(S.homeFilter||'all')===key?'on':''}">${label} ${key==='all'?rows.length:count(key)}</button>`).join('')}</div><p class="muted small home-caption">Статусы из сервера сейчас; для будущих дат показан план.</p><div id="homePlanRows"></div><button class="home-plan-more" data-home-list="plan"></button></section>
   <section class="card home-quick"><button class="btn primary" data-home-quick="booking">📅 Особая бронь</button><button class="btn" data-home-quick="repair">🔧 Новая задача</button><button class="btn" data-goto="support">💬 Сообщение гостю</button><button class="btn" data-goto="apartments">⌂ Найти квартиру</button><button class="btn" data-goto="calendar">🗓 Календарь</button></section></div>
-  <div class="home-secondary"><section class="card home-upcoming"><div class="home-section-head"><h2>Ближайшие дни</h2><button data-goto="calendar">Календарь →</button></div>${[1,2,3].map(n=>{const d=isoAdd(date,n);return `<button class="home-day" data-home-date="${d}"><b>${esc(fullDate(d))}</b><span>${[['arrival','↗'],['departure','↙'],['cleaning','✨'],['transfer','🚗']].map(([key,icon])=>`<span title="${filters.find(x=>x[0]===key)[1]}"><i class="home-icon ${key}">${icon}</i>${count(key,d)}</span>`).join('')}<span>›</span></span></button>`}).join('')}</section>
+  <div class="home-secondary"><section class="card home-upcoming"><div class="home-section-head"><h2>Следующие дни</h2><span class="home-day-nav"><button data-upcoming-shift="-3" aria-label="Предыдущие три дня">←</button><button data-upcoming-shift="3" aria-label="Следующие три дня">→</button></span><button data-goto="calendar">Календарь →</button></div>${[0,1,2].map(n=>{const d=isoAdd(upcomingDate,n);const dayCount=key=>dayRows(d,upcoming).filter(x=>x.kind===key).length;return `<div class="home-day${d===date?' selected':''}"><b><button data-home-date="${d}" data-home-day-filter="all">${esc(fullDate(d))}</button></b><span>${[['arrival','↗'],['departure','↙'],['cleaning','✨'],['transfer','🚗']].map(([key,icon])=>`<button data-home-date="${d}" data-home-day-filter="${key}" aria-label="${esc(fullDate(d))} · ${filters.find(x=>x[0]===key)[1]}: ${dayCount(key)}" title="${filters.find(x=>x[0]===key)[1]}"><i class="home-icon ${key}">${icon}</i>${dayCount(key)}</button>`).join('')}<button data-home-date="${d}" data-home-day-filter="all" aria-label="${esc(fullDate(d))} · Все события">›</button></span></div>`}).join('')}</section>
   <section class="card home-messages"><div class="home-section-head"><h2>Последние сообщения</h2><button data-goto="support">Все →</button></div>${messages.slice(0,4).map(m=>`<button class="home-message" data-support="${esc(m.id)}"><span class="home-icon">💬</span><span><b>${esc(({booking:'Бронирование',checkin:'Заселение',transfer:'Трансфер',other:'Другой вопрос'})[m.topic])}</b><small>${esc(m.lastMessage)}</small><small>${esc(fmtTime(m.updatedAt))} · ${m.lastSender==='guest'?'Гость':'Ответ поддержки'}</small></span><span>›</span></button>`).join('')||'<p class="muted">Обращений пока нет</p>'}<button class="btn primary block" data-goto="support">Открыть чат поддержки</button></section></div></div></div>`);
   const filtered=()=>rows.filter(x=>(S.homeFilter||'all')==='all'||x.kind===S.homeFilter);
   const paint=()=>{
@@ -1019,7 +1020,8 @@ async function renderToday() {
   };
   $('#view').onclick=guard(async e=>{
     const open=e.target.closest('[data-open]');if(open?.dataset.open)return openItem(open.dataset.open);
-    const d=e.target.closest('[data-home-date]');if(d)return setDate(d.dataset.homeDate);
+    const shift=e.target.closest('[data-upcoming-shift]');if(shift){S.homeUpcomingDate=isoAdd(upcomingDate,Number(shift.dataset.upcomingShift));return renderToday();}
+    const d=e.target.closest('[data-home-date]');if(d){if(d.dataset.homeDayFilter)S.homeFilter=d.dataset.homeDayFilter;return setDate(d.dataset.homeDate);}
     const f=e.target.closest('[data-home-filter]');if(f){S.homeFilter=f.dataset.homeFilter;return paint();}
     const m=e.target.closest('[data-metric]');if(m){const key=m.dataset.metric;if(filters.some(x=>x[0]===key)){S.homeFilter=key;paint();return;}return allList(key==='attention'?'attention':key);}
     const all=e.target.closest('[data-home-list]');if(all)return allList(all.dataset.homeList);
