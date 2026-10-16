@@ -12,6 +12,7 @@ import { loadCurrency } from '../../site/config.js';
 import { cleaningReport } from '../../services/cleaning.js';
 import { linkOut, releaseExpiredLinks } from '../../services/bookingLinks.js';
 import { logDatesChangedInTx } from '../../services/linkPrice.js';
+import { bundledTransferKeys } from '../../services/transfers.js';
 
 export default function operationsRouter({ events, dispatch, cleaning }) {
   const r = Router();
@@ -72,8 +73,17 @@ export default function operationsRouter({ events, dispatch, cleaning }) {
       if (+ci !== +cur.checkIn && cur.checkIn <= today) throw new HttpError(409, 'Гость уже заехал — можно менять только дату выезда');
       if (co < today) throw badRequest('Дата выезда уже прошла');
       if (!(await isAvailable(req.accountId, cur.apartmentId, ci, co, cur.id, tx))) throw new HttpError(409, 'Эти даты уже заняты');
-      const n = Math.round((co - ci) / 86400000);
-      const upd = await tx.booking.update({ where: { id: cur.id }, data: { ...data, checkIn: ci, checkOut: co, totalKzt: cur.nightlyKzt * n + cur.petFeeKzt }, include: { apartment: true, guest: true } });
+      const datesChanged = +ci !== +cur.checkIn || +co !== +cur.checkOut;
+      let totalKzt = cur.totalKzt;
+      if (datesChanged) {
+        // Не переоцениваем оплаченный заказ и не меняем сумму уже начатой оплаты.
+        const payment = await tx.payment.findFirst({ where: { accountId: req.accountId, bookingId: cur.id, status: { notIn: ['failed', 'cancelled'] } }, select: { id: true } });
+        if (cur.paymentStatus !== 'unpaid' || payment) throw new HttpError(409, 'Нельзя менять даты и сумму оплаченной брони или брони с начатой оплатой');
+        const trips = await tx.transfer.findMany({ where: { accountId: req.accountId, bookingId: cur.id, checkoutKeyHash: { in: bundledTransferKeys(cur) } }, select: { priceKzt: true } });
+        const n = Math.round((co - ci) / 86400000);
+        totalKzt = cur.nightlyKzt * n + cur.petFeeKzt + trips.reduce((sum, t) => sum + t.priceKzt, 0);
+      }
+      const upd = await tx.booking.update({ where: { id: cur.id }, data: { ...data, checkIn: ci, checkOut: co, totalKzt }, include: { apartment: true, guest: true } });
       await tx.cleaningTask.updateMany({ where: { bookingId: cur.id, status: { in: ['assigned', 'enroute'] } }, data: { date: upd.checkOut } });   // идущую подготовку не двигаем
       await logDatesChangedInTx(tx, { old: cur, upd, actor: actorOf(req) });   // бронь по ссылке: сумма изменилась → журнал цены (проход 4, шаг 6); новый termsHash — гость соглашается заново
       return upd;
